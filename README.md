@@ -30,8 +30,10 @@ pnpm dev --host     # --host exposes on LAN to open on your phone
 Without direnv, run `nix develop` manually, or prefix commands with
 `nix develop --command <cmd>`.
 
-The pinned toolchain lives in `flake.nix`: `nodejs_22`, `pnpm_10`, `git`. Bump
-versions there, not in package.json's `packageManager` field.
+The pinned toolchain lives in `flake.nix`: `nodejs_22`, `pnpm_10`, `git`. CI
+pins its own pnpm version in `.github/workflows/deploy.yml` via the
+`pnpm/action-setup` action — bump both together when upgrading. Don't add a
+`packageManager` field to `package.json`; it conflicts with the action.
 
 ## Build
 

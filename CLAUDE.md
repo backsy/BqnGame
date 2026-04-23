@@ -24,8 +24,10 @@ When running commands in this repo as an agent:
   `nix develop --command <cmd>`.
 - If `nix` is unavailable (e.g. in a sandbox where node/pnpm are already on
   PATH), you may use them directly. Do not modify global state.
-- Bump toolchain versions in `flake.nix`, not in `package.json`'s
-  `packageManager` field.
+- There are two toolchain pins — `flake.nix` for local dev and the `version:`
+  input on `pnpm/action-setup` in `.github/workflows/deploy.yml` for CI. Bump
+  both together. Do **not** re-add a `packageManager` field to `package.json`;
+  `pnpm/action-setup` errors out when both it and `version:` are set.
 
 ## Commands
 

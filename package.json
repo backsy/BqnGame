@@ -17,6 +17,5 @@
     "svelte-check": "^4.1.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
-  },
-  "packageManager": "pnpm@10.0.0"
+  }
 }
