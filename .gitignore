@@ -1,0 +1,22 @@
+node_modules
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Build output
+build/
+.svelte-kit/
+
+# Vite
+dist/
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/
+.idea/
