@@ -15,6 +15,7 @@
 
 	let activeTab = $state<TabKey>('fn');
 	const COLS = 7;
+	const LONG_PRESS_MS = 400;
 
 	let activePrimitives = $derived.by(() => {
 		const tab = tabs.find((t) => t.key === activeTab)!;
@@ -26,6 +27,40 @@
 		const total = Math.ceil((n + actions.length) / COLS) * COLS;
 		return total - n - actions.length;
 	});
+
+	let helpTarget = $state<Primitive | null>(null);
+	let pressTimer: ReturnType<typeof setTimeout> | undefined;
+	let didLongPress = false;
+
+	function kindName(p: Primitive): string {
+		if (p.category === 'action') return 'Action';
+		if (p.kind === 'fn') return 'Function';
+		if (p.kind === 'mod1') return '1-Modifier';
+		if (p.kind === 'mod2') return '2-Modifier';
+		if (p.kind === 'sym') return 'Syntax';
+		return '';
+	}
+
+	function startPress(p: Primitive) {
+		didLongPress = false;
+		clearTimeout(pressTimer);
+		pressTimer = setTimeout(() => {
+			didLongPress = true;
+			helpTarget = p;
+		}, LONG_PRESS_MS);
+	}
+
+	function endPress() {
+		clearTimeout(pressTimer);
+	}
+
+	function handleClick(p: Primitive) {
+		if (didLongPress) {
+			didLongPress = false;
+			return;
+		}
+		onselect(p);
+	}
 </script>
 
 <section class="palette" aria-label="BQN glyph palette">
@@ -49,9 +84,13 @@
 			<button
 				type="button"
 				class="tile bqn"
-				title={p.label}
 				aria-label={p.label}
-				onclick={() => onselect(p)}
+				onclick={() => handleClick(p)}
+				onpointerdown={() => startPress(p)}
+				onpointerup={endPress}
+				onpointercancel={endPress}
+				onpointerleave={endPress}
+				oncontextmenu={(e) => e.preventDefault()}
 			>
 				{p.glyph}
 			</button>
@@ -64,15 +103,48 @@
 				type="button"
 				class="tile bqn action"
 				class:destructive={p.action === 'backspace'}
-				title={p.label}
 				aria-label={p.label}
-				onclick={() => onselect(p)}
+				onclick={() => handleClick(p)}
+				onpointerdown={() => startPress(p)}
+				onpointerup={endPress}
+				onpointercancel={endPress}
+				onpointerleave={endPress}
+				oncontextmenu={(e) => e.preventDefault()}
 			>
 				{p.glyph}
 			</button>
 		{/each}
 	</div>
 </section>
+
+{#if helpTarget}
+	<div
+		class="help-overlay"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="help-label"
+		onclick={() => (helpTarget = null)}
+		onkeydown={(e) => e.key === 'Escape' && (helpTarget = null)}
+		tabindex="-1"
+	>
+		<div class="help-card" onclick={(e) => e.stopPropagation()} role="presentation">
+			<div class="help-glyph bqn">{helpTarget.glyph}</div>
+			<div class="help-kind">{kindName(helpTarget)}</div>
+			<div class="help-label" id="help-label">{helpTarget.label}</div>
+			<button
+				type="button"
+				class="help-insert bqn"
+				onclick={() => {
+					const target = helpTarget!;
+					helpTarget = null;
+					onselect(target);
+				}}
+			>
+				insert {helpTarget.glyph}
+			</button>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.palette {
@@ -125,6 +197,7 @@
 		cursor: pointer;
 		user-select: none;
 		-webkit-tap-highlight-color: transparent;
+		touch-action: manipulation;
 	}
 	.tile:active {
 		background: #2a2a2a;
@@ -145,5 +218,55 @@
 	}
 	.tile.action.destructive:active {
 		background: #522c2c;
+	}
+
+	.help-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.65);
+		display: grid;
+		place-items: center;
+		padding: 1rem;
+		z-index: 100;
+	}
+	.help-card {
+		background: #1a1a1a;
+		border: 1px solid #3a3a3a;
+		border-radius: 0.75rem;
+		padding: 1.25rem 1.5rem 1rem;
+		width: min(22rem, 100%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.help-glyph {
+		font-size: 3.5rem;
+		line-height: 1;
+		color: #eee;
+	}
+	.help-kind {
+		font-size: 0.8rem;
+		color: #888;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.help-label {
+		font-size: 1rem;
+		color: #ddd;
+		text-align: center;
+	}
+	.help-insert {
+		margin-top: 0.5rem;
+		padding: 0.5rem 1rem;
+		border: 1px solid #2a6a2a;
+		border-radius: 0.375rem;
+		background: #173d17;
+		color: #d7f0d7;
+		font-size: 0.95rem;
+		cursor: pointer;
+	}
+	.help-insert:active {
+		background: #225722;
 	}
 </style>
