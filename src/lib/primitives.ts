@@ -162,9 +162,14 @@ export const primitives: Record<PrimKind, Primitive[]> = {
 	sym: syms
 };
 
-export const kindLabels: Record<PrimKind, string> = {
-	fn: 'fn',
-	mod1: '_m',
-	mod2: '_m_',
-	sym: 'sym'
-};
+// Tab layout for the palette. A tab can cover one or more primitive kinds —
+// 1-modifiers and 2-modifiers share the `mod` tab so the palette doesn't
+// jump in height between them; they're short lists and the distinction is
+// readable from each glyph's label.
+export type TabKey = 'fn' | 'mod' | 'sym';
+
+export const tabs: { key: TabKey; label: string; kinds: PrimKind[] }[] = [
+	{ key: 'fn', label: 'fn', kinds: ['fn'] },
+	{ key: 'mod', label: '_m', kinds: ['mod1', 'mod2'] },
+	{ key: 'sym', label: 'sym', kinds: ['sym'] }
+];

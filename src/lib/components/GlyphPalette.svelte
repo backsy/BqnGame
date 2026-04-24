@@ -2,8 +2,8 @@
 	import {
 		primitives,
 		actions,
-		kindLabels,
-		type PrimKind,
+		tabs,
+		type TabKey,
 		type Primitive
 	} from '$lib/primitives';
 
@@ -13,17 +13,16 @@
 
 	let { onselect }: Props = $props();
 
-	let activeKind = $state<PrimKind>('fn');
-
-	const kinds: PrimKind[] = ['fn', 'mod1', 'mod2', 'sym'];
+	let activeTab = $state<TabKey>('fn');
 	const COLS = 7;
 
-	// Pad with empty cells so the action tiles land in the rightmost N
-	// columns of whatever row they end up in. If the current tab already
-	// has free slots to the right of its last primitive, actions slot in
-	// there; otherwise they spill into a fresh row with leading spacers.
+	let activePrimitives = $derived.by(() => {
+		const tab = tabs.find((t) => t.key === activeTab)!;
+		return tab.kinds.flatMap((k) => primitives[k]);
+	});
+
 	let spacers = $derived.by(() => {
-		const n = primitives[activeKind].length;
+		const n = activePrimitives.length;
 		const total = Math.ceil((n + actions.length) / COLS) * COLS;
 		return total - n - actions.length;
 	});
@@ -31,22 +30,22 @@
 
 <section class="palette" aria-label="BQN glyph palette">
 	<div class="tabs" role="tablist" aria-label="primitive kind">
-		{#each kinds as kind}
+		{#each tabs as tab}
 			<button
 				type="button"
 				role="tab"
-				aria-selected={activeKind === kind}
+				aria-selected={activeTab === tab.key}
 				class="tab bqn"
-				class:active={activeKind === kind}
-				onclick={() => (activeKind = kind)}
+				class:active={activeTab === tab.key}
+				onclick={() => (activeTab = tab.key)}
 			>
-				{kindLabels[kind]}
+				{tab.label}
 			</button>
 		{/each}
 	</div>
 
 	<div class="grid" role="tabpanel">
-		{#each primitives[activeKind] as p (p.glyph)}
+		{#each activePrimitives as p (p.glyph)}
 			<button
 				type="button"
 				class="tile bqn"
