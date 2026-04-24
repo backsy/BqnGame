@@ -1,7 +1,7 @@
 // Primitive data for the glyph palette. Source of truth for meanings is
 // docs/bqn-reference.md. When editing, keep both in sync.
 
-export type PrimKind = 'fn' | 'mod1' | 'mod2';
+export type PrimKind = 'fn' | 'mod1' | 'mod2' | 'sym';
 
 export type Category =
 	| 'arithmetic'
@@ -11,7 +11,8 @@ export type Category =
 	| 'search'
 	| 'other'
 	| 'combinator'
-	| 'iteration';
+	| 'iteration'
+	| 'syntax';
 
 export interface Primitive {
 	glyph: string;
@@ -99,14 +100,40 @@ const mods2: Primitive[] = [
 	{ glyph: '⍟', kind: 'mod2', category: 'iteration', label: 'Repeat' }
 ];
 
+// Syntax characters not on any OS keyboard. These are not primitives in the
+// BQN sense — they're punctuation, literals, and the argument/operand
+// glyphs used inside function bodies. Bundled here so the palette can
+// surface them on one tab.
+const syms: Primitive[] = [
+	{ glyph: '¯', kind: 'sym', category: 'syntax', label: 'Negative sign (for literals)' },
+	{ glyph: 'π', kind: 'sym', category: 'syntax', label: 'Pi' },
+	{ glyph: '∞', kind: 'sym', category: 'syntax', label: 'Infinity' },
+	{ glyph: '‿', kind: 'sym', category: 'syntax', label: 'Ligature — build a list' },
+	{ glyph: '⟨', kind: 'sym', category: 'syntax', label: 'Open list' },
+	{ glyph: '⟩', kind: 'sym', category: 'syntax', label: 'Close list' },
+	{ glyph: '←', kind: 'sym', category: 'syntax', label: 'Define' },
+	{ glyph: '↩', kind: 'sym', category: 'syntax', label: 'Modify / reassign' },
+	{ glyph: '⋄', kind: 'sym', category: 'syntax', label: 'Statement separator' },
+	{ glyph: '@', kind: 'sym', category: 'syntax', label: 'Null character' },
+	{ glyph: '𝕨', kind: 'sym', category: 'syntax', label: 'Left argument' },
+	{ glyph: '𝕩', kind: 'sym', category: 'syntax', label: 'Right argument' },
+	{ glyph: '𝕗', kind: 'sym', category: 'syntax', label: 'Left operand (value)' },
+	{ glyph: '𝕘', kind: 'sym', category: 'syntax', label: 'Right operand (value)' },
+	{ glyph: '𝔽', kind: 'sym', category: 'syntax', label: 'Left operand (function)' },
+	{ glyph: '𝔾', kind: 'sym', category: 'syntax', label: 'Right operand (function)' },
+	{ glyph: '𝕤', kind: 'sym', category: 'syntax', label: 'Self (for recursion)' }
+];
+
 export const primitives: Record<PrimKind, Primitive[]> = {
 	fn: fns,
 	mod1: mods1,
-	mod2: mods2
+	mod2: mods2,
+	sym: syms
 };
 
 export const kindLabels: Record<PrimKind, string> = {
 	fn: 'fn',
 	mod1: '_m',
-	mod2: '_m_'
+	mod2: '_m_',
+	sym: 'sym'
 };

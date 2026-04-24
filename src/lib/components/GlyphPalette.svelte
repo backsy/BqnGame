@@ -9,7 +9,7 @@
 
 	let activeKind = $state<PrimKind>('fn');
 
-	const kinds: PrimKind[] = ['fn', 'mod1', 'mod2'];
+	const kinds: PrimKind[] = ['fn', 'mod1', 'mod2', 'sym'];
 </script>
 
 <section class="palette" aria-label="BQN glyph palette">
