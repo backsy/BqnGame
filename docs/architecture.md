@@ -77,12 +77,19 @@ step, not a hidden dependency.
 - BQN386 font self-hosted from `static/fonts/`.
 - PWA manifest + icons + service worker.
 - GitHub Pages deploy via `.github/workflows/deploy.yml`.
+- Three-panel page shape (editor / output / palette) in `src/routes/+page.svelte`.
+- Glyph palette component at `src/lib/components/GlyphPalette.svelte`,
+  driven by `src/lib/primitives.ts`. Placeholder state: tabs for fn / 1-mod /
+  2-mod, tap-to-append into the editor textarea. No long-press help, no
+  semantic grouping within a tab, no recents row — these are follow-ups, not
+  core gaps.
 
 ## What is planned, not built
 
-- CodeMirror 6 editor with a local BQN language mode.
-- CBQN wasm worker + message protocol.
-- Glyph palette component.
+- CodeMirror 6 editor with a local BQN language mode, replacing the
+  placeholder `<textarea readonly>` in `+page.svelte`.
+- CBQN wasm worker + message protocol (files named in "Process model" above).
+- Long-press help card on palette tiles.
 - IndexedDB persistence.
 - Puzzle authoring / runner.
 
