@@ -46,14 +46,14 @@
 	</section>
 
 	<section class="output" aria-label="output" aria-live="polite">
-		<button type="button" class="run" onclick={run} disabled={running || !client}>
-			{running ? '…' : '▶ run'}
-		</button>
-		<pre class="bqn" class:err={output.kind === 'error'}>{
+		<pre class="bqn text" class:err={output.kind === 'error'}>{
 			output.kind === 'idle' ? '(tap run to evaluate)' :
 			output.kind === 'ok' ? output.value :
 			`error: ${output.message}`
 		}</pre>
+		<button type="button" class="run" onclick={run} disabled={running || !client}>
+			{running ? '…' : '▶ run'}
+		</button>
 	</section>
 
 	<GlyphPalette onselect={select} />
@@ -75,28 +75,31 @@
 	}
 
 	.output {
-		position: relative;
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
 		max-height: 25vh;
-		overflow: auto;
 		padding: 0.5rem 0.75rem;
 		border-top: 1px solid #2a2a2a;
 		background: #0e0e0e;
 		color: #bbb;
 		font-size: 0.95rem;
 	}
-	.output pre {
+	.output .text {
+		flex: 1;
+		min-width: 0;
 		margin: 0;
+		max-height: 100%;
+		overflow: auto;
 		white-space: pre-wrap;
 		word-break: break-word;
-		padding-right: 4.5rem;
 	}
-	.output pre.err {
+	.output .text.err {
 		color: #f28a8a;
 	}
 	.run {
-		position: absolute;
-		top: 0.4rem;
-		right: 0.5rem;
+		flex: 0 0 auto;
+		align-self: flex-start;
 		padding: 0.35rem 0.75rem;
 		border: 1px solid #2a6a2a;
 		border-radius: 0.375rem;
