@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { primitives, kindLabels, type PrimKind, type Primitive } from '$lib/primitives';
+	import {
+		primitives,
+		actions,
+		kindLabels,
+		type PrimKind,
+		type Primitive
+	} from '$lib/primitives';
 
 	interface Props {
 		onselect: (tile: Primitive) => void;
@@ -33,7 +39,21 @@
 			<button
 				type="button"
 				class="tile bqn"
-				class:action={p.action !== undefined}
+				title={p.label}
+				aria-label={p.label}
+				onclick={() => onselect(p)}
+			>
+				{p.glyph}
+			</button>
+		{/each}
+	</div>
+
+	<div class="actions">
+		{#each actions as p (p.glyph)}
+			<button
+				type="button"
+				class="tile bqn action"
+				class:destructive={p.action === 'backspace'}
 				title={p.label}
 				aria-label={p.label}
 				onclick={() => onselect(p)}
@@ -79,6 +99,15 @@
 		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 0.35rem;
 	}
+	.actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.35rem;
+	}
+	.actions .tile {
+		flex: 0 0 auto;
+		width: calc((100% - 6 * 0.35rem) / 7);
+	}
 	.tile {
 		aspect-ratio: 1;
 		display: grid;
@@ -98,8 +127,19 @@
 		transform: scale(0.94);
 	}
 	.tile.action {
-		background: #222;
-		color: #ccc;
-		border-color: #3a3a3a;
+		background: #1d2f44;
+		color: #a9c7e6;
+		border-color: #2c4365;
+	}
+	.tile.action:active {
+		background: #294262;
+	}
+	.tile.action.destructive {
+		background: #3a1f1f;
+		color: #e8a8a8;
+		border-color: #5a2f2f;
+	}
+	.tile.action.destructive:active {
+		background: #522c2c;
 	}
 </style>

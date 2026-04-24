@@ -19,6 +19,18 @@ export class BqnClient {
 			this.pending.delete(e.data.id);
 			resolver(e.data);
 		});
+		this.worker.addEventListener('error', (e) => {
+			// A worker-level script error (init failure, unhandled throw)
+			// leaves every pending eval hanging. Surface it and drain the
+			// queue so the UI doesn't sit on a stuck "running" state.
+			console.error('[BqnWorker] error', e.message, e.filename, e.lineno);
+			const msg = e.message || 'worker crashed';
+			this.drain(`worker error: ${msg}`);
+		});
+		this.worker.addEventListener('messageerror', (e) => {
+			console.error('[BqnWorker] messageerror', e);
+			this.drain('worker message could not be deserialized');
+		});
 	}
 
 	eval(source: string): Promise<Response> {
@@ -32,6 +44,13 @@ export class BqnClient {
 
 	destroy() {
 		this.worker.terminate();
+		this.pending.clear();
+	}
+
+	private drain(message: string) {
+		for (const [id, resolver] of this.pending) {
+			resolver({ id, kind: 'error', message });
+		}
 		this.pending.clear();
 	}
 }

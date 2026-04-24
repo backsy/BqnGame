@@ -12,7 +12,8 @@ export type Category =
 	| 'other'
 	| 'combinator'
 	| 'iteration'
-	| 'syntax';
+	| 'syntax'
+	| 'action';
 
 export interface Primitive {
 	/** what's displayed on the tile */
@@ -141,11 +142,16 @@ const syms: Primitive[] = [
 	{ glyph: '𝕘', kind: 'sym', category: 'syntax', label: 'Right operand (value)' },
 	{ glyph: '𝔽', kind: 'sym', category: 'syntax', label: 'Left operand (function)' },
 	{ glyph: '𝔾', kind: 'sym', category: 'syntax', label: 'Right operand (function)' },
-	{ glyph: '𝕤', kind: 'sym', category: 'syntax', label: 'Self (for recursion)' },
-	// Actions
-	{ glyph: '␣', kind: 'sym', category: 'syntax', label: 'Space', insert: ' ' },
-	{ glyph: '⏎', kind: 'sym', category: 'syntax', label: 'New line', insert: '\n' },
-	{ glyph: '⌫', kind: 'sym', category: 'syntax', label: 'Backspace', action: 'backspace' }
+	{ glyph: '𝕤', kind: 'sym', category: 'syntax', label: 'Self (for recursion)' }
+];
+
+// Action tiles: space, newline, backspace. Rendered as a persistent row
+// below the main grid on every tab, not inside a tab's primitives — they
+// need to be reachable no matter which category is active.
+export const actions: Primitive[] = [
+	{ glyph: '␣', kind: 'sym', category: 'action', label: 'Space', insert: ' ' },
+	{ glyph: '⏎', kind: 'sym', category: 'action', label: 'New line', insert: '\n' },
+	{ glyph: '⌫', kind: 'sym', category: 'action', label: 'Backspace', action: 'backspace' }
 ];
 
 export const primitives: Record<PrimKind, Primitive[]> = {
