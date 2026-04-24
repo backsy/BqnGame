@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BqnGame maskable">
+	<title>BqnGame maskable</title>
+	<rect width="512" height="512" fill="#111111" />
+	<g fill="none" stroke="#eeeeee" stroke-width="28" stroke-linecap="square" transform="translate(0 0) scale(0.8) translate(64 64)">
+		<circle cx="256" cy="256" r="152" />
+		<line x1="256" y1="72" x2="256" y2="440" />
+	</g>
+</svg>
