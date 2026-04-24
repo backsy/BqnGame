@@ -1,22 +1,18 @@
 <script lang="ts">
+	import Editor, { type EditorApi } from '$lib/components/Editor.svelte';
 	import GlyphPalette from '$lib/components/GlyphPalette.svelte';
 
-	let source = $state('');
-	let output = $state('(no output yet — palette inserts glyphs at the end)');
+	let editor: EditorApi | undefined = $state();
+	let output = $state('(no output yet — palette inserts glyphs at the cursor)');
 
 	function insert(glyph: string) {
-		source += glyph;
+		editor?.insert(glyph);
 	}
 </script>
 
 <div class="app">
 	<section class="editor" aria-label="code editor">
-		<textarea
-			readonly
-			class="bqn"
-			placeholder="tap glyphs below to build an expression"
-			value={source}
-		></textarea>
+		<Editor onready={(api) => (editor = api)} />
 	</section>
 
 	<section class="output bqn" aria-label="output">
@@ -39,23 +35,6 @@
 		min-height: 0;
 		padding: 0.75rem;
 		padding-top: calc(0.75rem + env(safe-area-inset-top));
-	}
-	textarea {
-		flex: 1;
-		min-height: 0;
-		resize: none;
-		overflow: auto;
-		border: 1px solid #2a2a2a;
-		border-radius: 0.5rem;
-		background: #141414;
-		color: #eee;
-		font-size: 1.1rem;
-		padding: 0.75rem;
-		line-height: 1.5;
-		outline: none;
-	}
-	textarea::placeholder {
-		color: #555;
 	}
 
 	.output {

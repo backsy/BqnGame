@@ -78,16 +78,20 @@ step, not a hidden dependency.
 - PWA manifest + icons + service worker.
 - GitHub Pages deploy via `.github/workflows/deploy.yml`.
 - Three-panel page shape (editor / output / palette) in `src/routes/+page.svelte`.
+- CodeMirror 6 editor at `src/lib/components/Editor.svelte`. `basicSetup` +
+  line wrapping + a dark theme inline. Mobile keyboard suppressed via
+  `contentAttributes.of({ inputmode: 'none', ... })`. Exposes an imperative
+  API (`insert`, `value`, `focus`) to the parent via an `onready` callback.
 - Glyph palette component at `src/lib/components/GlyphPalette.svelte`,
-  driven by `src/lib/primitives.ts`. Placeholder state: tabs for fn / 1-mod /
-  2-mod, tap-to-append into the editor textarea. No long-press help, no
-  semantic grouping within a tab, no recents row — these are follow-ups, not
-  core gaps.
+  driven by `src/lib/primitives.ts`. Tabs for fn / 1-mod / 2-mod, tap-to-
+  insert wired to the editor's cursor position. No long-press help, no
+  semantic grouping within a tab, no recents row — these are follow-ups,
+  not core gaps.
 
 ## What is planned, not built
 
-- CodeMirror 6 editor with a local BQN language mode, replacing the
-  placeholder `<textarea readonly>` in `+page.svelte`.
+- BQN syntax highlighting (a `StreamLanguage` or lezer mode wired into
+  CodeMirror).
 - CBQN wasm worker + message protocol (files named in "Process model" above).
 - Long-press help card on palette tiles.
 - IndexedDB persistence.
