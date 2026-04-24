@@ -5,18 +5,12 @@
 <main>
 	<h1>Hello BQN</h1>
 	<p>Mobile-first playground, coming soon.</p>
-	<p class="glyphs" aria-label="sample BQN glyphs">
+	<p class="glyphs bqn" aria-label="sample BQN glyphs">
 		{#each glyphs as g}<span>{g}</span>{/each}
 	</p>
 </main>
 
 <style>
-	:global(html, body) {
-		margin: 0;
-		background: #111;
-		color: #eee;
-		font-family: system-ui, sans-serif;
-	}
 	main {
 		max-width: 40rem;
 		margin: 0 auto;
@@ -31,7 +25,6 @@
 		gap: 0.75rem;
 		flex-wrap: wrap;
 		font-size: 2rem;
-		font-family: 'BQN386 Unicode', 'DejaVu Sans Mono', monospace;
 		margin-top: 2rem;
 	}
 	.glyphs span {
@@ -40,6 +33,6 @@
 		width: 2.5rem;
 		height: 2.5rem;
 		border-radius: 0.5rem;
-		background: #222;
+		background: var(--tile);
 	}
 </style>
