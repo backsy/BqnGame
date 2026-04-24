@@ -2,10 +2,10 @@
 	import { primitives, kindLabels, type PrimKind, type Primitive } from '$lib/primitives';
 
 	interface Props {
-		oninsert: (glyph: string) => void;
+		onselect: (tile: Primitive) => void;
 	}
 
-	let { oninsert }: Props = $props();
+	let { onselect }: Props = $props();
 
 	let activeKind = $state<PrimKind>('fn');
 
@@ -33,9 +33,10 @@
 			<button
 				type="button"
 				class="tile bqn"
+				class:action={p.action !== undefined}
 				title={p.label}
 				aria-label={p.label}
-				onclick={() => oninsert(p.glyph)}
+				onclick={() => onselect(p)}
 			>
 				{p.glyph}
 			</button>
@@ -95,5 +96,10 @@
 	.tile:active {
 		background: #2a2a2a;
 		transform: scale(0.94);
+	}
+	.tile.action {
+		background: #222;
+		color: #ccc;
+		border-color: #3a3a3a;
 	}
 </style>

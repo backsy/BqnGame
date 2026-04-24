@@ -3,6 +3,7 @@
 	import Editor, { type EditorApi } from '$lib/components/Editor.svelte';
 	import GlyphPalette from '$lib/components/GlyphPalette.svelte';
 	import { BqnClient } from '$lib/bqn/client';
+	import type { Primitive } from '$lib/primitives';
 
 	let editor: EditorApi | undefined = $state();
 	let output = $state<{ kind: 'idle' } | { kind: 'ok'; value: string } | { kind: 'error'; message: string }>({
@@ -20,8 +21,9 @@
 		};
 	});
 
-	function insert(glyph: string) {
-		editor?.insert(glyph);
+	function select(tile: Primitive) {
+		if (tile.action === 'backspace') editor?.backspace();
+		else editor?.insert(tile.insert ?? tile.glyph);
 	}
 
 	async function run() {
@@ -54,7 +56,7 @@
 		}</pre>
 	</section>
 
-	<GlyphPalette oninsert={insert} />
+	<GlyphPalette onselect={select} />
 </div>
 
 <style>

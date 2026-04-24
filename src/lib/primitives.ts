@@ -15,11 +15,16 @@ export type Category =
 	| 'syntax';
 
 export interface Primitive {
+	/** what's displayed on the tile */
 	glyph: string;
 	kind: PrimKind;
 	category: Category;
 	/** short label, what a learner would call it */
 	label: string;
+	/** text to insert; defaults to glyph when omitted */
+	insert?: string;
+	/** non-insert action; overrides `insert` entirely */
+	action?: 'backspace';
 }
 
 const fns: Primitive[] = [
@@ -100,14 +105,28 @@ const mods2: Primitive[] = [
 	{ glyph: '⍟', kind: 'mod2', category: 'iteration', label: 'Repeat' }
 ];
 
-// Syntax characters not on any OS keyboard. These are not primitives in the
-// BQN sense — they're punctuation, literals, and the argument/operand
-// glyphs used inside function bodies. Bundled here so the palette can
-// surface them on one tab.
+// The "sym" tab is the catch-all keyboard: digits, BQN-specific syntax
+// characters, argument/operand glyphs used inside function bodies, and
+// action tiles (backspace, newline, space). With this tab present the
+// palette is a complete numeric-BQN input method — no OS keyboard needed.
 const syms: Primitive[] = [
+	// Digits + decimal
+	{ glyph: '0', kind: 'sym', category: 'syntax', label: 'Digit 0' },
+	{ glyph: '1', kind: 'sym', category: 'syntax', label: 'Digit 1' },
+	{ glyph: '2', kind: 'sym', category: 'syntax', label: 'Digit 2' },
+	{ glyph: '3', kind: 'sym', category: 'syntax', label: 'Digit 3' },
+	{ glyph: '4', kind: 'sym', category: 'syntax', label: 'Digit 4' },
+	{ glyph: '5', kind: 'sym', category: 'syntax', label: 'Digit 5' },
+	{ glyph: '6', kind: 'sym', category: 'syntax', label: 'Digit 6' },
+	{ glyph: '7', kind: 'sym', category: 'syntax', label: 'Digit 7' },
+	{ glyph: '8', kind: 'sym', category: 'syntax', label: 'Digit 8' },
+	{ glyph: '9', kind: 'sym', category: 'syntax', label: 'Digit 9' },
+	{ glyph: '.', kind: 'sym', category: 'syntax', label: 'Decimal point' },
+	// Literal modifiers and constants
 	{ glyph: '¯', kind: 'sym', category: 'syntax', label: 'Negative sign (for literals)' },
 	{ glyph: 'π', kind: 'sym', category: 'syntax', label: 'Pi' },
 	{ glyph: '∞', kind: 'sym', category: 'syntax', label: 'Infinity' },
+	// Structural punctuation
 	{ glyph: '‿', kind: 'sym', category: 'syntax', label: 'Ligature — build a list' },
 	{ glyph: '⟨', kind: 'sym', category: 'syntax', label: 'Open list' },
 	{ glyph: '⟩', kind: 'sym', category: 'syntax', label: 'Close list' },
@@ -115,13 +134,18 @@ const syms: Primitive[] = [
 	{ glyph: '↩', kind: 'sym', category: 'syntax', label: 'Modify / reassign' },
 	{ glyph: '⋄', kind: 'sym', category: 'syntax', label: 'Statement separator' },
 	{ glyph: '@', kind: 'sym', category: 'syntax', label: 'Null character' },
+	// Argument / operand glyphs (bodies of blocks)
 	{ glyph: '𝕨', kind: 'sym', category: 'syntax', label: 'Left argument' },
 	{ glyph: '𝕩', kind: 'sym', category: 'syntax', label: 'Right argument' },
 	{ glyph: '𝕗', kind: 'sym', category: 'syntax', label: 'Left operand (value)' },
 	{ glyph: '𝕘', kind: 'sym', category: 'syntax', label: 'Right operand (value)' },
 	{ glyph: '𝔽', kind: 'sym', category: 'syntax', label: 'Left operand (function)' },
 	{ glyph: '𝔾', kind: 'sym', category: 'syntax', label: 'Right operand (function)' },
-	{ glyph: '𝕤', kind: 'sym', category: 'syntax', label: 'Self (for recursion)' }
+	{ glyph: '𝕤', kind: 'sym', category: 'syntax', label: 'Self (for recursion)' },
+	// Actions
+	{ glyph: '␣', kind: 'sym', category: 'syntax', label: 'Space', insert: ' ' },
+	{ glyph: '⏎', kind: 'sym', category: 'syntax', label: 'New line', insert: '\n' },
+	{ glyph: '⌫', kind: 'sym', category: 'syntax', label: 'Backspace', action: 'backspace' }
 ];
 
 export const primitives: Record<PrimKind, Primitive[]> = {
