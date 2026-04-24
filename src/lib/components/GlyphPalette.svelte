@@ -16,6 +16,17 @@
 	let activeKind = $state<PrimKind>('fn');
 
 	const kinds: PrimKind[] = ['fn', 'mod1', 'mod2', 'sym'];
+	const COLS = 7;
+
+	// Pad with empty cells so the action tiles land in the rightmost N
+	// columns of whatever row they end up in. If the current tab already
+	// has free slots to the right of its last primitive, actions slot in
+	// there; otherwise they spill into a fresh row with leading spacers.
+	let spacers = $derived.by(() => {
+		const n = primitives[activeKind].length;
+		const total = Math.ceil((n + actions.length) / COLS) * COLS;
+		return total - n - actions.length;
+	});
 </script>
 
 <section class="palette" aria-label="BQN glyph palette">
@@ -46,9 +57,9 @@
 				{p.glyph}
 			</button>
 		{/each}
-	</div>
-
-	<div class="actions">
+		{#each { length: spacers } as _, i (i)}
+			<div class="spacer" aria-hidden="true"></div>
+		{/each}
 		{#each actions as p (p.glyph)}
 			<button
 				type="button"
@@ -99,14 +110,8 @@
 		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 0.35rem;
 	}
-	.actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.35rem;
-	}
-	.actions .tile {
-		flex: 0 0 auto;
-		width: calc((100% - 6 * 0.35rem) / 7);
+	.spacer {
+		aspect-ratio: 1;
 	}
 	.tile {
 		aspect-ratio: 1;
