@@ -76,12 +76,17 @@
 		const api: EditorApi = {
 			insert(text) {
 				if (!view) return;
+				const wasFocused = view.hasFocus;
 				const { from, to } = view.state.selection.main;
 				view.dispatch({
 					changes: { from, to, insert: text },
 					selection: { anchor: from + text.length }
 				});
-				view.focus();
+				// Only restore focus if the editor already had it. Palette
+				// taps while the editor is unfocused (user dismissed the
+				// keyboard) must not steal focus back — that reopens the
+				// keyboard, which is exactly what the user tried to avoid.
+				if (wasFocused) view.focus();
 			},
 			value() {
 				return view?.state.doc.toString() ?? '';
