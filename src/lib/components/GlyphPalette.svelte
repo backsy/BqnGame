@@ -123,11 +123,15 @@
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="help-label"
-		onclick={() => (helpTarget = null)}
+		onpointerdown={() => (helpTarget = null)}
 		onkeydown={(e) => e.key === 'Escape' && (helpTarget = null)}
 		tabindex="-1"
 	>
-		<div class="help-card" onclick={(e) => e.stopPropagation()} role="presentation">
+		<div
+			class="help-card"
+			onpointerdown={(e) => e.stopPropagation()}
+			role="presentation"
+		>
 			<div class="help-glyph bqn">{helpTarget.glyph}</div>
 			<div class="help-kind">{kindName(helpTarget)}</div>
 			<div class="help-label" id="help-label">{helpTarget.label}</div>
