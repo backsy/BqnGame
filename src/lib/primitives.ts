@@ -1,5 +1,9 @@
 // Primitive data for the glyph palette. Source of truth for meanings is
 // docs/bqn-reference.md. When editing, keep both in sync.
+//
+// Every example on a Primitive must be verified via
+// `node --experimental-strip-types scripts/verify-examples.mjs` before
+// commit. Unverified BQN is what CLAUDE.md invariant #4 exists to prevent.
 
 export type PrimKind = 'fn' | 'mod1' | 'mod2' | 'sym';
 
@@ -15,6 +19,11 @@ export type Category =
 	| 'syntax'
 	| 'action';
 
+export interface Example {
+	source: string;
+	result: string;
+}
+
 export interface Primitive {
 	/** what's displayed on the tile */
 	glyph: string;
@@ -26,53 +35,327 @@ export interface Primitive {
 	insert?: string;
 	/** non-insert action; overrides `insert` entirely */
 	action?: 'backspace';
+	/** verified source → result pairs. Run scripts/verify-examples.mjs after editing. */
+	examples?: Example[];
 }
 
 const fns: Primitive[] = [
-	{ glyph: '+', kind: 'fn', category: 'arithmetic', label: 'Add / Conjugate' },
-	{ glyph: '-', kind: 'fn', category: 'arithmetic', label: 'Subtract / Negate' },
-	{ glyph: '×', kind: 'fn', category: 'arithmetic', label: 'Multiply / Sign' },
-	{ glyph: '÷', kind: 'fn', category: 'arithmetic', label: 'Divide / Reciprocal' },
-	{ glyph: '⋆', kind: 'fn', category: 'arithmetic', label: 'Power / Exponential' },
-	{ glyph: '√', kind: 'fn', category: 'arithmetic', label: 'Root / Square Root' },
-	{ glyph: '⌊', kind: 'fn', category: 'arithmetic', label: 'Minimum / Floor' },
-	{ glyph: '⌈', kind: 'fn', category: 'arithmetic', label: 'Maximum / Ceiling' },
-	{ glyph: '|', kind: 'fn', category: 'arithmetic', label: 'Modulus / Absolute' },
+	{
+		glyph: '+',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Add / Conjugate',
+		examples: [
+			{ source: '3 + 5', result: '8' },
+			{ source: '+ 5', result: '5' }
+		]
+	},
+	{
+		glyph: '-',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Subtract / Negate',
+		examples: [
+			{ source: '7 - 3', result: '4' },
+			{ source: '- 5', result: '¯5' }
+		]
+	},
+	{
+		glyph: '×',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Multiply / Sign',
+		examples: [
+			{ source: '3 × 4', result: '12' },
+			{ source: '× ¯5', result: '¯1' }
+		]
+	},
+	{
+		glyph: '÷',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Divide / Reciprocal',
+		examples: [
+			{ source: '10 ÷ 2', result: '5' },
+			{ source: '÷ 4', result: '0.25' }
+		]
+	},
+	{
+		glyph: '⋆',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Power / Exponential',
+		examples: [
+			{ source: '2 ⋆ 10', result: '1024' },
+			{ source: '⋆ 0', result: '1' }
+		]
+	},
+	{
+		glyph: '√',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Root / Square Root',
+		examples: [
+			{ source: '√ 16', result: '4' },
+			{ source: '3 √ 8', result: '2' }
+		]
+	},
+	{
+		glyph: '⌊',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Minimum / Floor',
+		examples: [
+			{ source: '⌊ 3.7', result: '3' },
+			{ source: '3 ⌊ 5', result: '3' }
+		]
+	},
+	{
+		glyph: '⌈',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Maximum / Ceiling',
+		examples: [
+			{ source: '⌈ 3.2', result: '4' },
+			{ source: '3 ⌈ 5', result: '5' }
+		]
+	},
+	{
+		glyph: '|',
+		kind: 'fn',
+		category: 'arithmetic',
+		label: 'Modulus / Absolute',
+		examples: [
+			{ source: '| ¯5', result: '5' },
+			{ source: '3 | 10', result: '1' }
+		]
+	},
 
-	{ glyph: '∧', kind: 'fn', category: 'logic', label: 'And / Sort Up' },
-	{ glyph: '∨', kind: 'fn', category: 'logic', label: 'Or / Sort Down' },
-	{ glyph: '¬', kind: 'fn', category: 'logic', label: 'Span / Not' },
+	{
+		glyph: '∧',
+		kind: 'fn',
+		category: 'logic',
+		label: 'And / Sort Up',
+		examples: [
+			{ source: '1 ∧ 1', result: '1' },
+			{ source: '∧ 3‿1‿2', result: '⟨ 1 2 3 ⟩' }
+		]
+	},
+	{
+		glyph: '∨',
+		kind: 'fn',
+		category: 'logic',
+		label: 'Or / Sort Down',
+		examples: [
+			{ source: '1 ∨ 0', result: '1' },
+			{ source: '∨ 1‿3‿2', result: '⟨ 3 2 1 ⟩' }
+		]
+	},
+	{
+		glyph: '¬',
+		kind: 'fn',
+		category: 'logic',
+		label: 'Span / Not',
+		examples: [
+			{ source: '¬ 0', result: '1' },
+			{ source: '5 ¬ 3', result: '3' }
+		]
+	},
 
-	{ glyph: '<', kind: 'fn', category: 'comparison', label: 'Less Than / Enclose' },
-	{ glyph: '>', kind: 'fn', category: 'comparison', label: 'Greater Than / Merge' },
-	{ glyph: '≤', kind: 'fn', category: 'comparison', label: 'Less Than or Equal' },
-	{ glyph: '≥', kind: 'fn', category: 'comparison', label: 'Greater Than or Equal' },
-	{ glyph: '=', kind: 'fn', category: 'comparison', label: 'Equals / Rank' },
-	{ glyph: '≠', kind: 'fn', category: 'comparison', label: 'Not Equals / Length' },
-	{ glyph: '≡', kind: 'fn', category: 'comparison', label: 'Match / Depth' },
-	{ glyph: '≢', kind: 'fn', category: 'comparison', label: 'Not Match / Shape' },
+	{
+		glyph: '<',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Less Than / Enclose',
+		examples: [{ source: '3 < 5', result: '1' }]
+	},
+	{
+		glyph: '>',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Greater Than / Merge',
+		examples: [{ source: '5 > 3', result: '1' }]
+	},
+	{
+		glyph: '≤',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Less Than or Equal',
+		examples: [{ source: '3 ≤ 5', result: '1' }]
+	},
+	{
+		glyph: '≥',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Greater Than or Equal',
+		examples: [{ source: '5 ≥ 3', result: '1' }]
+	},
+	{
+		glyph: '=',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Equals / Rank',
+		examples: [
+			{ source: '3 = 3', result: '1' },
+			{ source: '= 1‿2‿3', result: '1' }
+		]
+	},
+	{
+		glyph: '≠',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Not Equals / Length',
+		examples: [
+			{ source: '3 ≠ 5', result: '1' },
+			{ source: '≠ "hello"', result: '5' }
+		]
+	},
+	{
+		glyph: '≡',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Match / Depth',
+		examples: [
+			{ source: '3 ≡ 3', result: '1' },
+			{ source: '≡ 1‿2‿3', result: '1' }
+		]
+	},
+	{
+		glyph: '≢',
+		kind: 'fn',
+		category: 'comparison',
+		label: 'Not Match / Shape',
+		examples: [
+			{ source: '3 ≢ 5', result: '1' },
+			{ source: '≢ 1‿2‿3', result: '⟨ 3 ⟩' }
+		]
+	},
 
-	{ glyph: '⊣', kind: 'fn', category: 'structural', label: 'Left / Identity' },
-	{ glyph: '⊢', kind: 'fn', category: 'structural', label: 'Right / Identity' },
-	{ glyph: '⥊', kind: 'fn', category: 'structural', label: 'Reshape / Deshape' },
-	{ glyph: '∾', kind: 'fn', category: 'structural', label: 'Join to / Join' },
-	{ glyph: '≍', kind: 'fn', category: 'structural', label: 'Couple / Solo' },
-	{ glyph: '⋈', kind: 'fn', category: 'structural', label: 'Pair / Enlist' },
-	{ glyph: '↑', kind: 'fn', category: 'structural', label: 'Take / Prefixes' },
-	{ glyph: '↓', kind: 'fn', category: 'structural', label: 'Drop / Suffixes' },
-	{ glyph: '↕', kind: 'fn', category: 'structural', label: 'Windows / Range' },
+	{
+		glyph: '⊣',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Left / Identity',
+		examples: [
+			{ source: '3 ⊣ 5', result: '3' },
+			{ source: '⊣ 5', result: '5' }
+		]
+	},
+	{
+		glyph: '⊢',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Right / Identity',
+		examples: [
+			{ source: '3 ⊢ 5', result: '5' },
+			{ source: '⊢ 5', result: '5' }
+		]
+	},
+	{
+		glyph: '⥊',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Reshape / Deshape',
+		examples: [{ source: '⥊ 2‿2⥊↕4', result: '⟨ 0 1 2 3 ⟩' }]
+	},
+	{
+		glyph: '∾',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Join to / Join',
+		examples: [
+			{ source: '1‿2 ∾ 3‿4', result: '⟨ 1 2 3 4 ⟩' },
+			{ source: '∾ ⟨1‿2, 3‿4⟩', result: '⟨ 1 2 3 4 ⟩' }
+		]
+	},
+	{
+		glyph: '≍',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Couple / Solo',
+		examples: [{ source: '1 ≍ 2', result: '⟨ 1 2 ⟩' }]
+	},
+	{
+		glyph: '⋈',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Pair / Enlist',
+		examples: [
+			{ source: '1 ⋈ 2', result: '⟨ 1 2 ⟩' },
+			{ source: '⋈ 5', result: '⟨ 5 ⟩' }
+		]
+	},
+	{
+		glyph: '↑',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Take / Prefixes',
+		examples: [{ source: '3 ↑ ⟨10,20,30,40⟩', result: '⟨ 10 20 30 ⟩' }]
+	},
+	{
+		glyph: '↓',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Drop / Suffixes',
+		examples: [{ source: '2 ↓ ⟨10,20,30,40⟩', result: '⟨ 30 40 ⟩' }]
+	},
+	{
+		glyph: '↕',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Windows / Range',
+		examples: [{ source: '↕ 5', result: '⟨ 0 1 2 3 4 ⟩' }]
+	},
 	{ glyph: '»', kind: 'fn', category: 'structural', label: 'Shift Before / Nudge' },
 	{ glyph: '«', kind: 'fn', category: 'structural', label: 'Shift After / Nudge Back' },
-	{ glyph: '⌽', kind: 'fn', category: 'structural', label: 'Rotate / Reverse' },
+	{
+		glyph: '⌽',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Rotate / Reverse',
+		examples: [
+			{ source: '⌽ 1‿2‿3‿4', result: '⟨ 4 3 2 1 ⟩' },
+			{ source: '1 ⌽ 1‿2‿3‿4', result: '⟨ 2 3 4 1 ⟩' }
+		]
+	},
 	{ glyph: '⍉', kind: 'fn', category: 'structural', label: 'Reorder Axes / Transpose' },
-	{ glyph: '/', kind: 'fn', category: 'structural', label: 'Replicate / Indices' },
+	{
+		glyph: '/',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Replicate / Indices',
+		examples: [
+			{ source: '1‿0‿1 / "abc"', result: '"ac"' },
+			{ source: '/ 1‿2‿0‿1', result: '⟨ 0 1 1 3 ⟩' }
+		]
+	},
 
 	{ glyph: '⍋', kind: 'fn', category: 'search', label: 'Bins Up / Grade Up' },
 	{ glyph: '⍒', kind: 'fn', category: 'search', label: 'Bins Down / Grade Down' },
-	{ glyph: '⊏', kind: 'fn', category: 'search', label: 'Select / First Cell' },
-	{ glyph: '⊑', kind: 'fn', category: 'search', label: 'Pick / First' },
+	{
+		glyph: '⊏',
+		kind: 'fn',
+		category: 'search',
+		label: 'Select / First Cell',
+		examples: [{ source: '0‿2 ⊏ ⟨10,20,30⟩', result: '⟨ 10 30 ⟩' }]
+	},
+	{
+		glyph: '⊑',
+		kind: 'fn',
+		category: 'search',
+		label: 'Pick / First',
+		examples: [
+			{ source: '⊑ ⟨10,20,30⟩', result: '10' },
+			{ source: '1 ⊑ ⟨10,20,30⟩', result: '20' }
+		]
+	},
 	{ glyph: '⊐', kind: 'fn', category: 'search', label: 'Index of / Classify' },
-	{ glyph: '⊒', kind: 'fn', category: 'search', label: 'Progressive Index of / Occurrence Count' },
+	{
+		glyph: '⊒',
+		kind: 'fn',
+		category: 'search',
+		label: 'Progressive Index of / Occurrence Count'
+	},
 	{ glyph: '∊', kind: 'fn', category: 'search', label: 'Member of / Mark Firsts' },
 	{ glyph: '⍷', kind: 'fn', category: 'search', label: 'Find / Deduplicate' },
 	{ glyph: '⊔', kind: 'fn', category: 'search', label: 'Group / Group Indices' },
@@ -81,29 +364,95 @@ const fns: Primitive[] = [
 ];
 
 const mods1: Primitive[] = [
-	{ glyph: '˙', kind: 'mod1', category: 'combinator', label: 'Constant' },
-	{ glyph: '˜', kind: 'mod1', category: 'combinator', label: 'Self / Swap' },
+	{
+		glyph: '˙',
+		kind: 'mod1',
+		category: 'combinator',
+		label: 'Constant',
+		examples: [{ source: '3˙ 99', result: '3' }]
+	},
+	{
+		glyph: '˜',
+		kind: 'mod1',
+		category: 'combinator',
+		label: 'Self / Swap',
+		examples: [
+			{ source: '+˜ 3', result: '6' },
+			{ source: '3 -˜ 5', result: '2' }
+		]
+	},
 	{ glyph: '˘', kind: 'mod1', category: 'iteration', label: 'Cells' },
-	{ glyph: '¨', kind: 'mod1', category: 'iteration', label: 'Each' },
+	{
+		glyph: '¨',
+		kind: 'mod1',
+		category: 'iteration',
+		label: 'Each',
+		examples: [{ source: '-¨ 1‿2‿3', result: '⟨ ¯1 ¯2 ¯3 ⟩' }]
+	},
 	{ glyph: '⌜', kind: 'mod1', category: 'iteration', label: 'Table' },
-	{ glyph: '⁼', kind: 'mod1', category: 'iteration', label: 'Undo' },
-	{ glyph: '´', kind: 'mod1', category: 'iteration', label: 'Fold' },
+	{
+		glyph: '⁼',
+		kind: 'mod1',
+		category: 'iteration',
+		label: 'Undo',
+		examples: [{ source: '⌽⁼ 1‿2‿3', result: '⟨ 3 2 1 ⟩' }]
+	},
+	{
+		glyph: '´',
+		kind: 'mod1',
+		category: 'iteration',
+		label: 'Fold',
+		examples: [
+			{ source: '+´ 1‿2‿3‿4', result: '10' },
+			{ source: '×´ 1‿2‿3‿4', result: '24' }
+		]
+	},
 	{ glyph: '˝', kind: 'mod1', category: 'iteration', label: 'Insert' },
-	{ glyph: '`', kind: 'mod1', category: 'iteration', label: 'Scan' }
+	{
+		glyph: '`',
+		kind: 'mod1',
+		category: 'iteration',
+		label: 'Scan',
+		examples: [{ source: '+` 1‿2‿3‿4', result: '⟨ 1 3 6 10 ⟩' }]
+	}
 ];
 
 const mods2: Primitive[] = [
-	{ glyph: '∘', kind: 'mod2', category: 'combinator', label: 'Atop' },
+	{
+		glyph: '∘',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'Atop',
+		examples: [{ source: '-∘+ 3', result: '¯3' }]
+	},
 	{ glyph: '○', kind: 'mod2', category: 'combinator', label: 'Over' },
-	{ glyph: '⊸', kind: 'mod2', category: 'combinator', label: 'Before / Bind' },
-	{ glyph: '⟜', kind: 'mod2', category: 'combinator', label: 'After / Bind' },
+	{
+		glyph: '⊸',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'Before / Bind',
+		examples: [{ source: '2⊸× 5', result: '10' }]
+	},
+	{
+		glyph: '⟜',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'After / Bind',
+		examples: [{ source: '-⟜1 5', result: '4' }]
+	},
 	{ glyph: '⊘', kind: 'mod2', category: 'combinator', label: 'Valences' },
 	{ glyph: '◶', kind: 'mod2', category: 'combinator', label: 'Choose' },
 	{ glyph: '⌾', kind: 'mod2', category: 'combinator', label: 'Under' },
 	{ glyph: '⎊', kind: 'mod2', category: 'combinator', label: 'Catch' },
 	{ glyph: '⎉', kind: 'mod2', category: 'iteration', label: 'Rank' },
 	{ glyph: '⚇', kind: 'mod2', category: 'iteration', label: 'Depth' },
-	{ glyph: '⍟', kind: 'mod2', category: 'iteration', label: 'Repeat' }
+	{
+		glyph: '⍟',
+		kind: 'mod2',
+		category: 'iteration',
+		label: 'Repeat',
+		examples: [{ source: '+⟜1⍟3 0', result: '3' }]
+	}
 ];
 
 // The "sym" tab is the catch-all keyboard: digits, BQN-specific syntax
@@ -125,10 +474,28 @@ const syms: Primitive[] = [
 	{ glyph: '.', kind: 'sym', category: 'syntax', label: 'Decimal point' },
 	// Literal modifiers and constants
 	{ glyph: '¯', kind: 'sym', category: 'syntax', label: 'Negative sign (for literals)' },
-	{ glyph: 'π', kind: 'sym', category: 'syntax', label: 'Pi' },
-	{ glyph: '∞', kind: 'sym', category: 'syntax', label: 'Infinity' },
+	{
+		glyph: 'π',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Pi',
+		examples: [{ source: 'π', result: '3.141592653589793' }]
+	},
+	{
+		glyph: '∞',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Infinity',
+		examples: [{ source: '∞', result: '∞' }]
+	},
 	// Structural punctuation
-	{ glyph: '‿', kind: 'sym', category: 'syntax', label: 'Ligature — build a list' },
+	{
+		glyph: '‿',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Ligature — build a list',
+		examples: [{ source: '1‿2‿3', result: '⟨ 1 2 3 ⟩' }]
+	},
 	{ glyph: '⟨', kind: 'sym', category: 'syntax', label: 'Open list' },
 	{ glyph: '⟩', kind: 'sym', category: 'syntax', label: 'Close list' },
 	{ glyph: '←', kind: 'sym', category: 'syntax', label: 'Define' },

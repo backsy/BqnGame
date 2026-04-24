@@ -135,6 +135,17 @@
 			<div class="help-glyph bqn">{helpTarget.glyph}</div>
 			<div class="help-kind">{kindName(helpTarget)}</div>
 			<div class="help-label" id="help-label">{helpTarget.label}</div>
+			{#if helpTarget.examples?.length}
+				<div class="help-examples" role="list">
+					{#each helpTarget.examples as ex}
+						<div class="help-example" role="listitem">
+							<code class="help-src bqn">{ex.source}</code>
+							<span class="help-arrow">→</span>
+							<code class="help-result bqn">{ex.result}</code>
+						</div>
+					{/each}
+				</div>
+			{/if}
 			<button
 				type="button"
 				class="help-insert bqn"
@@ -259,6 +270,39 @@
 		font-size: 1rem;
 		color: #ddd;
 		text-align: center;
+	}
+	.help-examples {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		margin-top: 0.4rem;
+		padding: 0.5rem 0.75rem;
+		background: #101010;
+		border-radius: 0.375rem;
+		border: 1px solid #2a2a2a;
+	}
+	.help-example {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.95rem;
+	}
+	.help-src {
+		color: #cfcfcf;
+		text-align: right;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	.help-arrow {
+		color: #666;
+		font-size: 0.85rem;
+	}
+	.help-result {
+		color: #9fd99f;
+		white-space: pre-wrap;
+		word-break: break-word;
 	}
 	.help-insert {
 		margin-top: 0.5rem;
