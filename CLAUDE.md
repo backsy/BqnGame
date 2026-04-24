@@ -55,9 +55,11 @@ exactly (case-sensitive).
    `index.html`, so the prerendered home page is served directly. Do not
    change the fallback name without checking the build output actually
    contains rendered content for `/`.
-3. **BQN source of truth is the wasm interpreter.** Never parse, pretty-print,
-   or evaluate BQN in JS/TS. Round-trip through the worker. (Not yet wired up
-   — noting for when it is.)
+3. **BQN source of truth is the worker interpreter.** Never parse,
+   pretty-print, or evaluate BQN in handwritten main-thread code. Send source
+   to the worker, get formatted output back. The worker currently runs the
+   self-hosted JS interpreter vendored at `src/lib/bqn/vendor/bqn.js`; if we
+   later swap to CBQN-wasm, the protocol doesn't change.
 4. **Verify any BQN snippet before committing it.** Training data on BQN is
    thin and glyphs are easy to hallucinate. If you write BQN for an example,
    test, or doc, run it in the REPL first. When the wasm REPL doesn't exist

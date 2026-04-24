@@ -89,25 +89,34 @@ step, not a hidden dependency.
   not core gaps.
 - BQN worker layer at `src/lib/bqn/`:
   - `protocol.ts` — shared message types. Pure; imported from both sides.
-  - `worker.ts` — **mock** implementation. Accepts `eval` requests, returns
-    a canned `(mock) <source>` result after a 30ms delay, or an error on
-    empty input. Real CBQN wasm will replace this file without touching
-    the protocol.
+  - `worker.ts` — runs real BQN. Imports the self-hosted interpreter from
+    `./vendor/bqn.js` and calls `compile` → `run` → `fmt` on each eval
+    request. Errors are routed through `fmtErr` for readable BQN-style
+    messages.
+  - `vendor/bqn.js` — the interpreter itself, vendored verbatim from
+    mlochbaum/BQN `docs/bqn.js`. Only change is the export block at the
+    bottom: Node's `module.exports` replaced with an ESM `export` so Vite
+    can bundle it. `@ts-nocheck` at the top keeps svelte-check quiet.
+    License (ISC) vendored alongside as `vendor/bqn.LICENSE.txt`.
   - `client.ts` — main-thread wrapper. Instantiates the worker (via Vite's
     `?worker` import), correlates responses by id, exposes a
     Promise-returning `eval()` method.
   - Wired into `+page.svelte` behind a Run button in the output strip.
+  - **Note**: this is pure JavaScript, not WebAssembly. ADR 002 talks about
+    "CBQN wasm"; in practice the self-hosted JS interpreter landed first
+    because it was a vendor-a-file job instead of an emcc build. If
+    performance ever becomes a problem (it hasn't), CBQN-wasm is a drop-in
+    swap — same protocol, just a different worker implementation.
 
 ## What is planned, not built
 
-- **Real CBQN wasm inside `src/lib/bqn/worker.ts`** — this is the big one.
-  Swap the mock for the actual interpreter without changing `protocol.ts`
-  or `client.ts`.
 - BQN syntax highlighting (a `StreamLanguage` or lezer mode wired into
   CodeMirror).
 - Long-press help card on palette tiles.
-- IndexedDB persistence.
+- REPL history / run-over-time log (currently each run overwrites).
+- IndexedDB persistence for saved snippets.
 - Puzzle authoring / runner.
+- Eventual swap of the JS interpreter for CBQN-wasm if perf requires it.
 
 The planned pieces above have specific files named in passing so an agent
 knows where they're expected to live. When you create one of them, update
