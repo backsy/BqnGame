@@ -31,7 +31,6 @@
 		display: grid;
 		grid-template-rows: 1fr auto auto;
 		height: 100dvh;
-		min-height: 100vh;
 		background: var(--bg);
 	}
 
@@ -43,7 +42,9 @@
 	}
 	textarea {
 		flex: 1;
+		min-height: 0;
 		resize: none;
+		overflow: auto;
 		border: 1px solid #2a2a2a;
 		border-radius: 0.5rem;
 		background: #141414;
