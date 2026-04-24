@@ -134,6 +134,7 @@ const syms: Primitive[] = [
 	{ glyph: '←', kind: 'sym', category: 'syntax', label: 'Define' },
 	{ glyph: '↩', kind: 'sym', category: 'syntax', label: 'Modify / reassign' },
 	{ glyph: '⋄', kind: 'sym', category: 'syntax', label: 'Statement separator' },
+	{ glyph: ',', kind: 'sym', category: 'syntax', label: 'Separator (synonym for ⋄)' },
 	{ glyph: '@', kind: 'sym', category: 'syntax', label: 'Null character' },
 	// Argument / operand glyphs (bodies of blocks)
 	{ glyph: '𝕨', kind: 'sym', category: 'syntax', label: 'Left argument' },
