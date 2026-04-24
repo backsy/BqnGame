@@ -61,8 +61,8 @@ exactly (case-sensitive).
 4. **Verify any BQN snippet before committing it.** Training data on BQN is
    thin and glyphs are easy to hallucinate. If you write BQN for an example,
    test, or doc, run it in the REPL first. When the wasm REPL doesn't exist
-   yet, cross-check against `docs/bqn-reference.md` (once created) or the
-   upstream BQN docs at https://mlochbaum.github.io/BQN/.
+   yet, cross-check against [`docs/bqn-reference.md`](docs/bqn-reference.md)
+   or paste into https://mlochbaum.github.io/BQN/try.html.
 5. **Mobile is the primary target.** Any UI change must be evaluated at a
    phone viewport (~390×844). Desktop is a nice-to-have, not the design
    constraint.
@@ -77,3 +77,12 @@ exactly (case-sensitive).
 - This file is deliberately short. If you find yourself wanting to add more,
   consider whether it belongs in `docs/architecture.md`, `docs/runbooks/`, or
   `docs/decisions/` instead, and link from here.
+
+## References
+
+- [`docs/architecture.md`](docs/architecture.md) — layout, process model,
+  worker protocol, built-vs-planned.
+- [`docs/bqn-reference.md`](docs/bqn-reference.md) — primitive table sourced
+  from upstream. Consult before writing BQN.
+- [`docs/decisions/`](docs/decisions/) — ADRs for locked-in choices
+  (Svelte, wasm-in-browser, GitHub Pages).
