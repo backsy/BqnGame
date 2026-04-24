@@ -28,6 +28,7 @@
 				basicSetup,
 				EditorView.lineWrapping,
 				EditorView.contentAttributes.of({
+					inputmode: 'decimal',
 					autocapitalize: 'off',
 					autocomplete: 'off',
 					autocorrect: 'off',
