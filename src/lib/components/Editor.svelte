@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { EditorState } from '@codemirror/state';
+	import { EditorState, type Extension } from '@codemirror/state';
 	import {
 		EditorView,
+		ViewPlugin,
 		drawSelection,
 		highlightActiveLine,
 		keymap,
@@ -19,33 +20,107 @@
 	import { MNEMONICS } from '$lib/bqn/keymap';
 	import { primitiveByGlyph } from '$lib/primitives';
 
-	// Autocomplete options for the slash-mnemonic dropdown. Each entry's
-	// label is the glyph itself (so it shows large in the dropdown), apply
-	// inserts the glyph, and detail shows the \X shortcut. info shows the
-	// human-readable name on the active row.
-	const MNEMONIC_COMPLETIONS = Array.from(MNEMONICS)
-		.filter(([key, glyph]) => key !== '\\' && glyph !== '\\')
-		.map(([key, glyph]) => ({
-			label: glyph,
-			apply: glyph,
-			detail: `\\${key}`,
-			info: primitiveByGlyph.get(glyph)?.label ?? '',
-			type: 'text'
-		}));
+	// Each completion's label is the human name (so typing "rev" finds
+	// ⌽ Reverse), apply is the glyph itself, detail is the \X shortcut.
+	const GLYPH_COMPLETIONS = Array.from(MNEMONICS)
+		.filter(([k, g]) => k !== '\\' && g !== '\\')
+		.map(([key, glyph]) => {
+			const p = primitiveByGlyph.get(glyph);
+			return {
+				label: p?.label ?? glyph,
+				apply: glyph,
+				detail: `\\${key} ${glyph}`
+			};
+		});
 
-	function bqnMnemonicSource(context: CompletionContext): CompletionResult | null {
-		// Trigger as soon as a backslash is the previous character (with
-		// optional any character following). Anchor `from` at the
-		// backslash so applying replaces `\X` (or just `\`) with the
-		// glyph.
-		const before = context.state.doc.sliceString(0, context.pos);
-		const m = before.match(/\\(.?)$/);
-		if (!m) return null;
+	// Match any word at the cursor; if non-empty (or invoked explicitly
+	// via Tab/startCompletion) return the full glyph list and let the
+	// dropdown filter by user-typed letters against the labels.
+	function glyphCompletionSource(context: CompletionContext): CompletionResult | null {
+		const word = context.matchBefore(/[A-Za-z]*/);
+		if (!word) return null;
+		if (word.from === word.to && !context.explicit) return null;
 		return {
-			from: context.pos - m[0].length,
-			options: MNEMONIC_COMPLETIONS,
-			validFor: /^\\.?$/
+			from: word.from,
+			filter: true,
+			options: GLYPH_COMPLETIONS,
+			validFor: /^[A-Za-z]*$/
 		};
+	}
+
+	// Slash-prefix input method. Intercept the `\` keydown so it never
+	// lands as text; either the next key resolves to a glyph via
+	// MNEMONICS, or after a timeout we open the autocomplete dropdown
+	// for name-based search. Pattern adapted from mechanize-systems/
+	// bqnpad — same dead-key behaviour the upstream playground uses.
+	function glyphInputMethod(): Extension {
+		const PROMPT_MS = 800;
+		let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+		let pendingState: EditorState | null = null;
+		let cmView: EditorView | null = null;
+
+		const reset = () => {
+			if (pendingTimer) clearTimeout(pendingTimer);
+			pendingTimer = null;
+			pendingState = null;
+		};
+
+		const schedule = (state: EditorState) => {
+			reset();
+			pendingState = state;
+			pendingTimer = setTimeout(() => {
+				pendingTimer = null;
+				const at = pendingState;
+				pendingState = null;
+				if (cmView && at === cmView.state) startCompletion(cmView);
+			}, PROMPT_MS);
+		};
+
+		const lifecycle = ViewPlugin.fromClass(
+			class {
+				constructor(v: EditorView) {
+					cmView = v;
+				}
+				destroy() {
+					reset();
+					cmView = null;
+				}
+			}
+		);
+
+		const events = EditorView.domEventHandlers({
+			keydown(ev, view) {
+				if (['Shift', 'Control', 'Alt', 'Meta'].includes(ev.key)) return false;
+
+				// Start dead-key sequence on \
+				if (pendingTimer == null && ev.key === '\\') {
+					ev.preventDefault();
+					schedule(view.state);
+					return true;
+				}
+
+				// Resolve mnemonic on next keystroke
+				if (pendingTimer != null && pendingState === view.state) {
+					reset();
+					let key = ev.key;
+					if (ev.shiftKey && key.length === 1) key = key.toUpperCase();
+					const glyph = MNEMONICS.get(key);
+					if (glyph === undefined) return false;
+					ev.preventDefault();
+					const { from, to } = view.state.selection.main;
+					view.dispatch({
+						changes: { from, to, insert: glyph },
+						selection: { anchor: from + glyph.length },
+						userEvent: 'input.type'
+					});
+					return true;
+				}
+
+				return false;
+			}
+		});
+
+		return [lifecycle, events];
 	}
 
 	interface Props {
@@ -71,57 +146,31 @@
 		const state = EditorState.create({
 			doc: initial,
 			extensions: [
-				// Custom minimal setup — basicSetup includes its own
-				// autocompletion() which silently competes with ours and
-				// suppresses the dropdown. Inline the bits we actually
-				// want and skip the extras.
 				history(),
 				drawSelection(),
 				highlightActiveLine(),
 				EditorState.allowMultipleSelections.of(true),
 				EditorView.lineWrapping,
+				glyphInputMethod(),
+				autocompletion({
+					override: [glyphCompletionSource],
+					activateOnTyping: false,
+					maxRenderedOptions: 80
+				}),
+				tooltips({ parent: document.body, position: 'absolute' }),
 				keymap.of([
+					{ key: 'Tab', run: (v) => (startCompletion(v), true) },
 					...defaultKeymap,
 					...historyKeymap,
 					...completionKeymap
 				]),
-				autocompletion({
-					override: [bqnMnemonicSource],
-					activateOnTyping: true,
-					maxRenderedOptions: 80
-				}),
-				tooltips({ parent: document.body, position: 'absolute' }),
 				EditorView.contentAttributes.of({
-					// inputmode + enterkeyhint quiet the iOS keyboard
-					// accessory toolbar (Previous / Next / Done) on
-					// some iOS versions. Native control of this bar is
-					// only available in WebView-hosted apps; from
-					// Safari we can only hint.
 					inputmode: 'text',
 					enterkeyhint: 'enter',
 					autocapitalize: 'off',
 					autocomplete: 'off',
 					autocorrect: 'off',
 					spellcheck: 'false'
-				}),
-				// BQN slash-prefix input method: when a character lands
-				// immediately after a `\`, replace the pair with the
-				// mnemonic glyph instead of inserting the literal letter.
-				// Hardware keyboards only — soft keyboard is suppressed
-				// above. Double backslash (`\\`) is the escape for a
-				// literal backslash.
-				EditorView.inputHandler.of((cmView, from, to, text) => {
-					if (text.length !== 1 || from === 0 || from !== to) return false;
-					const prev = cmView.state.doc.sliceString(from - 1, from);
-					if (prev !== '\\') return false;
-					const replacement = MNEMONICS.get(text);
-					if (replacement === undefined) return false;
-					cmView.dispatch({
-						changes: { from: from - 1, to, insert: replacement },
-						selection: { anchor: from - 1 + replacement.length },
-						userEvent: 'input.type'
-					});
-					return true;
 				}),
 				EditorView.updateListener.of((v) => {
 					if (v.docChanged) onchange?.(v.state.doc.toString());
@@ -225,10 +274,9 @@
 					userEvent: 'input.type'
 				});
 				if (wasFocused) view.focus();
-				// If the resulting context now matches our mnemonic
-				// regex (e.g. user just inserted `\`), explicitly kick
-				// off autocomplete; programmatic dispatches don't fire
-				// the same activation paths typed input does.
+				// Open the glyph search dropdown after a programmatic
+				// insertion — the keydown-driven dead-key flow doesn't
+				// fire for inserts dispatched through the API.
 				if (view) startCompletion(view);
 			},
 			value() {
