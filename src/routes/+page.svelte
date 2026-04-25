@@ -7,6 +7,7 @@
 	let editor: EditorApi | undefined = $state();
 	let paletteOpen = $state(false);
 	let appHeight = $state('100dvh');
+	let keyboardUp = $state(false);
 
 	let output = $state<{ kind: 'idle' } | { kind: 'ok'; value: string } | { kind: 'error'; message: string }>(
 		{ kind: 'idle' }
@@ -25,6 +26,9 @@
 		const update = () => {
 			if (!vv) return;
 			appHeight = `${vv.height}px`;
+			// Threshold large enough to ignore URL-bar height changes
+			// (~50–80px) but small enough to catch any real soft keyboard.
+			keyboardUp = window.innerHeight - vv.height > 100;
 		};
 		update();
 		vv?.addEventListener('resize', update);
@@ -71,7 +75,7 @@
 	}
 </script>
 
-<div class="app" style="height: {appHeight};">
+<div class="app" class:keyboard-up={keyboardUp} style="height: {appHeight};">
 	<section class="editor" aria-label="code editor">
 		<Editor onready={(api) => (editor = api)} onfocus={onEditorFocus} />
 	</section>
@@ -149,7 +153,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
-		padding: 0.4rem 0.75rem;
+		padding: 0.4rem 0.75rem calc(0.4rem + env(safe-area-inset-bottom));
+	}
+	.keyboard-up .lowest {
+		padding-bottom: 0.4rem;
 	}
 	.lowest .glyphs {
 		margin-right: auto;
