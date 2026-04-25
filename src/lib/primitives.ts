@@ -620,12 +620,68 @@ const syms: Primitive[] = [
 		label: 'Ligature — build a list',
 		examples: [{ source: '1‿2‿3', result: '⟨ 1 2 3 ⟩' }]
 	},
-	{ glyph: '⟨', kind: 'sym', category: 'syntax', label: 'Open list' },
-	{ glyph: '⟩', kind: 'sym', category: 'syntax', label: 'Close list' },
+	{
+		glyph: '⟨',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Open list',
+		examples: [{ source: '⟨1, 2, 3⟩', result: '⟨ 1 2 3 ⟩' }]
+	},
+	{
+		glyph: '⟩',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Close list',
+		examples: [{ source: '⟨1, 2, 3⟩', result: '⟨ 1 2 3 ⟩' }]
+	},
+	{
+		glyph: '(',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Open parenthesis (grouping)',
+		examples: [{ source: '(1 + 2) × 3', result: '9' }]
+	},
+	{
+		glyph: ')',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Close parenthesis',
+		examples: [{ source: '(1 + 2) × 3', result: '9' }]
+	},
+	{
+		glyph: '{',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Open block (function body)',
+		examples: [{ source: '{𝕩+1} 5', result: '6' }]
+	},
+	{
+		glyph: '}',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Close block',
+		examples: [{ source: '{𝕩+1} 5', result: '6' }]
+	},
+	{
+		glyph: '"',
+		kind: 'sym',
+		category: 'syntax',
+		label: 'String delimiter',
+		examples: [{ source: '"hi"', result: '"hi"' }]
+	},
+	{
+		glyph: "'",
+		kind: 'sym',
+		category: 'syntax',
+		label: 'Character delimiter',
+		examples: [{ source: "'a'", result: "'a'" }]
+	},
 	{ glyph: '←', kind: 'sym', category: 'syntax', label: 'Define' },
 	{ glyph: '↩', kind: 'sym', category: 'syntax', label: 'Modify / reassign' },
 	{ glyph: '⋄', kind: 'sym', category: 'syntax', label: 'Statement separator' },
 	{ glyph: ',', kind: 'sym', category: 'syntax', label: 'Separator (synonym for ⋄)' },
+	{ glyph: ':', kind: 'sym', category: 'syntax', label: 'Block header separator' },
+	{ glyph: ';', kind: 'sym', category: 'syntax', label: 'Case alternative in block' },
 	{ glyph: '@', kind: 'sym', category: 'syntax', label: 'Null character' },
 	// Argument / operand glyphs (bodies of blocks)
 	{ glyph: '𝕨', kind: 'sym', category: 'syntax', label: 'Left argument' },

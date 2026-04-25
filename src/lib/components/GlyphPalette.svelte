@@ -31,8 +31,26 @@
 	});
 
 	let helpTarget = $state<Primitive | null>(null);
+	let helpHistory = $state<Primitive[]>([]);
 	let pressTimer: ReturnType<typeof setTimeout> | undefined;
 	let didLongPress = false;
+
+	function navigateTo(p: Primitive) {
+		if (helpTarget && helpTarget !== p) helpHistory = [...helpHistory, helpTarget];
+		helpTarget = p;
+	}
+
+	function back() {
+		const prev = helpHistory.at(-1);
+		if (!prev) return;
+		helpHistory = helpHistory.slice(0, -1);
+		helpTarget = prev;
+	}
+
+	function closeHelp() {
+		helpTarget = null;
+		helpHistory = [];
+	}
 
 	function kindName(p: Primitive): string {
 		if (p.category === 'action') return 'Action';
@@ -49,6 +67,7 @@
 		pressTimer = setTimeout(() => {
 			didLongPress = true;
 			helpTarget = p;
+			helpHistory = [];
 		}, LONG_PRESS_MS);
 	}
 
@@ -125,8 +144,8 @@
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="help-label"
-		onpointerdown={() => (helpTarget = null)}
-		onkeydown={(e) => e.key === 'Escape' && (helpTarget = null)}
+		onpointerdown={closeHelp}
+		onkeydown={(e) => e.key === 'Escape' && closeHelp()}
 		tabindex="-1"
 	>
 		<div
@@ -134,6 +153,14 @@
 			onpointerdown={(e) => e.stopPropagation()}
 			role="presentation"
 		>
+			{#if helpHistory.length > 0}
+				<button
+					type="button"
+					class="help-back"
+					aria-label="back"
+					onclick={back}
+				>← back</button>
+			{/if}
 			<div class="help-glyph bqn">{helpTarget.glyph}</div>
 			<div class="help-kind">{kindName(helpTarget)}</div>
 			<div class="help-label" id="help-label">{helpTarget.label}</div>
@@ -152,7 +179,7 @@
 											type="button"
 											class="srcglyph"
 											aria-label={linked.label}
-											onclick={() => (helpTarget = linked)}
+											onclick={() => navigateTo(linked)}
 										>{c}</button>
 									{:else}
 										<span>{c}</span>
@@ -168,7 +195,7 @@
 											type="button"
 											class="srcglyph"
 											aria-label={linked.label}
-											onclick={() => (helpTarget = linked)}
+											onclick={() => navigateTo(linked)}
 										>{c}</button>
 									{:else}
 										<span>{c}</span>
@@ -278,6 +305,7 @@
 		z-index: 100;
 	}
 	.help-card {
+		position: relative;
 		background: #1a1a1a;
 		border: 1px solid #3a3a3a;
 		border-radius: 0.75rem;
@@ -287,6 +315,22 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 0.4rem;
+	}
+	.help-back {
+		position: absolute;
+		top: 0.55rem;
+		left: 0.65rem;
+		padding: 0.2rem 0.55rem;
+		border: 1px solid #3a3a3a;
+		border-radius: 0.3rem;
+		background: #232323;
+		color: #bbb;
+		font-size: 0.85rem;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.help-back:active {
+		background: #2e2e2e;
 	}
 	.help-glyph {
 		font-size: 3.5rem;
