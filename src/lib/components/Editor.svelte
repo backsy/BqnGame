@@ -188,7 +188,7 @@
 								if (!c.glyph || !c.shortcut) return null;
 								const row = document.createElement('div');
 								row.style.cssText =
-									'display:grid;grid-template-columns:2.6rem 1fr auto;align-items:center;gap:0.5rem;width:100%;';
+									'display:grid;grid-template-columns:2.6rem 1fr auto;align-items:center;gap:0.5rem;width:100%;padding:0.15rem 0;';
 
 								const g = document.createElement('span');
 								g.style.cssText =
