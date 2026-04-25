@@ -71,7 +71,7 @@
 			/>
 			<div class="rows" role="list">
 				{#each filtered as item (item.glyph)}
-					<button type="button" class="row" role="listitem" onclick={() => pick(item.glyph)}>
+					<button type="button" class="row" onclick={() => pick(item.glyph)}>
 						<span class="g bqn">{item.glyph}</span>
 						<span class="l">{item.label}</span>
 						<span class="k bqn">{item.shortcut}</span>
