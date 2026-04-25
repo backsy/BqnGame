@@ -2,10 +2,12 @@
 	import { onMount } from 'svelte';
 	import Editor, { type EditorApi } from '$lib/components/Editor.svelte';
 	import GlyphPalette from '$lib/components/GlyphPalette.svelte';
+	import GlyphSearch from '$lib/components/GlyphSearch.svelte';
 	import { BqnClient } from '$lib/bqn/client';
 
 	let editor: EditorApi | undefined = $state();
 	let paletteOpen = $state(false);
+	let searchOpen = $state(false);
 	let appHeight = $state('100dvh');
 	let keyboardUp = $state(false);
 
@@ -54,7 +56,8 @@
 
 	function openSearch() {
 		paletteOpen = false;
-		editor?.openSearch();
+		editor?.blur();
+		searchOpen = true;
 	}
 
 	function onEditorFocus() {
@@ -140,6 +143,12 @@
 		>\</button>
 	</section>
 </div>
+
+<GlyphSearch
+	open={searchOpen}
+	oninsert={insert}
+	onclose={() => (searchOpen = false)}
+/>
 
 <style>
 	.app {
