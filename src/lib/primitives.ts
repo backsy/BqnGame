@@ -689,23 +689,19 @@ const syms: Primitive[] = [
 	{ glyph: '𝕤', kind: 'sym', category: 'syntax', label: 'Self (for recursion)' }
 ];
 
-// "Extras" — glyphs that have a canonical \X mnemonic but aren't useful
-// as palette tiles. We add them to primitiveByGlyph so the autocomplete
-// dropdown can show a real name for every \X entry, but they are NOT
-// included in paletteSections so the visible glyph grid stays focused.
+// "Extras" — BQN glyphs that have a canonical \X mnemonic but aren't
+// useful as palette tiles (rare or context-specific). Included in
+// primitiveByGlyph so the autocomplete dropdown labels each \X entry,
+// but NOT in paletteSections so the visible glyph grid stays focused.
 const extras: Primitive[] = [
 	{ glyph: '·', kind: 'sym', category: 'syntax', label: 'Nothing (skip value)' },
 	{ glyph: '•', kind: 'sym', category: 'syntax', label: 'System value prefix (•BQN, •Out…)' },
 	{ glyph: '→', kind: 'sym', category: 'syntax', label: 'Yield (in block header)' },
+	{ glyph: '⇐', kind: 'sym', category: 'syntax', label: 'Export field (in namespace)' },
 	{ glyph: '𝕊', kind: 'sym', category: 'syntax', label: 'Self — current function' },
 	{ glyph: '𝕣', kind: 'sym', category: 'syntax', label: 'Self — current modifier' },
 	{ glyph: '𝕎', kind: 'sym', category: 'syntax', label: 'Left argument as function' },
-	{ glyph: '𝕏', kind: 'sym', category: 'syntax', label: 'Right argument as function' },
-	{ glyph: '↙', kind: 'sym', category: 'syntax', label: 'Reserved (keymap placeholder)' },
-	{ glyph: '↖', kind: 'sym', category: 'syntax', label: 'Reserved (keymap placeholder)' },
-	{ glyph: '⍳', kind: 'sym', category: 'syntax', label: 'Iota (APL — BQN uses ↕)' },
-	{ glyph: '⍎', kind: 'sym', category: 'syntax', label: 'Execute (APL — BQN uses •BQN)' },
-	{ glyph: '⍕', kind: 'sym', category: 'syntax', label: 'Format (APL — BQN uses •Fmt)' }
+	{ glyph: '𝕏', kind: 'sym', category: 'syntax', label: 'Right argument as function' }
 ];
 
 export const primitives: Record<PrimKind, Primitive[]> = {
