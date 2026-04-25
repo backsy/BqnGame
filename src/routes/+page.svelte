@@ -5,23 +5,50 @@
 	import { BqnClient } from '$lib/bqn/client';
 
 	let editor: EditorApi | undefined = $state();
-	let output = $state<{ kind: 'idle' } | { kind: 'ok'; value: string } | { kind: 'error'; message: string }>({
-		kind: 'idle'
-	});
+	let paletteOpen = $state(false);
+	let appHeight = $state('100dvh');
+
+	let output = $state<{ kind: 'idle' } | { kind: 'ok'; value: string } | { kind: 'error'; message: string }>(
+		{ kind: 'idle' }
+	);
 	let running = $state(false);
 
 	let client = $state.raw<BqnClient | undefined>(undefined);
 
 	onMount(() => {
 		client = new BqnClient();
+
+		// Track the visual viewport so the app frame fits exactly above the
+		// soft keyboard when it's up. Without this, the OS keyboard would
+		// cover the output strip and palette toggle.
+		const vv = window.visualViewport;
+		const update = () => {
+			if (!vv) return;
+			appHeight = `${vv.height}px`;
+		};
+		update();
+		vv?.addEventListener('resize', update);
+		vv?.addEventListener('scroll', update);
+
 		return () => {
 			client?.destroy();
 			client = undefined;
+			vv?.removeEventListener('resize', update);
+			vv?.removeEventListener('scroll', update);
 		};
 	});
 
 	function insert(glyph: string) {
 		editor?.insert(glyph);
+	}
+
+	function onEditorFocus() {
+		paletteOpen = false;
+	}
+
+	function onPaletteToggle(next: boolean) {
+		paletteOpen = next;
+		if (next) editor?.blur();
 	}
 
 	async function run() {
@@ -38,9 +65,9 @@
 	}
 </script>
 
-<div class="app">
+<div class="app" style="height: {appHeight};">
 	<section class="editor" aria-label="code editor">
-		<Editor onready={(api) => (editor = api)} />
+		<Editor onready={(api) => (editor = api)} onfocus={onEditorFocus} />
 	</section>
 
 	<section class="output" aria-label="output" aria-live="polite">
@@ -54,15 +81,15 @@
 		</button>
 	</section>
 
-	<GlyphPalette oninsert={insert} />
+	<GlyphPalette oninsert={insert} open={paletteOpen} onToggle={onPaletteToggle} />
 </div>
 
 <style>
 	.app {
 		display: grid;
 		grid-template-rows: 1fr auto auto;
-		height: 100dvh;
 		background: var(--bg);
+		overflow: hidden;
 	}
 
 	.editor {

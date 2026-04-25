@@ -10,12 +10,13 @@
 
 	interface Props {
 		oninsert: (glyph: string) => void;
+		open: boolean;
+		onToggle: (next: boolean) => void;
 	}
 
-	let { oninsert }: Props = $props();
+	let { oninsert, open, onToggle }: Props = $props();
 
 	let activeTab = $state<TabKey>('fn');
-	let expanded = $state(false);
 	const LONG_PRESS_MS = 400;
 
 	let activePrimitives = $derived.by(() => {
@@ -77,7 +78,7 @@
 </script>
 
 <section class="palette" aria-label="BQN glyph palette">
-	{#if expanded}
+	{#if open}
 		<div class="tabs" role="tablist" aria-label="primitive kind">
 			{#each tabs as tab}
 				<button
@@ -115,11 +116,11 @@
 	<button
 		type="button"
 		class="toggle"
-		aria-label={expanded ? 'collapse glyph palette' : 'expand glyph palette'}
-		aria-expanded={expanded}
-		onclick={() => (expanded = !expanded)}
+		aria-label={open ? 'collapse glyph palette' : 'expand glyph palette'}
+		aria-expanded={open}
+		onclick={() => onToggle(!open)}
 	>
-		<span class="chevron" class:open={expanded}>⌃</span>
+		<span class="chevron" class:open>⌃</span>
 	</button>
 </section>
 

@@ -9,15 +9,17 @@
 		initial?: string;
 		onchange?: (source: string) => void;
 		onready?: (api: EditorApi) => void;
+		onfocus?: () => void;
 	}
 
 	export interface EditorApi {
 		insert: (text: string) => void;
 		value: () => string;
 		focus: () => void;
+		blur: () => void;
 	}
 
-	let { initial = '', onchange, onready }: Props = $props();
+	let { initial = '', onchange, onready, onfocus }: Props = $props();
 
 	let host: HTMLDivElement;
 	let view: EditorView | undefined;
@@ -55,6 +57,12 @@
 				}),
 				EditorView.updateListener.of((v) => {
 					if (v.docChanged) onchange?.(v.state.doc.toString());
+				}),
+				EditorView.domEventHandlers({
+					focus: () => {
+						onfocus?.();
+						return false;
+					}
 				}),
 				EditorView.theme(
 					{
@@ -108,6 +116,9 @@
 			},
 			focus() {
 				view?.focus();
+			},
+			blur() {
+				view?.contentDOM.blur();
 			}
 		};
 
