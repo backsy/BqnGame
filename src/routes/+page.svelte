@@ -171,9 +171,9 @@
 	}
 
 	.ctrl {
-		padding: 0.35rem 0.7rem;
-		border-radius: 0.375rem;
-		font-size: 0.85rem;
+		padding: 0.55rem 0.9rem;
+		border-radius: 0.4rem;
+		font-size: 1rem;
 		cursor: pointer;
 		-webkit-tap-highlight-color: transparent;
 		flex: 0 0 auto;
@@ -196,7 +196,9 @@
 		border: 1px solid #2c4365;
 		background: #1d2f44;
 		color: #a9c7e6;
-		min-width: 2.5rem;
+		min-width: 3rem;
+		font-size: 1.35rem;
+		line-height: 1;
 	}
 	.bs:active {
 		background: #294262;
@@ -206,8 +208,8 @@
 		border: 1px solid #2a2a2a;
 		background: #1a1a1a;
 		color: #ccc;
-		min-width: 2.5rem;
-		font-size: 1.1rem;
+		min-width: 3rem;
+		font-size: 1.4rem;
 		line-height: 1;
 	}
 	.search:active {
@@ -218,7 +220,6 @@
 		border: 1px solid #2a6a2a;
 		background: #173d17;
 		color: #d7f0d7;
-		font-size: 0.9rem;
 	}
 	.run:active {
 		background: #225722;
