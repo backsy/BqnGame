@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		primitives,
-		actions,
 		tabs,
 		primitiveByGlyph,
 		type TabKey,
@@ -10,14 +9,13 @@
 	import ModifierDiagram from './ModifierDiagram.svelte';
 
 	interface Props {
-		onselect: (tile: Primitive) => void;
+		oninsert: (glyph: string) => void;
 	}
 
-	let { onselect }: Props = $props();
+	let { oninsert }: Props = $props();
 
 	let activeTab = $state<TabKey>('fn');
 	let expanded = $state(false);
-	const COLS = 7;
 	const LONG_PRESS_MS = 400;
 
 	let activePrimitives = $derived.by(() => {
@@ -48,7 +46,6 @@
 	}
 
 	function kindName(p: Primitive): string {
-		if (p.category === 'action') return 'Action';
 		if (p.kind === 'fn') return 'Function';
 		if (p.kind === 'mod1') return '1-Modifier';
 		if (p.kind === 'mod2') return '2-Modifier';
@@ -75,7 +72,7 @@
 			didLongPress = false;
 			return;
 		}
-		onselect(p);
+		oninsert(p.glyph);
 	}
 </script>
 
@@ -124,25 +121,6 @@
 	>
 		<span class="chevron" class:open={expanded}>⌃</span>
 	</button>
-
-	<div class="actions">
-		{#each actions as p (p.glyph)}
-			<button
-				type="button"
-				class="tile bqn action"
-				class:destructive={p.action === 'backspace'}
-				aria-label={p.label}
-				onclick={() => handleClick(p)}
-				onpointerdown={() => startPress(p)}
-				onpointerup={endPress}
-				onpointercancel={endPress}
-				onpointerleave={endPress}
-				oncontextmenu={(e) => e.preventDefault()}
-			>
-				{p.glyph}
-			</button>
-		{/each}
-	</div>
 </section>
 
 {#if helpTarget}
@@ -219,7 +197,7 @@
 				onclick={() => {
 					const target = helpTarget!;
 					helpTarget = null;
-					onselect(target);
+					oninsert(target.glyph);
 				}}
 			>
 				insert {helpTarget.glyph}
@@ -285,15 +263,6 @@
 		transform: rotate(180deg);
 	}
 
-	.actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.35rem;
-	}
-	.actions .tile {
-		flex: 0 0 auto;
-		width: calc((100% - 6 * 0.35rem) / 7);
-	}
 	.tile {
 		aspect-ratio: 1;
 		display: grid;
@@ -312,22 +281,6 @@
 	.tile:active {
 		background: #2a2a2a;
 		transform: scale(0.94);
-	}
-	.tile.action {
-		background: #1d2f44;
-		color: #a9c7e6;
-		border-color: #2c4365;
-	}
-	.tile.action:active {
-		background: #294262;
-	}
-	.tile.action.destructive {
-		background: #3a1f1f;
-		color: #e8a8a8;
-		border-color: #5a2f2f;
-	}
-	.tile.action.destructive:active {
-		background: #522c2c;
 	}
 
 	.help-overlay {

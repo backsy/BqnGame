@@ -16,8 +16,7 @@ export type Category =
 	| 'other'
 	| 'combinator'
 	| 'iteration'
-	| 'syntax'
-	| 'action';
+	| 'syntax';
 
 export interface Example {
 	source: string;
@@ -31,10 +30,6 @@ export interface Primitive {
 	category: Category;
 	/** short label, what a learner would call it */
 	label: string;
-	/** text to insert; defaults to glyph when omitted */
-	insert?: string;
-	/** non-insert action; overrides `insert` entirely */
-	action?: 'backspace';
 	/** verified source → result pairs. Run scripts/verify-examples.mjs after editing. */
 	examples?: Example[];
 }
@@ -683,6 +678,7 @@ const syms: Primitive[] = [
 	{ glyph: ':', kind: 'sym', category: 'syntax', label: 'Block header separator' },
 	{ glyph: ';', kind: 'sym', category: 'syntax', label: 'Case alternative in block' },
 	{ glyph: '@', kind: 'sym', category: 'syntax', label: 'Null character' },
+	{ glyph: '\\', kind: 'sym', category: 'syntax', label: 'Slash leader (then a letter inserts a glyph)' },
 	// Argument / operand glyphs (bodies of blocks)
 	{ glyph: '𝕨', kind: 'sym', category: 'syntax', label: 'Left argument' },
 	{ glyph: '𝕩', kind: 'sym', category: 'syntax', label: 'Right argument' },
@@ -691,15 +687,6 @@ const syms: Primitive[] = [
 	{ glyph: '𝔽', kind: 'sym', category: 'syntax', label: 'Left operand (function)' },
 	{ glyph: '𝔾', kind: 'sym', category: 'syntax', label: 'Right operand (function)' },
 	{ glyph: '𝕤', kind: 'sym', category: 'syntax', label: 'Self (for recursion)' }
-];
-
-// Action tiles: space, newline, backspace. Rendered as a persistent row
-// below the main grid on every tab, not inside a tab's primitives — they
-// need to be reachable no matter which category is active.
-export const actions: Primitive[] = [
-	{ glyph: '␣', kind: 'sym', category: 'action', label: 'Space', insert: ' ' },
-	{ glyph: '⏎', kind: 'sym', category: 'action', label: 'New line', insert: '\n' },
-	{ glyph: '⌫', kind: 'sym', category: 'action', label: 'Backspace', action: 'backspace' }
 ];
 
 export const primitives: Record<PrimKind, Primitive[]> = {

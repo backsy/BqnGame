@@ -6,7 +6,7 @@
 // Exits non-zero on any mismatch so we can add this to CI later if we want.
 
 import { compile, run, fmt, unstr } from '../src/lib/bqn/vendor/bqn.js';
-import { primitives, actions } from '../src/lib/primitives.ts';
+import { primitives } from '../src/lib/primitives.ts';
 
 const toJs = (v) =>
 	v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? unstr(v) : String(v);
@@ -18,8 +18,7 @@ const entries = [
 	...primitives.fn,
 	...primitives.mod1,
 	...primitives.mod2,
-	...primitives.sym,
-	...actions
+	...primitives.sym
 ];
 
 for (const p of entries) {
