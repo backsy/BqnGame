@@ -117,12 +117,22 @@
 
 	<GlyphPalette oninsert={insert} open={paletteOpen} onToggle={onPaletteToggle} />
 
-	<section class="bottom" aria-label="output and controls" aria-live="polite">
-		<pre class="bqn text" class:err={output.kind === 'error'}>{
-			output.kind === 'idle' ? '' :
-			output.kind === 'ok' ? output.value :
-			`error: ${output.message}`
-		}</pre>
+	{#if output.kind !== 'idle'}
+		<section class="bottom" aria-label="output" aria-live="polite">
+			<pre class="bqn text" class:err={output.kind === 'error'}>{
+				output.kind === 'ok' ? output.value : `error: ${output.message}`
+			}</pre>
+		</section>
+	{/if}
+
+	<section class="lowest" aria-label="controls">
+		<button
+			type="button"
+			class="ctrl glyphs"
+			class:active={paletteOpen}
+			aria-expanded={paletteOpen}
+			onclick={() => onPaletteToggle(!paletteOpen)}
+		>glyphs</button>
 		<button
 			type="button"
 			class="ctrl run"
@@ -131,16 +141,6 @@
 		>
 			{running ? '…' : '▶ run'}
 		</button>
-	</section>
-
-	<section class="lowest" aria-label="palette and shortcut">
-		<button
-			type="button"
-			class="ctrl glyphs"
-			class:active={paletteOpen}
-			aria-expanded={paletteOpen}
-			onclick={() => onPaletteToggle(!paletteOpen)}
-		>glyphs</button>
 		<button
 			type="button"
 			class="ctrl bs bqn"
@@ -203,14 +203,9 @@
 	}
 
 	.bottom {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.4rem;
-		padding: 0.4rem 0.75rem 0.2rem;
+		padding: 0.4rem 0.75rem 0;
 	}
 	.bottom .text {
-		flex: 1;
-		min-width: 0;
 		margin: 0;
 		max-height: 5rem;
 		overflow: auto;
@@ -225,10 +220,12 @@
 
 	.lowest {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
 		gap: 0.4rem;
-		padding: 0.2rem 0.75rem calc(0.4rem + env(safe-area-inset-bottom));
+		padding: 0.4rem 0.75rem calc(0.4rem + env(safe-area-inset-bottom));
+	}
+	.lowest .glyphs {
+		margin-right: auto;
 	}
 
 	.ctrl {
