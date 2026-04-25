@@ -3,6 +3,7 @@
 	import { EditorState } from '@codemirror/state';
 	import { EditorView } from '@codemirror/view';
 	import { basicSetup } from 'codemirror';
+	import { MNEMONICS } from '$lib/bqn/keymap';
 
 	interface Props {
 		initial?: string;
@@ -34,6 +35,25 @@
 					autocomplete: 'off',
 					autocorrect: 'off',
 					spellcheck: 'false'
+				}),
+				// BQN slash-prefix input method: when a character lands
+				// immediately after a `\`, replace the pair with the
+				// mnemonic glyph instead of inserting the literal letter.
+				// Hardware keyboards only — soft keyboard is suppressed
+				// above. Double backslash (`\\`) is the escape for a
+				// literal backslash.
+				EditorView.inputHandler.of((cmView, from, to, text) => {
+					if (text.length !== 1 || from === 0 || from !== to) return false;
+					const prev = cmView.state.doc.sliceString(from - 1, from);
+					if (prev !== '\\') return false;
+					const replacement = MNEMONICS.get(text);
+					if (replacement === undefined) return false;
+					cmView.dispatch({
+						changes: { from: from - 1, to, insert: replacement },
+						selection: { anchor: from - 1 + replacement.length },
+						userEvent: 'input.type'
+					});
+					return true;
 				}),
 				EditorView.updateListener.of((v) => {
 					if (v.docChanged) onchange?.(v.state.doc.toString());
