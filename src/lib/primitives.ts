@@ -306,8 +306,20 @@ const fns: Primitive[] = [
 		label: 'Windows / Range',
 		examples: [{ source: '↕ 5', result: '⟨ 0 1 2 3 4 ⟩' }]
 	},
-	{ glyph: '»', kind: 'fn', category: 'structural', label: 'Shift Before / Nudge' },
-	{ glyph: '«', kind: 'fn', category: 'structural', label: 'Shift After / Nudge Back' },
+	{
+		glyph: '»',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Shift Before / Nudge',
+		examples: [{ source: '» 1‿2‿3‿4', result: '⟨ 0 1 2 3 ⟩' }]
+	},
+	{
+		glyph: '«',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Shift After / Nudge Back',
+		examples: [{ source: '« 1‿2‿3‿4', result: '⟨ 2 3 4 0 ⟩' }]
+	},
 	{
 		glyph: '⌽',
 		kind: 'fn',
@@ -318,7 +330,13 @@ const fns: Primitive[] = [
 			{ source: '1 ⌽ 1‿2‿3‿4', result: '⟨ 2 3 4 1 ⟩' }
 		]
 	},
-	{ glyph: '⍉', kind: 'fn', category: 'structural', label: 'Reorder Axes / Transpose' },
+	{
+		glyph: '⍉',
+		kind: 'fn',
+		category: 'structural',
+		label: 'Reorder Axes / Transpose',
+		examples: [{ source: '≢ ⍉ 2‿3⥊↕6', result: '⟨ 3 2 ⟩' }]
+	},
 	{
 		glyph: '/',
 		kind: 'fn',
@@ -330,8 +348,20 @@ const fns: Primitive[] = [
 		]
 	},
 
-	{ glyph: '⍋', kind: 'fn', category: 'search', label: 'Bins Up / Grade Up' },
-	{ glyph: '⍒', kind: 'fn', category: 'search', label: 'Bins Down / Grade Down' },
+	{
+		glyph: '⍋',
+		kind: 'fn',
+		category: 'search',
+		label: 'Bins Up / Grade Up',
+		examples: [{ source: '⍋ 3‿1‿2', result: '⟨ 1 2 0 ⟩' }]
+	},
+	{
+		glyph: '⍒',
+		kind: 'fn',
+		category: 'search',
+		label: 'Bins Down / Grade Down',
+		examples: [{ source: '⍒ 3‿1‿2', result: '⟨ 0 2 1 ⟩' }]
+	},
 	{
 		glyph: '⊏',
 		kind: 'fn',
@@ -349,18 +379,55 @@ const fns: Primitive[] = [
 			{ source: '1 ⊑ ⟨10,20,30⟩', result: '20' }
 		]
 	},
-	{ glyph: '⊐', kind: 'fn', category: 'search', label: 'Index of / Classify' },
+	{
+		glyph: '⊐',
+		kind: 'fn',
+		category: 'search',
+		label: 'Index of / Classify',
+		examples: [
+			{ source: '⊐ "hello"', result: '⟨ 0 1 2 2 3 ⟩' },
+			{ source: '"abcd" ⊐ "cab"', result: '⟨ 2 0 1 ⟩' }
+		]
+	},
 	{
 		glyph: '⊒',
 		kind: 'fn',
 		category: 'search',
-		label: 'Progressive Index of / Occurrence Count'
+		label: 'Progressive Index of / Occurrence Count',
+		examples: [{ source: '⊒ 1‿2‿1‿1‿2', result: '⟨ 0 0 1 2 1 ⟩' }]
 	},
-	{ glyph: '∊', kind: 'fn', category: 'search', label: 'Member of / Mark Firsts' },
-	{ glyph: '⍷', kind: 'fn', category: 'search', label: 'Find / Deduplicate' },
-	{ glyph: '⊔', kind: 'fn', category: 'search', label: 'Group / Group Indices' },
+	{
+		glyph: '∊',
+		kind: 'fn',
+		category: 'search',
+		label: 'Member of / Mark Firsts',
+		examples: [
+			{ source: '∊ 1‿2‿1‿3', result: '⟨ 1 1 0 1 ⟩' },
+			{ source: '1‿4‿2 ∊ ↕5', result: '⟨ 1 1 1 ⟩' }
+		]
+	},
+	{
+		glyph: '⍷',
+		kind: 'fn',
+		category: 'search',
+		label: 'Find / Deduplicate',
+		examples: [{ source: '⍷ "hello"', result: '"helo"' }]
+	},
+	{
+		glyph: '⊔',
+		kind: 'fn',
+		category: 'search',
+		label: 'Group / Group Indices',
+		examples: [{ source: '1‿0‿1‿0 ⊔ "abcd"', result: '⟨ "bd" "ac" ⟩' }]
+	},
 
-	{ glyph: '!', kind: 'fn', category: 'other', label: 'Assert' }
+	{
+		glyph: '!',
+		kind: 'fn',
+		category: 'other',
+		label: 'Assert',
+		examples: [{ source: '! 1', result: '1' }]
+	}
 ];
 
 const mods1: Primitive[] = [
@@ -381,7 +448,13 @@ const mods1: Primitive[] = [
 			{ source: '3 -˜ 5', result: '2' }
 		]
 	},
-	{ glyph: '˘', kind: 'mod1', category: 'iteration', label: 'Cells' },
+	{
+		glyph: '˘',
+		kind: 'mod1',
+		category: 'iteration',
+		label: 'Cells',
+		examples: [{ source: '+˝˘ 2‿3⥊↕6', result: '⟨ 3 12 ⟩' }]
+	},
 	{
 		glyph: '¨',
 		kind: 'mod1',
@@ -407,7 +480,13 @@ const mods1: Primitive[] = [
 			{ source: '×´ 1‿2‿3‿4', result: '24' }
 		]
 	},
-	{ glyph: '˝', kind: 'mod1', category: 'iteration', label: 'Insert' },
+	{
+		glyph: '˝',
+		kind: 'mod1',
+		category: 'iteration',
+		label: 'Insert',
+		examples: [{ source: '+˝ 2‿3⥊↕6', result: '⟨ 3 5 7 ⟩' }]
+	},
 	{
 		glyph: '`',
 		kind: 'mod1',
@@ -425,7 +504,13 @@ const mods2: Primitive[] = [
 		label: 'Atop',
 		examples: [{ source: '-∘+ 3', result: '¯3' }]
 	},
-	{ glyph: '○', kind: 'mod2', category: 'combinator', label: 'Over' },
+	{
+		glyph: '○',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'Over',
+		examples: [{ source: '3 +○- 5', result: '¯8' }]
+	},
 	{
 		glyph: '⊸',
 		kind: 'mod2',
@@ -440,12 +525,51 @@ const mods2: Primitive[] = [
 		label: 'After / Bind',
 		examples: [{ source: '-⟜1 5', result: '4' }]
 	},
-	{ glyph: '⊘', kind: 'mod2', category: 'combinator', label: 'Valences' },
-	{ glyph: '◶', kind: 'mod2', category: 'combinator', label: 'Choose' },
-	{ glyph: '⌾', kind: 'mod2', category: 'combinator', label: 'Under' },
-	{ glyph: '⎊', kind: 'mod2', category: 'combinator', label: 'Catch' },
-	{ glyph: '⎉', kind: 'mod2', category: 'iteration', label: 'Rank' },
-	{ glyph: '⚇', kind: 'mod2', category: 'iteration', label: 'Depth' },
+	{
+		glyph: '⊘',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'Valences',
+		examples: [
+			{ source: '(-⊘+) 5', result: '¯5' },
+			{ source: '3 (-⊘+) 5', result: '8' }
+		]
+	},
+	{
+		glyph: '◶',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'Choose',
+		examples: [{ source: '1 (=◶-‿+) 1', result: '2' }]
+	},
+	{
+		glyph: '⌾',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'Under',
+		examples: [{ source: '-⌾(2⊸×) 5', result: '¯5' }]
+	},
+	{
+		glyph: '⎊',
+		kind: 'mod2',
+		category: 'combinator',
+		label: 'Catch',
+		examples: [{ source: '{!𝕩}⎊{99} 0', result: '99' }]
+	},
+	{
+		glyph: '⎉',
+		kind: 'mod2',
+		category: 'iteration',
+		label: 'Rank',
+		examples: [{ source: '+˝⎉1 2‿3⥊↕6', result: '⟨ 3 12 ⟩' }]
+	},
+	{
+		glyph: '⚇',
+		kind: 'mod2',
+		category: 'iteration',
+		label: 'Depth',
+		examples: [{ source: '-⚇0 ⟨1, ⟨2, 3⟩⟩', result: '⟨ ¯1 ⟨ ¯2 ¯3 ⟩ ⟩' }]
+	},
 	{
 		glyph: '⍟',
 		kind: 'mod2',
