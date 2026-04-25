@@ -31,6 +31,13 @@
 				basicSetup,
 				EditorView.lineWrapping,
 				EditorView.contentAttributes.of({
+					// inputmode + enterkeyhint quiet the iOS keyboard
+					// accessory toolbar (Previous / Next / Done) on
+					// some iOS versions. Native control of this bar is
+					// only available in WebView-hosted apps; from
+					// Safari we can only hint.
+					inputmode: 'text',
+					enterkeyhint: 'enter',
 					autocapitalize: 'off',
 					autocomplete: 'off',
 					autocorrect: 'off',
