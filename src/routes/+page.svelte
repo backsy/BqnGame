@@ -116,7 +116,22 @@
 			class="ctrl search"
 			onclick={openSearch}
 			aria-label="search glyphs by name"
-		>⌕</button>
+		>
+			<svg
+				viewBox="0 0 24 24"
+				width="22"
+				height="22"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<circle cx="10.5" cy="10.5" r="6.5" />
+				<line x1="15" y1="15" x2="20" y2="20" />
+			</svg>
+		</button>
 		<button
 			type="button"
 			class="ctrl bs bqn"
@@ -209,8 +224,8 @@
 		background: #1a1a1a;
 		color: #ccc;
 		min-width: 3rem;
-		font-size: 1.4rem;
-		line-height: 1;
+		display: inline-grid;
+		place-items: center;
 	}
 	.search:active {
 		background: #232323;
