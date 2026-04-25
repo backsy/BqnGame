@@ -21,16 +21,30 @@
 	import { primitiveByGlyph } from '$lib/primitives';
 
 	// Each completion's label is the human name (so typing "rev" finds
-	// ⌽ Reverse), apply is the glyph itself. Custom render functions
-	// (addToOptions below) render the glyph on the left and the \X
-	// shortcut on the right of every row.
+	// ⌽ Reverse). apply is a function so we can extend the replacement
+	// range back over a literal `\` that the user inserted via the \
+	// button — the matchBefore regex only captures letters, so without
+	// this hook the \ would survive selection.
 	const GLYPH_COMPLETIONS = Array.from(MNEMONICS)
 		.filter(([k, g]) => k !== '\\' && g !== '\\')
 		.map(([key, glyph]) => {
 			const p = primitiveByGlyph.get(glyph);
 			return {
 				label: p?.label ?? glyph,
-				apply: glyph
+				apply: (view: EditorView, _c: unknown, from: number, to: number) => {
+					let realFrom = from;
+					if (
+						realFrom > 0 &&
+						view.state.doc.sliceString(realFrom - 1, realFrom) === '\\'
+					) {
+						realFrom -= 1;
+					}
+					view.dispatch({
+						changes: { from: realFrom, to, insert: glyph },
+						selection: { anchor: realFrom + glyph.length },
+						userEvent: 'input.complete'
+					});
+				}
 			};
 		});
 
