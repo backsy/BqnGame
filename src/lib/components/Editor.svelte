@@ -159,6 +159,7 @@
 		value: () => string;
 		focus: () => void;
 		blur: () => void;
+		openSearch: () => void;
 	}
 
 	let { initial = '', onchange, onready, onfocus }: Props = $props();
@@ -218,6 +219,25 @@
 					...historyKeymap,
 					...completionKeymap
 				]),
+				// Resolve \X mnemonics that arrive *after* a \ has already
+				// landed in the doc (programmatic inserts via the \
+				// button bypass keydown). The dead-key path in
+				// glyphInputMethod handles typed \ — this picks up the
+				// other case by watching for a single-char input where
+				// the previous char is \.
+				EditorView.inputHandler.of((cmView, from, to, text) => {
+					if (text.length !== 1 || from === 0 || from !== to) return false;
+					const prev = cmView.state.doc.sliceString(from - 1, from);
+					if (prev !== '\\') return false;
+					const replacement = MNEMONICS.get(text);
+					if (replacement === undefined) return false;
+					cmView.dispatch({
+						changes: { from: from - 1, to, insert: replacement },
+						selection: { anchor: from - 1 + replacement.length },
+						userEvent: 'input.type'
+					});
+					return true;
+				}),
 				EditorView.contentAttributes.of({
 					inputmode: 'text',
 					enterkeyhint: 'enter',
@@ -282,10 +302,6 @@
 					userEvent: 'input.type'
 				});
 				if (wasFocused) view.focus();
-				// Open the glyph search dropdown after a programmatic
-				// insertion — the keydown-driven dead-key flow doesn't
-				// fire for inserts dispatched through the API.
-				if (view) startCompletion(view);
 			},
 			value() {
 				return view?.state.doc.toString() ?? '';
@@ -295,6 +311,11 @@
 			},
 			blur() {
 				view?.contentDOM.blur();
+			},
+			openSearch() {
+				if (!view) return;
+				view.focus();
+				startCompletion(view);
 			}
 		};
 

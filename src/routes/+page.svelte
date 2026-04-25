@@ -52,6 +52,11 @@
 		editor?.focus();
 	}
 
+	function openSearch() {
+		paletteOpen = false;
+		editor?.openSearch();
+	}
+
 	function onEditorFocus() {
 		paletteOpen = false;
 	}
@@ -108,9 +113,15 @@
 		</button>
 		<button
 			type="button"
+			class="ctrl search"
+			onclick={openSearch}
+			aria-label="search glyphs by name"
+		>⌕</button>
+		<button
+			type="button"
 			class="ctrl bs bqn"
 			onclick={insertBackslash}
-			aria-label="insert backslash"
+			aria-label="insert backslash for mnemonic shortcut"
 		>\</button>
 	</section>
 </div>
@@ -189,6 +200,18 @@
 	}
 	.bs:active {
 		background: #294262;
+		transform: scale(0.96);
+	}
+	.search {
+		border: 1px solid #2a2a2a;
+		background: #1a1a1a;
+		color: #ccc;
+		min-width: 2.5rem;
+		font-size: 1.1rem;
+		line-height: 1;
+	}
+	.search:active {
+		background: #232323;
 		transform: scale(0.96);
 	}
 	.run {
