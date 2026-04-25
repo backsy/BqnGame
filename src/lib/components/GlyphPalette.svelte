@@ -94,15 +94,6 @@
 			</div>
 		</div>
 	{/if}
-
-	<button
-		type="button"
-		class="toggle"
-		class:active={open}
-		aria-label={open ? 'close glyph menu' : 'open glyph menu'}
-		aria-expanded={open}
-		onclick={() => onToggle(!open)}
-	>glyphs</button>
 </section>
 
 {#if helpTarget}
@@ -195,10 +186,6 @@
 	.palette {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
-		background: #0c0c0c;
-		border-top: 1px solid #2a2a2a;
 	}
 
 	.grid-wrapper {
@@ -208,36 +195,15 @@
 		max-height: 45vh;
 		overflow-y: auto;
 		overscroll-behavior: contain;
+		padding: 0.5rem 0.75rem;
+		background: #0c0c0c;
+		border-top: 1px solid #2a2a2a;
 	}
 
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 0.35rem;
-	}
-
-	.toggle {
-		all: unset;
-		display: grid;
-		place-items: center;
-		height: 2rem;
-		cursor: pointer;
-		color: #ccc;
-		font-size: 0.9rem;
-		font-family: var(--font-sans);
-		text-transform: lowercase;
-		letter-spacing: 0.06em;
-		border: 1px solid #2a2a2a;
-		border-radius: 0.375rem;
-		background: #1a1a1a;
-	}
-	.toggle:active {
-		background: #232323;
-	}
-	.toggle.active {
-		background: #2a2a2a;
-		color: #eee;
-		border-color: #444;
 	}
 
 	.tile {
