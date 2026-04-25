@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { slide } from 'svelte/transition';
+	import { cubicInOut } from 'svelte/easing';
 	import {
 		primitives,
 		tabs,
@@ -18,6 +20,10 @@
 
 	let activeTab = $state<TabKey>('fn');
 	const LONG_PRESS_MS = 400;
+	// iOS soft-keyboard animation is ~250ms with an ease-in-out curve.
+	// Match it so the palette opening / closing reads as one motion with
+	// the keyboard sliding away or coming back.
+	const KEYBOARD_MS = 250;
 
 	let activePrimitives = $derived.by(() => {
 		const tab = tabs.find((t) => t.key === activeTab)!;
@@ -79,37 +85,42 @@
 
 <section class="palette" aria-label="BQN glyph palette">
 	{#if open}
-		<div class="tabs" role="tablist" aria-label="primitive kind">
-			{#each tabs as tab}
-				<button
-					type="button"
-					role="tab"
-					aria-selected={activeTab === tab.key}
-					class="tab bqn"
-					class:active={activeTab === tab.key}
-					onclick={() => (activeTab = tab.key)}
-				>
-					{tab.label}
-				</button>
-			{/each}
-		</div>
+		<div
+			class="grid-wrapper"
+			transition:slide={{ duration: KEYBOARD_MS, easing: cubicInOut }}
+		>
+			<div class="tabs" role="tablist" aria-label="primitive kind">
+				{#each tabs as tab}
+					<button
+						type="button"
+						role="tab"
+						aria-selected={activeTab === tab.key}
+						class="tab bqn"
+						class:active={activeTab === tab.key}
+						onclick={() => (activeTab = tab.key)}
+					>
+						{tab.label}
+					</button>
+				{/each}
+			</div>
 
-		<div class="grid" role="tabpanel">
-			{#each activePrimitives as p (p.glyph)}
-				<button
-					type="button"
-					class="tile bqn"
-					aria-label={p.label}
-					onclick={() => handleClick(p)}
-					onpointerdown={() => startPress(p)}
-					onpointerup={endPress}
-					onpointercancel={endPress}
-					onpointerleave={endPress}
-					oncontextmenu={(e) => e.preventDefault()}
-				>
-					{p.glyph}
-				</button>
-			{/each}
+			<div class="grid" role="tabpanel">
+				{#each activePrimitives as p (p.glyph)}
+					<button
+						type="button"
+						class="tile bqn"
+						aria-label={p.label}
+						onclick={() => handleClick(p)}
+						onpointerdown={() => startPress(p)}
+						onpointerup={endPress}
+						onpointercancel={endPress}
+						onpointerleave={endPress}
+						oncontextmenu={(e) => e.preventDefault()}
+					>
+						{p.glyph}
+					</button>
+				{/each}
+			</div>
 		</div>
 	{/if}
 
@@ -215,6 +226,12 @@
 		padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
 		background: #0c0c0c;
 		border-top: 1px solid #2a2a2a;
+	}
+
+	.grid-wrapper {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
 	}
 
 	.tabs {
