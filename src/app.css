@@ -44,22 +44,21 @@ body {
 	background: #1a1a1a;
 	border: 1px solid #3a3a3a;
 	border-radius: 0.5rem;
-	max-height: 90vh !important;
+	max-height: 60vh !important;
 	overflow: hidden;
 }
 .cm-tooltip.cm-tooltip-autocomplete > ul {
 	margin: 0;
 	padding: 0;
-	max-height: 90vh !important;
+	max-height: 60vh !important;
 	overflow-y: auto;
 	list-style: none;
 }
 .cm-tooltip.cm-tooltip-autocomplete > ul > li {
 	display: block !important;
-	overflow: visible !important;
-	text-overflow: clip !important;
-	white-space: normal !important;
-	padding: 0 0.55rem !important;
+	overflow: hidden !important;
+	white-space: nowrap !important;
+	padding: 0.2rem 0.55rem !important;
 	cursor: pointer;
 	line-height: 1 !important;
 }

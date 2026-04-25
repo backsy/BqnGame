@@ -188,7 +188,7 @@
 								if (!c.glyph || !c.shortcut) return null;
 								const row = document.createElement('div');
 								row.style.cssText =
-									'display:grid;grid-template-columns:2.6rem 1fr auto;align-items:center;gap:0.5rem;width:100%;padding:0.15rem 0;';
+									'display:grid;grid-template-columns:2.6rem 1fr auto;align-items:center;gap:0.5rem;width:100%;';
 
 								const g = document.createElement('span');
 								g.style.cssText =
@@ -197,7 +197,7 @@
 
 								const l = document.createElement('span');
 								l.style.cssText =
-									'font-family:system-ui,sans-serif;font-size:0.9rem;line-height:1.25;text-align:left;color:#ddd;white-space:normal;word-break:break-word;min-width:0;';
+									'font-family:system-ui,sans-serif;font-size:0.95rem;line-height:1.2;text-align:left;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
 								l.textContent = c.label;
 
 								const k = document.createElement('span');
