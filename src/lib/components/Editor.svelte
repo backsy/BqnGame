@@ -1,14 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { EditorState } from '@codemirror/state';
-	import { EditorView, tooltips } from '@codemirror/view';
+	import {
+		EditorView,
+		drawSelection,
+		highlightActiveLine,
+		keymap,
+		tooltips
+	} from '@codemirror/view';
+	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import {
 		autocompletion,
+		completionKeymap,
 		startCompletion,
 		type CompletionContext,
 		type CompletionResult
 	} from '@codemirror/autocomplete';
-	import { basicSetup } from 'codemirror';
 	import { MNEMONICS } from '$lib/bqn/keymap';
 	import { primitiveByGlyph } from '$lib/primitives';
 
@@ -64,16 +71,25 @@
 		const state = EditorState.create({
 			doc: initial,
 			extensions: [
-				basicSetup,
+				// Custom minimal setup — basicSetup includes its own
+				// autocompletion() which silently competes with ours and
+				// suppresses the dropdown. Inline the bits we actually
+				// want and skip the extras.
+				history(),
+				drawSelection(),
+				highlightActiveLine(),
+				EditorState.allowMultipleSelections.of(true),
 				EditorView.lineWrapping,
+				keymap.of([
+					...defaultKeymap,
+					...historyKeymap,
+					...completionKeymap
+				]),
 				autocompletion({
 					override: [bqnMnemonicSource],
 					activateOnTyping: true,
 					maxRenderedOptions: 80
 				}),
-				// Mount completion tooltips on document.body so the
-				// dropdown isn't clipped by the editor's bordered box
-				// or any ancestor with overflow:hidden.
 				tooltips({ parent: document.body, position: 'absolute' }),
 				EditorView.contentAttributes.of({
 					// inputmode + enterkeyhint quiet the iOS keyboard
