@@ -1,13 +1,8 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
-	import {
-		primitives,
-		tabs,
-		primitiveByGlyph,
-		type TabKey,
-		type Primitive
-	} from '$lib/primitives';
+	import { allPrimitives, primitiveByGlyph, type Primitive } from '$lib/primitives';
+	import { GLYPH_TO_MNEMONIC } from '$lib/bqn/keymap';
 	import ModifierDiagram from './ModifierDiagram.svelte';
 
 	interface Props {
@@ -18,17 +13,8 @@
 
 	let { oninsert, open, onToggle }: Props = $props();
 
-	let activeTab = $state<TabKey>('fn');
 	const LONG_PRESS_MS = 400;
-	// iOS soft-keyboard animation is ~250ms with an ease-in-out curve.
-	// Match it so the palette opening / closing reads as one motion with
-	// the keyboard sliding away or coming back.
 	const KEYBOARD_MS = 250;
-
-	let activePrimitives = $derived.by(() => {
-		const tab = tabs.find((t) => t.key === activeTab)!;
-		return tab.kinds.flatMap((k) => primitives[k]);
-	});
 
 	let helpTarget = $state<Primitive | null>(null);
 	let helpHistory = $state<Primitive[]>([]);
@@ -89,23 +75,8 @@
 			class="grid-wrapper"
 			transition:slide={{ duration: KEYBOARD_MS, easing: cubicInOut }}
 		>
-			<div class="tabs" role="tablist" aria-label="primitive kind">
-				{#each tabs as tab}
-					<button
-						type="button"
-						role="tab"
-						aria-selected={activeTab === tab.key}
-						class="tab bqn"
-						class:active={activeTab === tab.key}
-						onclick={() => (activeTab = tab.key)}
-					>
-						{tab.label}
-					</button>
-				{/each}
-			</div>
-
-			<div class="grid" role="tabpanel">
-				{#each activePrimitives as p (p.glyph)}
+			<div class="grid">
+				{#each allPrimitives as p (p.glyph)}
 					<button
 						type="button"
 						class="tile bqn"
@@ -127,12 +98,11 @@
 	<button
 		type="button"
 		class="toggle"
-		aria-label={open ? 'collapse glyph palette' : 'expand glyph palette'}
+		class:active={open}
+		aria-label={open ? 'close glyph menu' : 'open glyph menu'}
 		aria-expanded={open}
 		onclick={() => onToggle(!open)}
-	>
-		<span class="chevron" class:open>⌃</span>
-	</button>
+	>glyphs</button>
 </section>
 
 {#if helpTarget}
@@ -161,6 +131,9 @@
 			<div class="help-glyph bqn">{helpTarget.glyph}</div>
 			<div class="help-kind">{kindName(helpTarget)}</div>
 			<div class="help-label" id="help-label">{helpTarget.label}</div>
+			{#if GLYPH_TO_MNEMONIC.has(helpTarget.glyph)}
+				<div class="help-shortcut bqn">\{GLYPH_TO_MNEMONIC.get(helpTarget.glyph)}</div>
+			{/if}
 			{#if helpTarget.kind === 'mod1' || helpTarget.kind === 'mod2'}
 				<ModifierDiagram glyph={helpTarget.glyph} />
 			{/if}
@@ -232,26 +205,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-	}
-
-	.tabs {
-		display: flex;
-		gap: 0.25rem;
-	}
-	.tab {
-		flex: 1;
-		padding: 0.4rem 0;
-		border: 1px solid #2a2a2a;
-		border-radius: 0.375rem;
-		background: transparent;
-		color: #888;
-		font-size: 1rem;
-		cursor: pointer;
-	}
-	.tab.active {
-		background: #1e1e1e;
-		color: #eee;
-		border-color: #444;
+		max-height: 45vh;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 
 	.grid {
@@ -264,21 +220,24 @@
 		all: unset;
 		display: grid;
 		place-items: center;
-		height: 1.4rem;
+		height: 2rem;
 		cursor: pointer;
-		color: #888;
+		color: #ccc;
 		font-size: 0.9rem;
-		border-radius: 0.25rem;
-	}
-	.toggle:active {
+		font-family: var(--font-sans);
+		text-transform: lowercase;
+		letter-spacing: 0.06em;
+		border: 1px solid #2a2a2a;
+		border-radius: 0.375rem;
 		background: #1a1a1a;
 	}
-	.chevron {
-		display: inline-block;
-		transition: transform 0.15s;
+	.toggle:active {
+		background: #232323;
 	}
-	.chevron.open {
-		transform: rotate(180deg);
+	.toggle.active {
+		background: #2a2a2a;
+		color: #eee;
+		border-color: #444;
 	}
 
 	.tile {
@@ -353,6 +312,14 @@
 		font-size: 1rem;
 		color: #ddd;
 		text-align: center;
+	}
+	.help-shortcut {
+		font-size: 0.95rem;
+		color: #8ab0ce;
+		padding: 0.15rem 0.55rem;
+		border: 1px solid #2c4365;
+		border-radius: 0.3rem;
+		background: #15212e;
 	}
 	.help-examples {
 		width: 100%;

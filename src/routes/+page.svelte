@@ -42,6 +42,12 @@
 		editor?.insert(glyph);
 	}
 
+	function insertBackslash() {
+		paletteOpen = false;
+		editor?.insert('\\');
+		editor?.focus();
+	}
+
 	function onEditorFocus() {
 		paletteOpen = false;
 	}
@@ -76,6 +82,12 @@
 			output.kind === 'ok' ? output.value :
 			`error: ${output.message}`
 		}</pre>
+		<button
+			type="button"
+			class="bs bqn"
+			onclick={insertBackslash}
+			aria-label="insert backslash and open keyboard"
+		>\</button>
 		<button type="button" class="run" onclick={run} disabled={running || !client}>
 			{running ? '…' : '▶ run'}
 		</button>
@@ -125,17 +137,20 @@
 	.output .text.err {
 		color: #f28a8a;
 	}
-	.run {
+	.run,
+	.bs {
 		flex: 0 0 auto;
 		align-self: flex-start;
 		padding: 0.35rem 0.75rem;
-		border: 1px solid #2a6a2a;
 		border-radius: 0.375rem;
-		background: #173d17;
-		color: #d7f0d7;
 		font-size: 0.9rem;
 		cursor: pointer;
 		-webkit-tap-highlight-color: transparent;
+	}
+	.run {
+		border: 1px solid #2a6a2a;
+		background: #173d17;
+		color: #d7f0d7;
 	}
 	.run:active {
 		background: #225722;
@@ -144,5 +159,14 @@
 	.run:disabled {
 		opacity: 0.5;
 		cursor: default;
+	}
+	.bs {
+		border: 1px solid #2c4365;
+		background: #1d2f44;
+		color: #a9c7e6;
+	}
+	.bs:active {
+		background: #294262;
+		transform: scale(0.96);
 	}
 </style>

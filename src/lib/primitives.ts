@@ -703,6 +703,17 @@ for (const list of [fns, mods1, mods2, syms]) {
 	for (const p of list) primitiveByGlyph.set(p.glyph, p);
 }
 
+// Flat catalog used by the palette grid: every primitive across all kinds,
+// in current data order (which already groups by semantic category).
+// Digits and the decimal point are excluded — they live on the OS
+// keyboard and would only dilute a glyph-discovery surface.
+export const allPrimitives: Primitive[] = [
+	...fns,
+	...mods1,
+	...mods2,
+	...syms.filter((p) => !/^[0-9.]$/.test(p.glyph))
+];
+
 // Tab layout for the palette. A tab can cover one or more primitive kinds —
 // 1-modifiers and 2-modifiers share the `mod` tab so the palette doesn't
 // jump in height between them; they're short lists and the distinction is

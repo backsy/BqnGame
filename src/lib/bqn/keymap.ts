@@ -97,3 +97,16 @@ export const MNEMONICS: Map<string, string> = new Map([
 	// double-backslash escape
 	['\\', '\\']
 ]);
+
+// Reverse lookup: given a glyph, what `\X` produces it? Used by the help
+// card so each primitive's tile shows the canonical shortcut next to its
+// name. Skips the literal-backslash entry since `\\ → \` is documentation
+// noise; keeps the first key for any glyph that has multiple sources.
+export const GLYPH_TO_MNEMONIC: Map<string, string> = (() => {
+	const m = new Map<string, string>();
+	for (const [key, glyph] of MNEMONICS) {
+		if (key === '\\' || glyph === '\\') continue;
+		if (!m.has(glyph)) m.set(glyph, key);
+	}
+	return m;
+})();
