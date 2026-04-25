@@ -54,7 +54,7 @@ body {
 }
 .cm-tooltip-autocomplete > ul > li {
 	display: grid !important;
-	grid-template-columns: 2.4rem 1fr auto;
+	grid-template-columns: auto 1fr auto;
 	align-items: center;
 	gap: 0.6rem;
 	padding: 0.45rem 0.7rem;
@@ -68,14 +68,16 @@ body {
 }
 .cmb-glyph {
 	font-family: var(--font-bqn);
-	font-size: 1.4rem;
+	font-size: 1.3rem;
+	line-height: 1;
 	color: #eee;
+	min-width: 1.2rem;
 	text-align: center;
 }
 .cm-completionLabel {
 	font-family: var(--font-sans);
 	font-size: 0.95rem;
-	text-align: center;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
