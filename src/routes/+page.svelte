@@ -121,9 +121,6 @@
 		grid-template-rows: 1fr auto auto;
 		background: var(--bg);
 		overflow: hidden;
-		/* Match iOS keyboard animation so .app height changes track the
-		   keyboard sliding rather than jumping when visualViewport fires. */
-		transition: height 0.25s cubic-bezier(0.42, 0, 0.58, 1);
 	}
 
 	.editor {
