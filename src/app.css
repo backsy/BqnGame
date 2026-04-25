@@ -40,17 +40,17 @@ body {
    width to lay out. */
 .cm-tooltip.cm-tooltip-autocomplete {
 	font-family: system-ui, sans-serif;
-	width: min(22rem, 90vw);
+	width: min(20rem, 85vw);
 	background: #1a1a1a;
 	border: 1px solid #3a3a3a;
 	border-radius: 0.5rem;
-	max-height: 60vh !important;
+	max-height: 50vh !important;
 	overflow: hidden;
 }
 .cm-tooltip.cm-tooltip-autocomplete > ul {
-	margin: 0;
-	padding: 0;
-	max-height: 60vh !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	max-height: 50vh !important;
 	overflow-y: auto;
 	list-style: none;
 }
@@ -58,7 +58,8 @@ body {
 	display: block !important;
 	overflow: hidden !important;
 	white-space: nowrap !important;
-	padding: 0.2rem 0.55rem !important;
+	padding: 0 0.55rem !important;
+	margin: 0 !important;
 	cursor: pointer;
 	line-height: 1 !important;
 }
