@@ -222,7 +222,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
-		padding: 0.4rem 0.75rem calc(0.4rem + env(safe-area-inset-bottom));
+		padding: 0.4rem 0.75rem;
 	}
 	.lowest .glyphs {
 		margin-right: auto;
