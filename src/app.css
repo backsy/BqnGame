@@ -32,13 +32,14 @@ body {
 	font-feature-settings: 'liga' 0;
 }
 
-/* Autocomplete dropdown styles. Selectors match CodeMirror's bundled
-   baseTheme specificity (`.cm-tooltip.cm-tooltip-autocomplete`) so our
-   rules win without needing every property to be !important. Kept
-   global so they apply when the tooltip is mounted outside the editor
-   via tooltips({parent: document.body}). */
+/* Autocomplete dropdown: we render the row content ourselves via a
+   custom addToOptions function that returns a single grid div with
+   inline styles. CodeMirror's default label and detail spans are
+   still appended to each <li>; hide them so they don't compete. The
+   <li> itself stays display:block so our custom row has the full
+   width to lay out. */
 .cm-tooltip.cm-tooltip-autocomplete {
-	font-family: var(--font-sans);
+	font-family: system-ui, sans-serif;
 	width: min(22rem, 90vw);
 	background: #1a1a1a;
 	border: 1px solid #3a3a3a;
@@ -52,52 +53,20 @@ body {
 	max-height: 40vh;
 	overflow-y: auto;
 	list-style: none;
-	font-family: var(--font-sans);
-	white-space: normal;
 }
 .cm-tooltip.cm-tooltip-autocomplete > ul > li {
-	display: grid !important;
-	grid-template-columns: auto 1fr auto !important;
-	align-items: center;
-	gap: 0.6rem;
-	padding: 0.5rem 0.7rem;
-	color: #ddd;
-	border-bottom: 1px solid #1f1f1f;
-	cursor: pointer;
+	display: block !important;
 	overflow: visible !important;
 	text-overflow: clip !important;
 	white-space: normal !important;
-	line-height: 1.3;
+	padding: 0.45rem 0.6rem;
+	border-bottom: 1px solid #1f1f1f;
+	cursor: pointer;
 }
 .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
 	background: #2a2a2a;
-	color: #fff;
 }
-.cm-tooltip.cm-tooltip-autocomplete .cmb-glyph {
-	font-family: var(--font-bqn);
-	font-size: 1.3rem;
-	line-height: 1;
-	color: #eee;
-	min-width: 1.2rem;
-	text-align: center;
-}
-.cm-tooltip.cm-tooltip-autocomplete .cm-completionLabel {
-	font-family: var(--font-sans);
-	font-size: 0.95rem;
-	min-width: 0;
-	text-align: left;
-	white-space: normal;
-	word-break: break-word;
-	overflow: visible;
-	text-overflow: clip;
-}
-.cm-tooltip.cm-tooltip-autocomplete .cmb-key {
-	font-family: var(--font-bqn);
-	color: #8ab0ce;
-	font-size: 0.9rem;
-	padding: 0.1rem 0.45rem;
-	border: 1px solid #2c4365;
-	border-radius: 0.25rem;
-	background: #15212e;
-	white-space: nowrap;
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionLabel,
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionDetail {
+	display: none !important;
 }

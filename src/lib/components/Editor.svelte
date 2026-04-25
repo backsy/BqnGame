@@ -184,24 +184,30 @@
 						{
 							render: (completion) => {
 								const c = completion as unknown as GlyphCompletion;
-								if (!c.glyph) return null;
-								const span = document.createElement('span');
-								span.className = 'cmb-glyph bqn';
-								span.textContent = c.glyph;
-								return span;
+								if (!c.glyph || !c.shortcut) return null;
+								const row = document.createElement('div');
+								row.style.cssText =
+									'display:grid;grid-template-columns:1.7rem 1fr auto;align-items:center;gap:0.5rem;width:100%;';
+
+								const g = document.createElement('span');
+								g.style.cssText =
+									"font-family:'BQN386',ui-monospace,monospace;font-size:1.25rem;line-height:1;text-align:center;color:#eee;";
+								g.textContent = c.glyph;
+
+								const l = document.createElement('span');
+								l.style.cssText =
+									'font-family:system-ui,sans-serif;font-size:0.9rem;line-height:1.25;text-align:left;color:#ddd;white-space:normal;word-break:break-word;min-width:0;';
+								l.textContent = c.label;
+
+								const k = document.createElement('span');
+								k.style.cssText =
+									"font-family:'BQN386',ui-monospace,monospace;font-size:0.85rem;color:#8ab0ce;padding:1px 6px;border:1px solid #2c4365;border-radius:4px;background:#15212e;white-space:nowrap;";
+								k.textContent = c.shortcut;
+
+								row.append(g, l, k);
+								return row;
 							},
 							position: 5
-						},
-						{
-							render: (completion) => {
-								const c = completion as unknown as GlyphCompletion;
-								if (!c.shortcut) return null;
-								const span = document.createElement('span');
-								span.className = 'cmb-key bqn';
-								span.textContent = c.shortcut;
-								return span;
-							},
-							position: 90
 						}
 					]
 				}),
