@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { EditorState } from '@codemirror/state';
-	import { EditorView } from '@codemirror/view';
-	import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
+	import { EditorView, tooltips } from '@codemirror/view';
+	import {
+		autocompletion,
+		startCompletion,
+		type CompletionContext,
+		type CompletionResult
+	} from '@codemirror/autocomplete';
 	import { basicSetup } from 'codemirror';
 	import { MNEMONICS } from '$lib/bqn/keymap';
 	import { primitiveByGlyph } from '$lib/primitives';
@@ -23,10 +28,11 @@
 
 	function bqnMnemonicSource(context: CompletionContext): CompletionResult | null {
 		// Trigger as soon as a backslash is the previous character (with
-		// optional letter following). Anchor `from` at the backslash so
-		// applying replaces `\X` (or just `\`) with the glyph.
+		// optional any character following). Anchor `from` at the
+		// backslash so applying replaces `\X` (or just `\`) with the
+		// glyph.
 		const before = context.state.doc.sliceString(0, context.pos);
-		const m = before.match(/\\([A-Za-z`0-9!@#$%^&*()\-_=+~|{}\[\];:'",.<>/? ]?)$/);
+		const m = before.match(/\\(.?)$/);
 		if (!m) return null;
 		return {
 			from: context.pos - m[0].length,
@@ -65,6 +71,10 @@
 					activateOnTyping: true,
 					maxRenderedOptions: 80
 				}),
+				// Mount completion tooltips on document.body so the
+				// dropdown isn't clipped by the editor's bordered box
+				// or any ancestor with overflow:hidden.
+				tooltips({ parent: document.body, position: 'absolute' }),
 				EditorView.contentAttributes.of({
 					// inputmode + enterkeyhint quiet the iOS keyboard
 					// accessory toolbar (Previous / Next / Done) on
@@ -195,9 +205,15 @@
 				const { from, to } = view.state.selection.main;
 				view.dispatch({
 					changes: { from, to, insert: text },
-					selection: { anchor: from + text.length }
+					selection: { anchor: from + text.length },
+					userEvent: 'input.type'
 				});
 				if (wasFocused) view.focus();
+				// If the resulting context now matches our mnemonic
+				// regex (e.g. user just inserted `\`), explicitly kick
+				// off autocomplete; programmatic dispatches don't fire
+				// the same activation paths typed input does.
+				if (view) startCompletion(view);
 			},
 			value() {
 				return view?.state.doc.toString() ?? '';
