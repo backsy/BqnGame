@@ -6,6 +6,7 @@
 		type TabKey,
 		type Primitive
 	} from '$lib/primitives';
+	import ModifierDiagram from './ModifierDiagram.svelte';
 
 	interface Props {
 		onselect: (tile: Primitive) => void;
@@ -135,6 +136,9 @@
 			<div class="help-glyph bqn">{helpTarget.glyph}</div>
 			<div class="help-kind">{kindName(helpTarget)}</div>
 			<div class="help-label" id="help-label">{helpTarget.label}</div>
+			{#if helpTarget.kind === 'mod1' || helpTarget.kind === 'mod2'}
+				<ModifierDiagram glyph={helpTarget.glyph} />
+			{/if}
 			{#if helpTarget.examples?.length}
 				<div class="help-examples" role="list">
 					{#each helpTarget.examples as ex}
