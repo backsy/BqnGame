@@ -25,13 +25,22 @@
 	// range back over a literal `\` that the user inserted via the \
 	// button — the matchBefore regex only captures letters, so without
 	// this hook the \ would survive selection.
-	const GLYPH_COMPLETIONS = Array.from(MNEMONICS)
+	type GlyphCompletion = {
+		label: string;
+		apply: (view: EditorView, c: unknown, from: number, to: number) => void;
+		glyph: string;
+		shortcut: string;
+	};
+
+	const GLYPH_COMPLETIONS: GlyphCompletion[] = Array.from(MNEMONICS)
 		.filter(([k, g]) => k !== '\\' && g !== '\\')
 		.map(([key, glyph]) => {
 			const p = primitiveByGlyph.get(glyph);
 			return {
 				label: p?.label ?? glyph,
-				apply: (view: EditorView, _c: unknown, from: number, to: number) => {
+				glyph,
+				shortcut: `\\${key}`,
+				apply: (view, _c, from, to) => {
 					let realFrom = from;
 					if (
 						realFrom > 0 &&
@@ -47,12 +56,6 @@
 				}
 			};
 		});
-
-	const KEY_FOR_GLYPH = new Map<string, string>();
-	for (const [key, glyph] of MNEMONICS) {
-		if (key === '\\' || glyph === '\\') continue;
-		if (!KEY_FOR_GLYPH.has(glyph)) KEY_FOR_GLYPH.set(glyph, `\\${key}`);
-	}
 
 	// Match any word at the cursor; if non-empty (or invoked explicitly
 	// via Tab/startCompletion) return the full glyph list and let the
@@ -180,20 +183,22 @@
 					addToOptions: [
 						{
 							render: (completion) => {
+								const c = completion as unknown as GlyphCompletion;
+								if (!c.glyph) return null;
 								const span = document.createElement('span');
 								span.className = 'cmb-glyph bqn';
-								span.textContent = completion.apply as string;
+								span.textContent = c.glyph;
 								return span;
 							},
 							position: 5
 						},
 						{
 							render: (completion) => {
-								const key = KEY_FOR_GLYPH.get(completion.apply as string);
-								if (!key) return null;
+								const c = completion as unknown as GlyphCompletion;
+								if (!c.shortcut) return null;
 								const span = document.createElement('span');
 								span.className = 'cmb-key bqn';
-								span.textContent = key;
+								span.textContent = c.shortcut;
 								return span;
 							},
 							position: 90
