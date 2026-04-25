@@ -44,13 +44,13 @@ body {
 	background: #1a1a1a;
 	border: 1px solid #3a3a3a;
 	border-radius: 0.5rem;
-	max-height: 50vh;
+	max-height: 70vh;
 	overflow: hidden;
 }
 .cm-tooltip.cm-tooltip-autocomplete > ul {
 	margin: 0;
 	padding: 0;
-	max-height: 40vh;
+	max-height: 65vh;
 	overflow-y: auto;
 	list-style: none;
 }
@@ -59,8 +59,7 @@ body {
 	overflow: visible !important;
 	text-overflow: clip !important;
 	white-space: normal !important;
-	padding: 0.45rem 0.6rem;
-	border-bottom: 1px solid #1f1f1f;
+	padding: 0.3rem 0.55rem;
 	cursor: pointer;
 }
 .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
