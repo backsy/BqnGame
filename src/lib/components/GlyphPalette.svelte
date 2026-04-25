@@ -237,7 +237,7 @@
 		border-radius: 0.4rem;
 		background: #1a1a1a;
 		color: #eee;
-		font-size: 1.35rem;
+		font-size: 1.65rem;
 		line-height: 1;
 		cursor: pointer;
 		user-select: none;

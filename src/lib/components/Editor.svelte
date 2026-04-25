@@ -188,11 +188,11 @@
 								if (!c.glyph || !c.shortcut) return null;
 								const row = document.createElement('div');
 								row.style.cssText =
-									'display:grid;grid-template-columns:1.7rem 1fr auto;align-items:center;gap:0.5rem;width:100%;';
+									'display:grid;grid-template-columns:2.2rem 1fr auto;align-items:center;gap:0.5rem;width:100%;';
 
 								const g = document.createElement('span');
 								g.style.cssText =
-									"font-family:'BQN386',ui-monospace,monospace;font-size:1.25rem;line-height:1;text-align:center;color:#eee;";
+									"font-family:'BQN386',ui-monospace,monospace;font-size:1.65rem;line-height:1;text-align:center;color:#eee;";
 								g.textContent = c.glyph;
 
 								const l = document.createElement('span');
