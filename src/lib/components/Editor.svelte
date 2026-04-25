@@ -2,8 +2,38 @@
 	import { onMount } from 'svelte';
 	import { EditorState } from '@codemirror/state';
 	import { EditorView } from '@codemirror/view';
+	import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 	import { basicSetup } from 'codemirror';
 	import { MNEMONICS } from '$lib/bqn/keymap';
+	import { primitiveByGlyph } from '$lib/primitives';
+
+	// Autocomplete options for the slash-mnemonic dropdown. Each entry's
+	// label is the glyph itself (so it shows large in the dropdown), apply
+	// inserts the glyph, and detail shows the \X shortcut. info shows the
+	// human-readable name on the active row.
+	const MNEMONIC_COMPLETIONS = Array.from(MNEMONICS)
+		.filter(([key, glyph]) => key !== '\\' && glyph !== '\\')
+		.map(([key, glyph]) => ({
+			label: glyph,
+			apply: glyph,
+			detail: `\\${key}`,
+			info: primitiveByGlyph.get(glyph)?.label ?? '',
+			type: 'text'
+		}));
+
+	function bqnMnemonicSource(context: CompletionContext): CompletionResult | null {
+		// Trigger as soon as a backslash is the previous character (with
+		// optional letter following). Anchor `from` at the backslash so
+		// applying replaces `\X` (or just `\`) with the glyph.
+		const before = context.state.doc.sliceString(0, context.pos);
+		const m = before.match(/\\([A-Za-z`0-9!@#$%^&*()\-_=+~|{}\[\];:'",.<>/? ]?)$/);
+		if (!m) return null;
+		return {
+			from: context.pos - m[0].length,
+			options: MNEMONIC_COMPLETIONS,
+			validFor: /^\\.?$/
+		};
+	}
 
 	interface Props {
 		initial?: string;
@@ -30,6 +60,11 @@
 			extensions: [
 				basicSetup,
 				EditorView.lineWrapping,
+				autocompletion({
+					override: [bqnMnemonicSource],
+					activateOnTyping: true,
+					maxRenderedOptions: 80
+				}),
 				EditorView.contentAttributes.of({
 					// inputmode + enterkeyhint quiet the iOS keyboard
 					// accessory toolbar (Previous / Next / Done) on
@@ -98,7 +133,53 @@
 						'.cm-activeLineGutter': { background: 'transparent' },
 						'&.cm-focused': { outline: 'none' },
 						'&.cm-focused .cm-cursor': { borderLeftColor: '#eee' },
-						'.cm-selectionBackground, ::selection': { background: '#2a4d7a !important' }
+						'.cm-selectionBackground, ::selection': { background: '#2a4d7a !important' },
+						'.cm-tooltip': {
+							background: '#1a1a1a',
+							border: '1px solid #3a3a3a',
+							borderRadius: '0.5rem',
+							maxHeight: '50vh',
+							overflow: 'hidden'
+						},
+						'.cm-tooltip-autocomplete': {
+							fontFamily: 'var(--font-sans)'
+						},
+						'.cm-tooltip-autocomplete > ul': {
+							maxHeight: '40vh',
+							fontFamily: 'var(--font-sans)'
+						},
+						'.cm-tooltip-autocomplete > ul > li': {
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+							padding: '0.45rem 0.7rem',
+							color: '#ddd',
+							borderBottom: '1px solid #1f1f1f'
+						},
+						'.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+							background: '#2a2a2a',
+							color: '#fff'
+						},
+						'.cm-completionLabel': {
+							fontFamily: 'var(--font-bqn)',
+							fontSize: '1.4rem',
+							flex: '0 0 2rem',
+							textAlign: 'center'
+						},
+						'.cm-completionDetail': {
+							fontFamily: 'var(--font-bqn)',
+							fontStyle: 'normal',
+							color: '#8ab0ce',
+							marginLeft: 'auto',
+							fontSize: '0.9rem'
+						},
+						'.cm-completionInfo': {
+							background: '#1a1a1a',
+							border: '1px solid #3a3a3a',
+							borderRadius: '0.5rem',
+							padding: '0.5rem 0.75rem',
+							color: '#bbb'
+						}
 					},
 					{ dark: true }
 				)
