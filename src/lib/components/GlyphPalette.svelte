@@ -3,6 +3,7 @@
 		primitives,
 		actions,
 		tabs,
+		primitiveByGlyph,
 		type TabKey,
 		type Primitive
 	} from '$lib/primitives';
@@ -143,9 +144,37 @@
 				<div class="help-examples" role="list">
 					{#each helpTarget.examples as ex}
 						<div class="help-example" role="listitem">
-							<code class="help-src bqn">{ex.source}</code>
+							<code class="help-src bqn">
+								{#each Array.from(ex.source) as c, i (i)}
+									{@const linked = primitiveByGlyph.get(c)}
+									{#if linked && linked !== helpTarget}
+										<button
+											type="button"
+											class="srcglyph"
+											aria-label={linked.label}
+											onclick={() => (helpTarget = linked)}
+										>{c}</button>
+									{:else}
+										<span>{c}</span>
+									{/if}
+								{/each}
+							</code>
 							<span class="help-arrow">→</span>
-							<code class="help-result bqn">{ex.result}</code>
+							<code class="help-result bqn">
+								{#each Array.from(ex.result) as c, i (i)}
+									{@const linked = primitiveByGlyph.get(c)}
+									{#if linked && linked !== helpTarget}
+										<button
+											type="button"
+											class="srcglyph"
+											aria-label={linked.label}
+											onclick={() => (helpTarget = linked)}
+										>{c}</button>
+									{:else}
+										<span>{c}</span>
+									{/if}
+								{/each}
+							</code>
 						</div>
 					{/each}
 				</div>
@@ -279,9 +308,9 @@
 		width: 100%;
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: 0.5rem;
 		margin-top: 0.4rem;
-		padding: 0.5rem 0.75rem;
+		padding: 0.65rem 0.85rem;
 		background: #101010;
 		border-radius: 0.375rem;
 		border: 1px solid #2a2a2a;
@@ -290,8 +319,8 @@
 		display: grid;
 		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.95rem;
+		gap: 0.6rem;
+		font-size: 1.2rem;
 	}
 	.help-src {
 		color: #cfcfcf;
@@ -301,12 +330,27 @@
 	}
 	.help-arrow {
 		color: #666;
-		font-size: 0.85rem;
+		font-size: 1rem;
 	}
 	.help-result {
 		color: #9fd99f;
 		white-space: pre-wrap;
 		word-break: break-word;
+	}
+	.srcglyph {
+		all: unset;
+		cursor: pointer;
+		border-radius: 3px;
+		padding: 0 1px;
+		transition: background-color 0.08s;
+	}
+	.srcglyph:active {
+		background: rgba(255, 255, 255, 0.12);
+	}
+	@media (hover: hover) {
+		.srcglyph:hover {
+			background: rgba(255, 255, 255, 0.07);
+		}
 	}
 	.help-insert {
 		margin-top: 0.5rem;

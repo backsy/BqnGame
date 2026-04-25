@@ -653,6 +653,13 @@ export const primitives: Record<PrimKind, Primitive[]> = {
 	sym: syms
 };
 
+// Lookup by glyph for navigating between primitives — used by the help
+// card to make every character of an example tappable.
+export const primitiveByGlyph: Map<string, Primitive> = new Map();
+for (const list of [fns, mods1, mods2, syms]) {
+	for (const p of list) primitiveByGlyph.set(p.glyph, p);
+}
+
 // Tab layout for the palette. A tab can cover one or more primitive kinds —
 // 1-modifiers and 2-modifiers share the `mod` tab so the palette doesn't
 // jump in height between them; they're short lists and the distinction is
