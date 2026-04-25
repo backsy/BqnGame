@@ -26,6 +26,20 @@
 
 	let query = $state('');
 	let inputEl: HTMLInputElement | undefined = $state();
+	let viewportHeight = $state('100dvh');
+
+	onMount(() => {
+		const vv = window.visualViewport;
+		if (!vv) return;
+		const update = () => (viewportHeight = `${vv.height}px`);
+		update();
+		vv.addEventListener('resize', update);
+		vv.addEventListener('scroll', update);
+		return () => {
+			vv.removeEventListener('resize', update);
+			vv.removeEventListener('scroll', update);
+		};
+	});
 
 	let filtered = $derived.by(() => {
 		const q = query.trim().toLowerCase();
@@ -55,6 +69,7 @@
 		onclick={onclose}
 		onkeydown={(e) => e.key === 'Escape' && onclose()}
 		tabindex="-1"
+		style="height: {viewportHeight};"
 	>
 		<div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
 			<input
@@ -88,23 +103,27 @@
 <style>
 	.overlay {
 		position: fixed;
-		inset: 0;
+		top: 0;
+		left: 0;
+		width: 100%;
+		/* height set inline from visualViewport so the modal sits
+		   above the soft keyboard rather than being covered by it */
 		background: rgba(0, 0, 0, 0.65);
 		display: grid;
 		place-items: start center;
 		padding: 1rem;
+		box-sizing: border-box;
 		z-index: 200;
 	}
 	.modal {
 		width: min(28rem, 100%);
-		max-height: 70vh;
+		max-height: calc(100% - 2rem);
 		display: flex;
 		flex-direction: column;
 		background: #1a1a1a;
 		border: 1px solid #3a3a3a;
 		border-radius: 0.5rem;
 		overflow: hidden;
-		margin-top: 1rem;
 	}
 	.search-input {
 		flex: 0 0 auto;
