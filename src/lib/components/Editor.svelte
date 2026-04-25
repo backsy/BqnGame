@@ -237,64 +237,7 @@
 						'.cm-activeLineGutter': { background: 'transparent' },
 						'&.cm-focused': { outline: 'none' },
 						'&.cm-focused .cm-cursor': { borderLeftColor: '#eee' },
-						'.cm-selectionBackground, ::selection': { background: '#2a4d7a !important' },
-						'.cm-tooltip': {
-							background: '#1a1a1a',
-							border: '1px solid #3a3a3a',
-							borderRadius: '0.5rem',
-							maxHeight: '50vh',
-							overflow: 'hidden'
-						},
-						'.cm-tooltip-autocomplete': {
-							fontFamily: 'var(--font-sans)',
-							width: 'min(22rem, 90vw)'
-						},
-						'.cm-tooltip-autocomplete > ul': {
-							maxHeight: '40vh',
-							fontFamily: 'var(--font-sans)',
-							width: '100%'
-						},
-						'.cm-tooltip-autocomplete > ul > li': {
-							display: 'grid',
-							gridTemplateColumns: '2.4rem 1fr auto',
-							alignItems: 'center',
-							gap: '0.6rem',
-							padding: '0.45rem 0.7rem',
-							color: '#ddd',
-							borderBottom: '1px solid #1f1f1f'
-						},
-						'.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-							background: '#2a2a2a',
-							color: '#fff'
-						},
-						'.cmb-glyph': {
-							fontSize: '1.4rem',
-							color: '#eee',
-							textAlign: 'center'
-						},
-						'.cm-completionLabel': {
-							fontFamily: 'var(--font-sans)',
-							fontSize: '0.95rem',
-							textAlign: 'center',
-							overflow: 'hidden',
-							textOverflow: 'ellipsis',
-							whiteSpace: 'nowrap'
-						},
-						'.cmb-key': {
-							color: '#8ab0ce',
-							fontSize: '0.9rem',
-							padding: '0.1rem 0.45rem',
-							border: '1px solid #2c4365',
-							borderRadius: '0.25rem',
-							background: '#15212e'
-						},
-						'.cm-completionInfo': {
-							background: '#1a1a1a',
-							border: '1px solid #3a3a3a',
-							borderRadius: '0.5rem',
-							padding: '0.5rem 0.75rem',
-							color: '#bbb'
-						}
+						'.cm-selectionBackground, ::selection': { background: '#2a4d7a !important' }
 					},
 					{ dark: true }
 				)

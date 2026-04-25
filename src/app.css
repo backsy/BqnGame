@@ -31,3 +31,61 @@ body {
 	font-family: var(--font-bqn);
 	font-feature-settings: 'liga' 0;
 }
+
+/* Autocomplete dropdown styles. Kept global rather than in
+   EditorView.theme() so they apply when CodeMirror mounts the tooltip
+   outside the editor (tooltips({parent: document.body})). */
+.cm-tooltip.cm-tooltip-autocomplete {
+	font-family: var(--font-sans);
+	width: min(22rem, 90vw);
+	background: #1a1a1a;
+	border: 1px solid #3a3a3a;
+	border-radius: 0.5rem;
+	max-height: 50vh;
+	overflow: hidden;
+}
+.cm-tooltip-autocomplete > ul {
+	margin: 0;
+	padding: 0;
+	max-height: 40vh;
+	overflow-y: auto;
+	list-style: none;
+	font-family: var(--font-sans);
+}
+.cm-tooltip-autocomplete > ul > li {
+	display: grid !important;
+	grid-template-columns: 2.4rem 1fr auto;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.45rem 0.7rem;
+	color: #ddd;
+	border-bottom: 1px solid #1f1f1f;
+	cursor: pointer;
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+	background: #2a2a2a;
+	color: #fff;
+}
+.cmb-glyph {
+	font-family: var(--font-bqn);
+	font-size: 1.4rem;
+	color: #eee;
+	text-align: center;
+}
+.cm-completionLabel {
+	font-family: var(--font-sans);
+	font-size: 0.95rem;
+	text-align: center;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.cmb-key {
+	font-family: var(--font-bqn);
+	color: #8ab0ce;
+	font-size: 0.9rem;
+	padding: 0.1rem 0.45rem;
+	border: 1px solid #2c4365;
+	border-radius: 0.25rem;
+	background: #15212e;
+}
