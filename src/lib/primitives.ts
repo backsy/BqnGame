@@ -714,6 +714,31 @@ export const allPrimitives: Primitive[] = [
 	...syms.filter((p) => !/^[0-9.]$/.test(p.glyph))
 ];
 
+// Sectioned view used by the palette: each section has a heading and a
+// list of primitives that belong to it. Order top-to-bottom is the
+// reading order in the palette grid.
+const inSet = (glyphs: string[]) => (p: Primitive) => glyphs.includes(p.glyph);
+
+export const paletteSections: { label: string; primitives: Primitive[] }[] = [
+	{ label: 'Arithmetic', primitives: fns.filter((p) => p.category === 'arithmetic') },
+	{ label: 'Logic', primitives: fns.filter((p) => p.category === 'logic') },
+	{ label: 'Comparison', primitives: fns.filter((p) => p.category === 'comparison') },
+	{ label: 'Structural', primitives: fns.filter((p) => p.category === 'structural') },
+	{ label: 'Search', primitives: fns.filter((p) => p.category === 'search') },
+	{ label: 'Other', primitives: fns.filter((p) => p.category === 'other') },
+	{ label: '1-Modifier · combinator', primitives: mods1.filter((p) => p.category === 'combinator') },
+	{ label: '1-Modifier · iteration', primitives: mods1.filter((p) => p.category === 'iteration') },
+	{ label: '2-Modifier · combinator', primitives: mods2.filter((p) => p.category === 'combinator') },
+	{ label: '2-Modifier · iteration', primitives: mods2.filter((p) => p.category === 'iteration') },
+	{ label: 'Constants', primitives: syms.filter(inSet(['¯', 'π', '∞'])) },
+	{ label: 'Lists', primitives: syms.filter(inSet(['‿', '⟨', '⟩'])) },
+	{ label: 'Brackets', primitives: syms.filter(inSet(['(', ')', '{', '}', '"', "'"])) },
+	{ label: 'Separators', primitives: syms.filter(inSet(['⋄', ',', ':', ';'])) },
+	{ label: 'Assignment', primitives: syms.filter(inSet(['←', '↩'])) },
+	{ label: 'Misc', primitives: syms.filter(inSet(['@', '\\'])) },
+	{ label: 'Argument glyphs', primitives: syms.filter(inSet(['𝕨', '𝕩', '𝕗', '𝕘', '𝔽', '𝔾', '𝕤'])) }
+];
+
 // Tab layout for the palette. A tab can cover one or more primitive kinds —
 // 1-modifiers and 2-modifiers share the `mod` tab so the palette doesn't
 // jump in height between them; they're short lists and the distinction is

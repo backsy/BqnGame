@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
-	import { allPrimitives, primitiveByGlyph, type Primitive } from '$lib/primitives';
+	import {
+		paletteSections,
+		primitiveByGlyph,
+		type Primitive
+	} from '$lib/primitives';
 	import { GLYPH_TO_MNEMONIC } from '$lib/bqn/keymap';
 	import ModifierDiagram from './ModifierDiagram.svelte';
 
@@ -76,20 +80,25 @@
 			transition:slide={{ duration: KEYBOARD_MS, easing: cubicInOut }}
 		>
 			<div class="grid">
-				{#each allPrimitives as p (p.glyph)}
-					<button
-						type="button"
-						class="tile bqn"
-						aria-label={p.label}
-						onclick={() => handleClick(p)}
-						onpointerdown={() => startPress(p)}
-						onpointerup={endPress}
-						onpointercancel={endPress}
-						onpointerleave={endPress}
-						oncontextmenu={(e) => e.preventDefault()}
-					>
-						{p.glyph}
-					</button>
+				{#each paletteSections as section}
+					{#if section.primitives.length > 0}
+						<div class="section-header">{section.label}</div>
+						{#each section.primitives as p (p.glyph)}
+							<button
+								type="button"
+								class="tile bqn"
+								aria-label={p.label}
+								onclick={() => handleClick(p)}
+								onpointerdown={() => startPress(p)}
+								onpointerup={endPress}
+								onpointercancel={endPress}
+								onpointerleave={endPress}
+								oncontextmenu={(e) => e.preventDefault()}
+							>
+								{p.glyph}
+							</button>
+						{/each}
+					{/if}
 				{/each}
 			</div>
 		</div>
@@ -204,6 +213,20 @@
 		display: grid;
 		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 0.35rem;
+	}
+	.section-header {
+		grid-column: 1 / -1;
+		font-family: var(--font-sans);
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: #777;
+		padding: 0.5rem 0 0.1rem;
+		border-bottom: 1px solid #1d1d1d;
+		margin-bottom: 0.1rem;
+	}
+	.section-header:first-child {
+		padding-top: 0;
 	}
 
 	.tile {
