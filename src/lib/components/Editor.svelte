@@ -21,17 +21,24 @@
 	import { primitiveByGlyph } from '$lib/primitives';
 
 	// Each completion's label is the human name (so typing "rev" finds
-	// ⌽ Reverse), apply is the glyph itself, detail is the \X shortcut.
+	// ⌽ Reverse), apply is the glyph itself. Custom render functions
+	// (addToOptions below) render the glyph on the left and the \X
+	// shortcut on the right of every row.
 	const GLYPH_COMPLETIONS = Array.from(MNEMONICS)
 		.filter(([k, g]) => k !== '\\' && g !== '\\')
 		.map(([key, glyph]) => {
 			const p = primitiveByGlyph.get(glyph);
 			return {
 				label: p?.label ?? glyph,
-				apply: glyph,
-				detail: `\\${key} ${glyph}`
+				apply: glyph
 			};
 		});
+
+	const KEY_FOR_GLYPH = new Map<string, string>();
+	for (const [key, glyph] of MNEMONICS) {
+		if (key === '\\' || glyph === '\\') continue;
+		if (!KEY_FOR_GLYPH.has(glyph)) KEY_FOR_GLYPH.set(glyph, `\\${key}`);
+	}
 
 	// Match any word at the cursor; if non-empty (or invoked explicitly
 	// via Tab/startCompletion) return the full glyph list and let the
@@ -155,7 +162,29 @@
 				autocompletion({
 					override: [glyphCompletionSource],
 					activateOnTyping: false,
-					maxRenderedOptions: 80
+					maxRenderedOptions: 80,
+					addToOptions: [
+						{
+							render: (completion) => {
+								const span = document.createElement('span');
+								span.className = 'cmb-glyph bqn';
+								span.textContent = completion.apply as string;
+								return span;
+							},
+							position: 5
+						},
+						{
+							render: (completion) => {
+								const key = KEY_FOR_GLYPH.get(completion.apply as string);
+								if (!key) return null;
+								const span = document.createElement('span');
+								span.className = 'cmb-key bqn';
+								span.textContent = key;
+								return span;
+							},
+							position: 90
+						}
+					]
 				}),
 				tooltips({ parent: document.body, position: 'absolute' }),
 				keymap.of([
@@ -217,14 +246,17 @@
 							overflow: 'hidden'
 						},
 						'.cm-tooltip-autocomplete': {
-							fontFamily: 'var(--font-sans)'
+							fontFamily: 'var(--font-sans)',
+							width: 'min(22rem, 90vw)'
 						},
 						'.cm-tooltip-autocomplete > ul': {
 							maxHeight: '40vh',
-							fontFamily: 'var(--font-sans)'
+							fontFamily: 'var(--font-sans)',
+							width: '100%'
 						},
 						'.cm-tooltip-autocomplete > ul > li': {
-							display: 'flex',
+							display: 'grid',
+							gridTemplateColumns: '2.4rem 1fr auto',
 							alignItems: 'center',
 							gap: '0.6rem',
 							padding: '0.45rem 0.7rem',
@@ -235,18 +267,26 @@
 							background: '#2a2a2a',
 							color: '#fff'
 						},
-						'.cm-completionLabel': {
-							fontFamily: 'var(--font-bqn)',
+						'.cmb-glyph': {
 							fontSize: '1.4rem',
-							flex: '0 0 2rem',
+							color: '#eee',
 							textAlign: 'center'
 						},
-						'.cm-completionDetail': {
-							fontFamily: 'var(--font-bqn)',
-							fontStyle: 'normal',
+						'.cm-completionLabel': {
+							fontFamily: 'var(--font-sans)',
+							fontSize: '0.95rem',
+							textAlign: 'center',
+							overflow: 'hidden',
+							textOverflow: 'ellipsis',
+							whiteSpace: 'nowrap'
+						},
+						'.cmb-key': {
 							color: '#8ab0ce',
-							marginLeft: 'auto',
-							fontSize: '0.9rem'
+							fontSize: '0.9rem',
+							padding: '0.1rem 0.45rem',
+							border: '1px solid #2c4365',
+							borderRadius: '0.25rem',
+							background: '#15212e'
 						},
 						'.cm-completionInfo': {
 							background: '#1a1a1a',
