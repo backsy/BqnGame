@@ -16,18 +16,13 @@
 	let { onselect }: Props = $props();
 
 	let activeTab = $state<TabKey>('fn');
+	let expanded = $state(false);
 	const COLS = 7;
 	const LONG_PRESS_MS = 400;
 
 	let activePrimitives = $derived.by(() => {
 		const tab = tabs.find((t) => t.key === activeTab)!;
 		return tab.kinds.flatMap((k) => primitives[k]);
-	});
-
-	let spacers = $derived.by(() => {
-		const n = activePrimitives.length;
-		const total = Math.ceil((n + actions.length) / COLS) * COLS;
-		return total - n - actions.length;
 	});
 
 	let helpTarget = $state<Primitive | null>(null);
@@ -85,40 +80,52 @@
 </script>
 
 <section class="palette" aria-label="BQN glyph palette">
-	<div class="tabs" role="tablist" aria-label="primitive kind">
-		{#each tabs as tab}
-			<button
-				type="button"
-				role="tab"
-				aria-selected={activeTab === tab.key}
-				class="tab bqn"
-				class:active={activeTab === tab.key}
-				onclick={() => (activeTab = tab.key)}
-			>
-				{tab.label}
-			</button>
-		{/each}
-	</div>
+	{#if expanded}
+		<div class="tabs" role="tablist" aria-label="primitive kind">
+			{#each tabs as tab}
+				<button
+					type="button"
+					role="tab"
+					aria-selected={activeTab === tab.key}
+					class="tab bqn"
+					class:active={activeTab === tab.key}
+					onclick={() => (activeTab = tab.key)}
+				>
+					{tab.label}
+				</button>
+			{/each}
+		</div>
 
-	<div class="grid" role="tabpanel">
-		{#each activePrimitives as p (p.glyph)}
-			<button
-				type="button"
-				class="tile bqn"
-				aria-label={p.label}
-				onclick={() => handleClick(p)}
-				onpointerdown={() => startPress(p)}
-				onpointerup={endPress}
-				onpointercancel={endPress}
-				onpointerleave={endPress}
-				oncontextmenu={(e) => e.preventDefault()}
-			>
-				{p.glyph}
-			</button>
-		{/each}
-		{#each { length: spacers } as _, i (i)}
-			<div class="spacer" aria-hidden="true"></div>
-		{/each}
+		<div class="grid" role="tabpanel">
+			{#each activePrimitives as p (p.glyph)}
+				<button
+					type="button"
+					class="tile bqn"
+					aria-label={p.label}
+					onclick={() => handleClick(p)}
+					onpointerdown={() => startPress(p)}
+					onpointerup={endPress}
+					onpointercancel={endPress}
+					onpointerleave={endPress}
+					oncontextmenu={(e) => e.preventDefault()}
+				>
+					{p.glyph}
+				</button>
+			{/each}
+		</div>
+	{/if}
+
+	<button
+		type="button"
+		class="toggle"
+		aria-label={expanded ? 'collapse glyph palette' : 'expand glyph palette'}
+		aria-expanded={expanded}
+		onclick={() => (expanded = !expanded)}
+	>
+		<span class="chevron" class:open={expanded}>⌃</span>
+	</button>
+
+	<div class="actions">
 		{#each actions as p (p.glyph)}
 			<button
 				type="button"
@@ -256,8 +263,36 @@
 		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 0.35rem;
 	}
-	.spacer {
-		aspect-ratio: 1;
+
+	.toggle {
+		all: unset;
+		display: grid;
+		place-items: center;
+		height: 1.4rem;
+		cursor: pointer;
+		color: #888;
+		font-size: 0.9rem;
+		border-radius: 0.25rem;
+	}
+	.toggle:active {
+		background: #1a1a1a;
+	}
+	.chevron {
+		display: inline-block;
+		transition: transform 0.15s;
+	}
+	.chevron.open {
+		transform: rotate(180deg);
+	}
+
+	.actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.35rem;
+	}
+	.actions .tile {
+		flex: 0 0 auto;
+		width: calc((100% - 6 * 0.35rem) / 7);
 	}
 	.tile {
 		aspect-ratio: 1;
