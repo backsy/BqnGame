@@ -102,26 +102,21 @@
 
 <style>
 	.game {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-rows: auto 1fr auto;
 		background: var(--bg);
 		overflow: hidden;
-	}
-	.head,
-	.runes,
-	.solved {
-		flex: 0 0 auto;
 	}
 	.head {
 		padding: 0.75rem 1rem;
 		padding-top: calc(0.75rem + env(safe-area-inset-top));
 	}
 	.middle {
-		flex: 1 1 auto;
-		overflow: auto;
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
+		align-items: center;
+		overflow: auto;
 		padding: 0.5rem 1rem;
 		min-height: 0;
 	}
@@ -183,7 +178,6 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		align-items: center;
-		flex: 0 0 auto;
 	}
 	.cell {
 		display: flex;
