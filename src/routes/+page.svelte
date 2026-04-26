@@ -73,7 +73,7 @@
 		<a class="link" href="{import.meta.env.BASE_URL || ''}sandbox/">sandbox →</a>
 	</header>
 
-	<section class="board">
+	<section class="middle board">
 		<div class="cell">
 			<div class="cap">goal</div>
 			<div class="viz"><ValueViz value={targetValue} /></div>
@@ -104,12 +104,31 @@
 	.game {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		background: var(--bg);
+		overflow: hidden;
+	}
+	.head,
+	.runes,
+	.solved {
+		flex: 0 0 auto;
+	}
+	.head {
 		padding: 0.75rem 1rem;
 		padding-top: calc(0.75rem + env(safe-area-inset-top));
-		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
-		background: var(--bg);
+	}
+	.middle {
+		flex: 1 1 auto;
 		overflow: auto;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		padding: 0.5rem 1rem;
+		min-height: 0;
+	}
+	.runes,
+	.solved {
+		padding: 0.75rem 1rem;
+		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 	}
 	.head {
 		display: flex;
