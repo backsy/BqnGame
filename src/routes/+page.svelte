@@ -204,8 +204,7 @@
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: 1rem;
-		padding: 0.5rem;
+		gap: 0.75rem;
 	}
 	.check {
 		color: #5fcc5f;
@@ -213,12 +212,12 @@
 	}
 	.next {
 		all: unset;
-		padding: 0.5rem 1rem;
+		padding: 0.6rem 0.9rem;
 		background: #173d17;
 		border: 1px solid #2a6a2a;
 		color: #d7f0d7;
 		border-radius: 0.4rem;
-		font-size: 1rem;
+		font-size: 1.4rem;
 		cursor: pointer;
 	}
 
