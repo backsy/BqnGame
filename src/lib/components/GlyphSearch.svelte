@@ -89,7 +89,9 @@
 					<button type="button" class="row" onclick={() => pick(item.glyph)}>
 						<span class="g bqn">{item.glyph}</span>
 						<span class="l">{item.label}</span>
-						<span class="k bqn">{item.shortcut}</span>
+						{#if item.shortcut}
+							<span class="k bqn">{item.shortcut}</span>
+						{/if}
 					</button>
 				{/each}
 				{#if filtered.length === 0}
