@@ -103,14 +103,17 @@
 
 <style>
 	.game {
-		display: grid;
-		grid-template-rows: auto 1fr auto auto;
+		display: flex;
+		flex-direction: column;
 		gap: 1rem;
 		padding: 1rem;
 		padding-top: calc(1rem + env(safe-area-inset-top));
 		padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 		background: var(--bg);
-		overflow: hidden;
+		overflow: auto;
+	}
+	.board {
+		flex: 1 0 auto;
 	}
 	.head {
 		display: flex;
