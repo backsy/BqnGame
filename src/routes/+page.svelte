@@ -80,19 +80,19 @@
 	</section>
 
 	{#if solved}
-		<div class="solved">
+		<section class="solved">
 			<span class="check">✓</span>
-			<button type="button" class="next" onclick={nextLevel}>next →</button>
-		</div>
+			<button type="button" class="next" onclick={nextLevel}>next level →</button>
+		</section>
+	{:else}
+		<section class="runes">
+			{#each level.runes as r}
+				<button type="button" class="rune bqn" onclick={() => applyRune(r.expr)}>
+					{r.glyph}
+				</button>
+			{/each}
+		</section>
 	{/if}
-
-	<section class="runes">
-		{#each level.runes as r}
-			<button type="button" class="rune bqn" onclick={() => applyRune(r.expr)} disabled={solved}>
-				{r.glyph}
-			</button>
-		{/each}
-	</section>
 
 	<section class="actions">
 		<button type="button" onclick={undo} disabled={history.length === 0}>undo</button>
@@ -104,7 +104,7 @@
 <style>
 	.game {
 		display: grid;
-		grid-template-rows: auto 1fr auto auto auto;
+		grid-template-rows: auto 1fr auto auto;
 		gap: 1rem;
 		padding: 1rem;
 		padding-top: calc(1rem + env(safe-area-inset-top));
