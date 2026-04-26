@@ -33,12 +33,28 @@ export class BqnClient {
 		});
 	}
 
-	eval(source: string): Promise<Response> {
+	eval(source: string, timeoutMs = 5000): Promise<Response> {
 		const id = this.nextId++;
 		return new Promise((resolve) => {
-			this.pending.set(id, resolve);
+			let settled = false;
+			const settle = (r: Response) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				this.pending.delete(id);
+				resolve(r);
+			};
+			this.pending.set(id, settle);
+			const timer = setTimeout(
+				() => settle({ id, kind: 'error', message: `eval timed out (${timeoutMs}ms)` }),
+				timeoutMs
+			);
 			const req: Request = { id, kind: 'eval', source };
-			this.worker.postMessage(req);
+			try {
+				this.worker.postMessage(req);
+			} catch (err) {
+				settle({ id, kind: 'error', message: `postMessage failed: ${err}` });
+			}
 		});
 	}
 
