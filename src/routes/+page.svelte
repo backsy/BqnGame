@@ -1,254 +1,236 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Editor, { type EditorApi } from '$lib/components/Editor.svelte';
-	import GlyphPalette from '$lib/components/GlyphPalette.svelte';
-	import GlyphSearch from '$lib/components/GlyphSearch.svelte';
-	import { BqnClient } from '$lib/bqn/client';
+	import ValueViz from '$lib/components/ValueViz.svelte';
+	import { levels } from '$lib/learn/levels';
+	import { evalRaw, valueMatches } from '$lib/bqn/eval';
 
-	let editor: EditorApi | undefined = $state();
-	let paletteOpen = $state(false);
-	let searchOpen = $state(false);
-	let appHeight = $state('100dvh');
-	let keyboardUp = $state(false);
+	let levelIndex = $state(0);
+	let history = $state<string[]>([]); // accumulated rune.expr strings
 
-	let output = $state<{ kind: 'idle' } | { kind: 'ok'; value: string } | { kind: 'error'; message: string }>(
-		{ kind: 'idle' }
+	const level = $derived(levels[levelIndex]);
+
+	const stateExpr = $derived(
+		history.reduce((acc, runeExpr) => `(${runeExpr}) (${acc})`, level.start)
 	);
-	let running = $state(false);
 
-	let client = $state.raw<BqnClient | undefined>(undefined);
+	let currentValue = $state<unknown>(null);
+	let targetValue = $state<unknown>(null);
+	let solved = $state(false);
 
-	onMount(() => {
-		client = new BqnClient();
-
-		// Track the visual viewport so the app frame fits exactly above the
-		// soft keyboard when it's up. Without this, the OS keyboard would
-		// cover the output strip and palette toggle.
-		const vv = window.visualViewport;
-		const update = () => {
-			if (!vv) return;
-			appHeight = `${vv.height}px`;
-			// Threshold large enough to ignore URL-bar height changes
-			// (~50–80px) but small enough to catch any real soft keyboard.
-			keyboardUp = window.innerHeight - vv.height > 100;
-		};
-		update();
-		vv?.addEventListener('resize', update);
-		vv?.addEventListener('scroll', update);
-
-		return () => {
-			client?.destroy();
-			client = undefined;
-			vv?.removeEventListener('resize', update);
-			vv?.removeEventListener('scroll', update);
-		};
+	$effect(() => {
+		try {
+			currentValue = evalRaw(stateExpr);
+		} catch {
+			currentValue = null;
+		}
+		try {
+			targetValue = evalRaw(level.target);
+		} catch {
+			targetValue = null;
+		}
+		solved = valueMatches(stateExpr, level.target);
 	});
 
-	function insert(glyph: string) {
-		editor?.insert(glyph);
+	function applyRune(expr: string) {
+		if (solved) return;
+		history = [...history, expr];
 	}
 
-	function insertBackslash() {
-		paletteOpen = false;
-		editor?.insert('\\');
-		editor?.focus();
+	function undo() {
+		history = history.slice(0, -1);
 	}
 
-	function openSearch() {
-		paletteOpen = false;
-		editor?.blur();
-		searchOpen = true;
+	function reset() {
+		history = [];
 	}
 
-	function onEditorFocus() {
-		paletteOpen = false;
-	}
-
-	function onPaletteToggle(next: boolean) {
-		paletteOpen = next;
-		if (next) editor?.blur();
-	}
-
-	async function run() {
-		if (!client || !editor || running) return;
-		running = true;
-		const source = editor.value();
-		const response = await client.eval(source);
-		if (response.kind === 'ok') {
-			output = { kind: 'ok', value: response.value };
-		} else {
-			output = { kind: 'error', message: response.message };
+	function nextLevel() {
+		if (levelIndex < levels.length - 1) {
+			levelIndex += 1;
+			history = [];
 		}
-		running = false;
 	}
+
+	let appHeight = $state('100dvh');
+	onMount(() => {
+		const vv = window.visualViewport;
+		if (!vv) return;
+		const update = () => (appHeight = `${vv.height}px`);
+		update();
+		vv.addEventListener('resize', update);
+		return () => vv.removeEventListener('resize', update);
+	});
 </script>
 
-<div class="app" class:keyboard-up={keyboardUp} style="height: {appHeight};">
-	<section class="editor" aria-label="code editor">
-		<Editor onready={(api) => (editor = api)} onfocus={onEditorFocus} />
-		{#if output.kind !== 'idle'}
-			<pre class="output-inline bqn" class:err={output.kind === 'error'}>{
-				output.kind === 'ok' ? output.value : `error: ${output.message}`
-			}</pre>
-		{/if}
+<div class="game" style="height: {appHeight};">
+	<header class="head">
+		<span class="lvl">Level {level.id}</span>
+		<a class="link" href="{import.meta.env.BASE_URL || ''}sandbox/">sandbox →</a>
+	</header>
+
+	<section class="board">
+		<div class="cell">
+			<div class="cap">goal</div>
+			<div class="viz"><ValueViz value={targetValue} /></div>
+		</div>
+		<div class="cell now">
+			<div class="cap">now</div>
+			<div class="viz"><ValueViz value={currentValue} /></div>
+		</div>
 	</section>
 
-	<GlyphPalette oninsert={insert} open={paletteOpen} onToggle={onPaletteToggle} />
+	{#if solved}
+		<div class="solved">
+			<span class="check">✓</span>
+			<button type="button" class="next" onclick={nextLevel}>next →</button>
+		</div>
+	{/if}
 
-	<section class="lowest" aria-label="controls">
-		<button
-			type="button"
-			class="ctrl glyphs"
-			class:active={paletteOpen}
-			aria-expanded={paletteOpen}
-			onclick={() => onPaletteToggle(!paletteOpen)}
-		>glyphs</button>
-		<button
-			type="button"
-			class="ctrl run"
-			onclick={run}
-			disabled={running || !client}
-		>
-			{running ? '…' : '▶ run'}
-		</button>
-		<button
-			type="button"
-			class="ctrl search"
-			onclick={openSearch}
-			aria-label="search glyphs by name"
-		>
-			<svg
-				viewBox="0 0 24 24"
-				width="22"
-				height="22"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<circle cx="10.5" cy="10.5" r="6.5" />
-				<line x1="15" y1="15" x2="20" y2="20" />
-			</svg>
-		</button>
-		<button
-			type="button"
-			class="ctrl bs bqn"
-			onclick={insertBackslash}
-			aria-label="insert backslash for mnemonic shortcut"
-		>\</button>
+	<section class="runes">
+		{#each level.runes as r}
+			<button type="button" class="rune bqn" onclick={() => applyRune(r.expr)} disabled={solved}>
+				{r.glyph}
+			</button>
+		{/each}
+	</section>
+
+	<section class="actions">
+		<button type="button" onclick={undo} disabled={history.length === 0}>undo</button>
+		<button type="button" onclick={reset} disabled={history.length === 0}>reset</button>
+		<span class="moves">{history.length} {history.length === 1 ? 'move' : 'moves'}</span>
 	</section>
 </div>
 
-<GlyphSearch
-	open={searchOpen}
-	oninsert={insert}
-	onclose={() => (searchOpen = false)}
-/>
-
 <style>
-	.app {
+	.game {
 		display: grid;
-		grid-template-rows: 1fr auto auto;
+		grid-template-rows: auto 1fr auto auto auto;
+		gap: 1rem;
+		padding: 1rem;
+		padding-top: calc(1rem + env(safe-area-inset-top));
+		padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 		background: var(--bg);
 		overflow: hidden;
 	}
-
-	.editor {
+	.head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	.lvl {
+		color: #aaa;
+		font-size: 0.85rem;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+	.link {
+		color: #6a8aaa;
+		font-size: 0.85rem;
+		text-decoration: none;
+	}
+	.board {
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
-		margin: 0.75rem;
-		margin-top: calc(0.75rem + env(safe-area-inset-top));
-		background: #141414;
-		border: 1px solid #2a2a2a;
-		border-radius: 0.5rem;
-		overflow: auto;
-	}
-	.output-inline {
-		margin: 0;
-		padding: 0 0.75rem 0.75rem;
-		color: #777;
-		font-size: 1.1rem;
-		line-height: 1.5;
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-	.output-inline.err {
-		color: #d08a8a;
-	}
-
-	.lowest {
-		display: flex;
+		gap: 1.5rem;
+		justify-content: center;
 		align-items: center;
-		gap: 0.4rem;
-		padding: 0.4rem 0.75rem calc(0.4rem + env(safe-area-inset-bottom));
+		min-height: 0;
 	}
-	.keyboard-up .lowest {
-		padding-bottom: 0.4rem;
+	.cell {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
 	}
-	.lowest .glyphs {
-		margin-right: auto;
+	.cap {
+		color: #777;
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+	}
+	.viz {
+		display: flex;
+		align-items: flex-end;
+		min-height: 80px;
+	}
+	.now .viz {
+		filter: drop-shadow(0 0 8px rgba(95, 204, 95, 0.15));
 	}
 
-	.ctrl {
-		padding: 0.55rem 0.9rem;
+	.solved {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 1rem;
+		padding: 0.5rem;
+	}
+	.check {
+		color: #5fcc5f;
+		font-size: 1.5rem;
+	}
+	.next {
+		all: unset;
+		padding: 0.5rem 1rem;
+		background: #173d17;
+		border: 1px solid #2a6a2a;
+		color: #d7f0d7;
 		border-radius: 0.4rem;
 		font-size: 1rem;
 		cursor: pointer;
-		-webkit-tap-highlight-color: transparent;
-		flex: 0 0 auto;
 	}
-	.glyphs {
-		font-family: var(--font-sans);
-		border: 1px solid #2a2a2a;
+
+	.runes {
+		display: flex;
+		gap: 0.4rem;
+		justify-content: center;
+		flex-wrap: wrap;
+	}
+	.rune {
+		all: unset;
+		padding: 0.6rem 0.9rem;
 		background: #1a1a1a;
-		color: #ccc;
-	}
-	.glyphs:active {
-		background: #232323;
-	}
-	.glyphs.active {
-		background: #2a2a2a;
+		border: 1px solid #2a2a2a;
 		color: #eee;
-		border-color: #444;
-	}
-	.bs {
-		border: 1px solid #2c4365;
-		background: #1d2f44;
-		color: #a9c7e6;
+		border-radius: 0.4rem;
+		font-size: 1.4rem;
 		min-width: 3rem;
-		font-size: 1.35rem;
-		line-height: 1;
+		text-align: center;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
 	}
-	.bs:active {
-		background: #294262;
+	.rune:active {
+		background: #2a2a2a;
 		transform: scale(0.96);
 	}
-	.search {
-		border: 1px solid #2a2a2a;
-		background: #1a1a1a;
-		color: #ccc;
-		min-width: 3rem;
-		display: inline-grid;
-		place-items: center;
-	}
-	.search:active {
-		background: #232323;
-		transform: scale(0.96);
-	}
-	.run {
-		border: 1px solid #2a6a2a;
-		background: #173d17;
-		color: #d7f0d7;
-	}
-	.run:active {
-		background: #225722;
-		transform: scale(0.96);
-	}
-	.run:disabled {
+	.rune:disabled {
 		opacity: 0.5;
+	}
+
+	.actions {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 0.6rem;
+	}
+	.actions button {
+		all: unset;
+		padding: 0.4rem 0.8rem;
+		border: 1px solid #2a2a2a;
+		background: transparent;
+		color: #aaa;
+		border-radius: 0.4rem;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.actions button:active {
+		background: #1a1a1a;
+	}
+	.actions button:disabled {
+		opacity: 0.4;
 		cursor: default;
+	}
+	.moves {
+		color: #555;
+		font-size: 0.8rem;
 	}
 </style>
