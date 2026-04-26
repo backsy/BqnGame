@@ -65,6 +65,11 @@
 <div class="game" style="height: {appHeight};">
 	<header class="head">
 		<span class="lvl">Level {level.id}</span>
+		<div class="head-actions">
+			<button type="button" class="ha" onclick={undo} disabled={history.length === 0}>undo</button>
+			<button type="button" class="ha" onclick={reset} disabled={history.length === 0}>reset</button>
+			<span class="moves">{history.length}</span>
+		</div>
 		<a class="link" href="{import.meta.env.BASE_URL || ''}sandbox/">sandbox →</a>
 	</header>
 
@@ -93,12 +98,6 @@
 			{/each}
 		</section>
 	{/if}
-
-	<section class="actions">
-		<button type="button" onclick={undo} disabled={history.length === 0}>undo</button>
-		<button type="button" onclick={reset} disabled={history.length === 0}>reset</button>
-		<span class="moves">{history.length} {history.length === 1 ? 'move' : 'moves'}</span>
-	</section>
 </div>
 
 <style>
@@ -119,17 +118,49 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.6rem;
 	}
 	.lvl {
 		color: #aaa;
 		font-size: 0.85rem;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
+		flex: 0 0 auto;
+	}
+	.head-actions {
+		display: flex;
+		gap: 0.4rem;
+		align-items: center;
+		flex: 1 1 auto;
+		justify-content: center;
+	}
+	.ha {
+		all: unset;
+		padding: 0.35rem 0.7rem;
+		border: 1px solid #2a2a2a;
+		background: transparent;
+		color: #aaa;
+		border-radius: 0.4rem;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.ha:active {
+		background: #1a1a1a;
+	}
+	.ha:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.moves {
+		color: #555;
+		font-size: 0.8rem;
+		margin-left: 0.3rem;
 	}
 	.link {
 		color: #6a8aaa;
 		font-size: 0.85rem;
 		text-decoration: none;
+		flex: 0 0 auto;
 	}
 	.board {
 		display: flex;
@@ -209,31 +240,4 @@
 		opacity: 0.5;
 	}
 
-	.actions {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		gap: 0.6rem;
-	}
-	.actions button {
-		all: unset;
-		padding: 0.4rem 0.8rem;
-		border: 1px solid #2a2a2a;
-		background: transparent;
-		color: #aaa;
-		border-radius: 0.4rem;
-		font-size: 0.85rem;
-		cursor: pointer;
-	}
-	.actions button:active {
-		background: #1a1a1a;
-	}
-	.actions button:disabled {
-		opacity: 0.4;
-		cursor: default;
-	}
-	.moves {
-		color: #555;
-		font-size: 0.8rem;
-	}
 </style>
