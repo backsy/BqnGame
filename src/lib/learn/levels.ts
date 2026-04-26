@@ -48,5 +48,74 @@ export const levels: Level[] = [
 			{ glyph: '⌽', expr: '⌽' },
 			{ glyph: '+1', expr: '+⟜1' }
 		]
+	},
+	// Level 4 — adding a scalar to a list (broadcast). One tap.
+	{
+		id: 4,
+		start: '1‿2‿3',
+		target: '5‿6‿7',
+		runes: [
+			{ glyph: '+4', expr: '+⟜4' },
+			{ glyph: '+1', expr: '+⟜1' }
+		]
+	},
+	// Level 5 — multiplying a list by a scalar. One tap.
+	{
+		id: 5,
+		start: '1‿2‿3',
+		target: '2‿4‿6',
+		runes: [
+			{ glyph: '×2', expr: '×⟜2' },
+			{ glyph: '+1', expr: '+⟜1' }
+		]
+	},
+	// Level 6 — order matters? Two paths to the same place. Two taps.
+	{
+		id: 6,
+		start: '1‿2‿3',
+		target: '5‿4‿3',
+		runes: [
+			{ glyph: '⌽', expr: '⌽' },
+			{ glyph: '+2', expr: '+⟜2' }
+		]
+	},
+	// Level 7 — range. One tap, brand-new shape (scalar → row).
+	{
+		id: 7,
+		start: '5',
+		target: '↕5',
+		runes: [{ glyph: '↕', expr: '↕' }]
+	},
+	// Level 8 — fold. Collapsing a row to a scalar.
+	{
+		id: 8,
+		start: '1‿2‿3‿4',
+		target: '10',
+		runes: [
+			{ glyph: '+´', expr: '+´' },
+			{ glyph: '×´', expr: '×´' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 9 — chain ↕ and +´ to compute a sum-from-scalar.
+	{
+		id: 9,
+		start: '5',
+		target: '10',
+		runes: [
+			{ glyph: '↕', expr: '↕' },
+			{ glyph: '+´', expr: '+´' }
+		]
+	},
+	// Level 10 — take. Crop the head of a row.
+	{
+		id: 10,
+		start: '1‿2‿3‿4‿5',
+		target: '1‿2‿3',
+		runes: [
+			{ glyph: '3↑', expr: '3⊸↑' },
+			{ glyph: '2↓', expr: '2⊸↓' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
 	}
 ];
