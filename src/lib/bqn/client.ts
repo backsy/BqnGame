@@ -1,72 +1,45 @@
-// Main-thread wrapper around the BQN worker. Turns the postMessage protocol
-// into Promise-returning methods, correlating requests and responses by id.
+// Synchronous main-thread BQN client. The vendored interpreter is pure
+// JS and fast enough for REPL-sized expressions; running it inline
+// removes the worker postMessage protocol and the class of bugs that
+// come with it (init failures, message-cloning quirks, hung
+// communication). API stays Promise-shaped so callers don't change.
 
-import BqnWorker from './worker?worker';
-import type { Request, Response } from './protocol';
+import { compile, run, fmt, fmtErr, unstr } from './vendor/bqn.js';
+import type { Response } from './protocol';
 
-type Resolver = (r: Response) => void;
+const toJs = (v: unknown): string => {
+	if (v == null) return '';
+	if (typeof v === 'string') return v;
+	if (Array.isArray(v)) return unstr(v);
+	return String(v);
+};
 
 export class BqnClient {
-	private worker: Worker;
-	private pending = new Map<number, Resolver>();
 	private nextId = 0;
 
-	constructor() {
-		this.worker = new BqnWorker();
-		this.worker.addEventListener('message', (e: MessageEvent<Response>) => {
-			const resolver = this.pending.get(e.data.id);
-			if (!resolver) return;
-			this.pending.delete(e.data.id);
-			resolver(e.data);
-		});
-		this.worker.addEventListener('error', (e) => {
-			// A worker-level script error (init failure, unhandled throw)
-			// leaves every pending eval hanging. Surface it and drain the
-			// queue so the UI doesn't sit on a stuck "running" state.
-			console.error('[BqnWorker] error', e.message, e.filename, e.lineno);
-			const msg = e.message || 'worker crashed';
-			this.drain(`worker error: ${msg}`);
-		});
-		this.worker.addEventListener('messageerror', (e) => {
-			console.error('[BqnWorker] messageerror', e);
-			this.drain('worker message could not be deserialized');
-		});
-	}
-
-	eval(source: string, timeoutMs = 5000): Promise<Response> {
+	eval(source: string): Promise<Response> {
 		const id = this.nextId++;
-		return new Promise((resolve) => {
-			let settled = false;
-			const settle = (r: Response) => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timer);
-				this.pending.delete(id);
-				resolve(r);
-			};
-			this.pending.set(id, settle);
-			const timer = setTimeout(
-				() => settle({ id, kind: 'error', message: `eval timed out (${timeoutMs}ms)` }),
-				timeoutMs
-			);
-			const req: Request = { id, kind: 'eval', source };
+		const src = source.trim();
+		if (!src) {
+			return Promise.resolve({ id, kind: 'error', message: 'empty input' });
+		}
+		try {
+			const compiled = compile(src);
+			const result = run(...compiled);
+			const formatted = fmt(result);
+			return Promise.resolve({ id, kind: 'ok', value: toJs(formatted) });
+		} catch (err) {
+			let message: string;
 			try {
-				this.worker.postMessage(req);
-			} catch (err) {
-				settle({ id, kind: 'error', message: `postMessage failed: ${err}` });
+				message = toJs(fmtErr(err));
+			} catch {
+				message = err instanceof Error ? err.message : String(err);
 			}
-		});
+			return Promise.resolve({ id, kind: 'error', message });
+		}
 	}
 
 	destroy() {
-		this.worker.terminate();
-		this.pending.clear();
-	}
-
-	private drain(message: string) {
-		for (const [id, resolver] of this.pending) {
-			resolver({ id, kind: 'error', message });
-		}
-		this.pending.clear();
+		// no-op; here for API parity
 	}
 }
