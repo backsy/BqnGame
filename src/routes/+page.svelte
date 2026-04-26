@@ -86,17 +86,14 @@
 <div class="app" class:keyboard-up={keyboardUp} style="height: {appHeight};">
 	<section class="editor" aria-label="code editor">
 		<Editor onready={(api) => (editor = api)} onfocus={onEditorFocus} />
+		{#if output.kind !== 'idle'}
+			<pre class="output-inline bqn" class:err={output.kind === 'error'}>{
+				output.kind === 'ok' ? output.value : `error: ${output.message}`
+			}</pre>
+		{/if}
 	</section>
 
 	<GlyphPalette oninsert={insert} open={paletteOpen} onToggle={onPaletteToggle} />
-
-	{#if output.kind !== 'idle'}
-		<section class="bottom" aria-label="output" aria-live="polite">
-			<pre class="bqn text" class:err={output.kind === 'error'}>{
-				output.kind === 'ok' ? output.value : `error: ${output.message}`
-			}</pre>
-		</section>
-	{/if}
 
 	<section class="lowest" aria-label="controls">
 		<button
@@ -160,9 +157,26 @@
 
 	.editor {
 		display: flex;
+		flex-direction: column;
 		min-height: 0;
-		padding: 0.75rem;
-		padding-top: calc(0.75rem + env(safe-area-inset-top));
+		margin: 0.75rem;
+		margin-top: calc(0.75rem + env(safe-area-inset-top));
+		background: #141414;
+		border: 1px solid #2a2a2a;
+		border-radius: 0.5rem;
+		overflow: auto;
+	}
+	.output-inline {
+		margin: 0;
+		padding: 0.4rem 0.75rem 0.7rem;
+		color: #777;
+		font-size: 1rem;
+		white-space: pre-wrap;
+		word-break: break-word;
+		border-top: 1px dashed #2a2a2a;
+	}
+	.output-inline.err {
+		color: #d08a8a;
 	}
 
 	.bottom {

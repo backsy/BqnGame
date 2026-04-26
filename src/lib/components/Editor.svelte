@@ -258,11 +258,12 @@
 				EditorView.theme(
 					{
 						'&': {
-							height: '100%',
 							fontSize: '1.1rem',
-							background: '#141414',
-							border: '1px solid #2a2a2a',
-							borderRadius: '0.5rem',
+							height: 'auto',
+							minHeight: '5rem',
+							background: 'transparent',
+							border: 'none',
+							borderRadius: '0',
 							color: '#eee'
 						},
 						'.cm-scroller': {
@@ -271,10 +272,10 @@
 						},
 						'.cm-content': {
 							caretColor: '#eee',
-							padding: '0.75rem 0'
+							padding: '0.75rem 0.75rem'
 						},
 						'.cm-gutters': {
-							background: '#141414',
+							background: 'transparent',
 							color: '#555',
 							border: 'none'
 						},
