@@ -179,22 +179,6 @@
 		color: #d08a8a;
 	}
 
-	.bottom {
-		padding: 0.4rem 0.75rem 0;
-	}
-	.bottom .text {
-		margin: 0;
-		max-height: 5rem;
-		overflow: auto;
-		white-space: pre-wrap;
-		word-break: break-word;
-		color: #777;
-		font-size: 0.95rem;
-	}
-	.bottom .text.err {
-		color: #d08a8a;
-	}
-
 	.lowest {
 		display: flex;
 		align-items: center;
