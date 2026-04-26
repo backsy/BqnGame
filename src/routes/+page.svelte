@@ -168,12 +168,12 @@
 	}
 	.output-inline {
 		margin: 0;
-		padding: 0.4rem 0.75rem 0.7rem;
+		padding: 0 0.75rem 0.75rem;
 		color: #777;
-		font-size: 1rem;
+		font-size: 1.1rem;
+		line-height: 1.5;
 		white-space: pre-wrap;
 		word-break: break-word;
-		border-top: 1px dashed #2a2a2a;
 	}
 	.output-inline.err {
 		color: #d08a8a;
