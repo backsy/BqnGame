@@ -260,7 +260,6 @@
 						'&': {
 							fontSize: '1.1rem',
 							height: 'auto',
-							minHeight: '5rem',
 							background: 'transparent',
 							border: 'none',
 							borderRadius: '0',
@@ -335,10 +334,8 @@
 	.host {
 		display: block;
 		width: 100%;
-		height: 100%;
-		min-height: 0;
 	}
 	.host :global(.cm-editor) {
-		height: 100%;
+		height: auto;
 	}
 </style>
