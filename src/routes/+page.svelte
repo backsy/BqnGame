@@ -104,15 +104,12 @@
 	.game {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
-		padding: 1rem;
-		padding-top: calc(1rem + env(safe-area-inset-top));
-		padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+		gap: 0.75rem;
+		padding: 0.75rem 1rem;
+		padding-top: calc(0.75rem + env(safe-area-inset-top));
+		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 		background: var(--bg);
 		overflow: auto;
-	}
-	.board {
-		flex: 1 0 auto;
 	}
 	.head {
 		display: flex;
@@ -165,16 +162,15 @@
 	.board {
 		display: flex;
 		flex-direction: column;
-		gap: 1.5rem;
-		justify-content: center;
+		gap: 0.75rem;
 		align-items: center;
-		min-height: 0;
+		flex: 0 0 auto;
 	}
 	.cell {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 	.cap {
 		color: #777;
@@ -185,7 +181,7 @@
 	.viz {
 		display: flex;
 		align-items: flex-end;
-		min-height: 80px;
+		min-height: 50px;
 	}
 	.now .viz {
 		filter: drop-shadow(0 0 8px rgba(95, 204, 95, 0.15));
