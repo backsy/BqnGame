@@ -229,6 +229,7 @@
 	}
 	.rune {
 		all: unset;
+		font-family: var(--font-bqn);
 		padding: 0.6rem 0.9rem;
 		background: #1a1a1a;
 		border: 1px solid #2a2a2a;
