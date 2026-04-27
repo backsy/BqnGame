@@ -117,5 +117,108 @@ export const levels: Level[] = [
 			{ glyph: '2↓', expr: '2⊸↓' },
 			{ glyph: '⌽', expr: '⌽' }
 		]
+	},
+	// Level 11 — drop. Crop the tail of a row.
+	{
+		id: 11,
+		start: '1‿2‿3‿4‿5',
+		target: '3‿4‿5',
+		runes: [
+			{ glyph: '2↓', expr: '2⊸↓' },
+			{ glyph: '3↑', expr: '3⊸↑' }
+		]
+	},
+	// Level 12 — chained drops. Two taps.
+	{
+		id: 12,
+		start: '1‿2‿3‿4‿5',
+		target: '4‿5',
+		runes: [
+			{ glyph: '2↓', expr: '2⊸↓' },
+			{ glyph: '1↓', expr: '1⊸↓' }
+		]
+	},
+	// Level 13 — combine take + fold to compute "sum of first N".
+	{
+		id: 13,
+		start: '1‿2‿3‿4‿5',
+		target: '6',
+		runes: [
+			{ glyph: '3↑', expr: '3⊸↑' },
+			{ glyph: '+´', expr: '+´' }
+		]
+	},
+	// Level 14 — max via fold.
+	{
+		id: 14,
+		start: '5‿1‿4‿2‿3',
+		target: '5',
+		runes: [
+			{ glyph: '⌈´', expr: '⌈´' },
+			{ glyph: '⌊´', expr: '⌊´' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 15 — min via fold (same shape, different rune).
+	{
+		id: 15,
+		start: '5‿1‿4‿2‿3',
+		target: '1',
+		runes: [
+			{ glyph: '⌈´', expr: '⌈´' },
+			{ glyph: '⌊´', expr: '⌊´' }
+		]
+	},
+	// Level 16 — sort ascending.
+	{
+		id: 16,
+		start: '3‿1‿2',
+		target: '1‿2‿3',
+		runes: [
+			{ glyph: '∧', expr: '∧' },
+			{ glyph: '∨', expr: '∨' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 17 — sort descending. Two paths: ∨ alone, or ∧ then ⌽.
+	{
+		id: 17,
+		start: '3‿1‿2',
+		target: '3‿2‿1',
+		runes: [
+			{ glyph: '∧', expr: '∧' },
+			{ glyph: '∨', expr: '∨' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 18 — length of a row.
+	{
+		id: 18,
+		start: '1‿2‿3‿4',
+		target: '4',
+		runes: [
+			{ glyph: '≠', expr: '≠' },
+			{ glyph: '+´', expr: '+´' }
+		]
+	},
+	// Level 19 — square each. self-multiply broadcasts elementwise.
+	{
+		id: 19,
+		start: '1‿2‿3',
+		target: '1‿4‿9',
+		runes: [
+			{ glyph: '×˜', expr: '×˜' },
+			{ glyph: '+˜', expr: '+˜' }
+		]
+	},
+	// Level 20 — reshape: scalar fans into a row of N copies.
+	{
+		id: 20,
+		start: '7',
+		target: '7‿7‿7',
+		runes: [
+			{ glyph: '3⥊', expr: '3⊸⥊' },
+			{ glyph: '↕', expr: '↕' }
+		]
 	}
 ];
