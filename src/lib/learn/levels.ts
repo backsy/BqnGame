@@ -224,21 +224,21 @@ export const levels: Level[] = [
 			{ glyph: '↕', expr: '↕' }
 		]
 	},
-	// Level 21 — reshape a flat row into a 2D grid.
+	// Level 21 — reshape a flat row into a 3×2 grid: same values, new shape.
 	{
 		id: 21,
-		start: '↕6',
-		target: '2‿3⥊↕6',
+		start: '1‿2‿3‿4‿5‿6',
+		target: '3‿2⥊1‿2‿3‿4‿5‿6',
 		runes: [
-			{ glyph: '2,3⥊', expr: '2‿3⊸⥊' },
+			{ glyph: '3,2⥊', expr: '3‿2⊸⥊' },
 			{ glyph: '⌽', expr: '⌽' }
 		]
 	},
-	// Level 22 — transpose a grid.
+	// Level 22 — transpose the 3×2 grid into a 2×3 grid.
 	{
 		id: 22,
-		start: '2‿3⥊↕6',
-		target: '⍉ 2‿3⥊↕6',
+		start: '3‿2⥊1‿2‿3‿4‿5‿6',
+		target: '⍉ 3‿2⥊1‿2‿3‿4‿5‿6',
 		runes: [
 			{ glyph: '⍉', expr: '⍉' },
 			{ glyph: '⌽', expr: '⌽' }
