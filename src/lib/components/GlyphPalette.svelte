@@ -195,6 +195,9 @@
 	.palette {
 		display: flex;
 		flex-direction: column;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-touch-callout: none;
 	}
 
 	.grid-wrapper {
@@ -241,6 +244,8 @@
 		line-height: 1;
 		cursor: pointer;
 		user-select: none;
+		-webkit-user-select: none;
+		-webkit-touch-callout: none;
 		-webkit-tap-highlight-color: transparent;
 		touch-action: manipulation;
 	}
