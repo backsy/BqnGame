@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { base } from '$app/paths';
 	import ValueViz from '$lib/components/ValueViz.svelte';
 	import { levels } from '$lib/learn/levels';
 	import { evalRaw, valueMatches } from '$lib/bqn/eval';
@@ -70,7 +71,7 @@
 			<button type="button" class="ha" onclick={reset} disabled={history.length === 0}>reset</button>
 			<span class="moves">{history.length}</span>
 		</div>
-		<a class="link" href="{import.meta.env.BASE_URL || ''}sandbox/">sandbox →</a>
+		<a class="link" href="{base}/sandbox/">sandbox →</a>
 	</header>
 
 	<section class="middle board">

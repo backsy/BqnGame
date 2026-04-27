@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { base } from '$app/paths';
 	import Editor, { type EditorApi } from '$lib/components/Editor.svelte';
 	import GlyphPalette from '$lib/components/GlyphPalette.svelte';
 	import GlyphSearch from '$lib/components/GlyphSearch.svelte';
@@ -91,7 +92,7 @@
 	<GlyphPalette oninsert={insert} open={paletteOpen} onToggle={onPaletteToggle} />
 
 	<section class="lowest" aria-label="controls">
-		<a class="link" href="{import.meta.env.BASE_URL || ''}">← game</a>
+		<a class="link" href="{base}/">← game</a>
 		<button
 			type="button"
 			class="ctrl glyphs"
