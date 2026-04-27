@@ -34,6 +34,15 @@
 		solved = valueMatches(stateExpr, level.target);
 	});
 
+	function findMaxNum(v: unknown): number {
+		if (typeof v === 'number') return Math.abs(v);
+		if (Array.isArray(v) && v.length > 0) return Math.max(...v.map(findMaxNum));
+		return 0;
+	}
+	const vizMax = $derived(
+		Math.max(findMaxNum(currentValue), findMaxNum(targetValue), 4)
+	);
+
 	function applyRune(expr: string) {
 		if (solved) return;
 		history = [...history, expr];
@@ -90,11 +99,11 @@
 	<section class="middle board">
 		<div class="cell">
 			<div class="cap">goal</div>
-			<div class="viz"><ValueViz value={targetValue} /></div>
+			<div class="viz"><ValueViz value={targetValue} max={vizMax} /></div>
 		</div>
 		<div class="cell now">
 			<div class="cap">now</div>
-			<div class="viz"><ValueViz value={currentValue} /></div>
+			<div class="viz"><ValueViz value={currentValue} max={vizMax} /></div>
 		</div>
 	</section>
 

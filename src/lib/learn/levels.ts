@@ -963,13 +963,12 @@ export const levels: Level[] = [
 	},
 	{
 		id: 96,
-		start: '4',
-		target: '4',
+		start: '16',
+		target: '2',
 		runes: [
-			{ glyph: '×2', expr: '×⟜2' },
-			{ glyph: '÷2', expr: '÷⟜2' }
+			{ glyph: '÷2', expr: '÷⟜2' },
+			{ glyph: '×2', expr: '×⟜2' }
 		]
-		// trivial 0 moves — solver returns immediately.
 	},
 	{
 		id: 97,
