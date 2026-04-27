@@ -772,7 +772,6 @@ export const levels: Level[] = [
 		start: '"abc"',
 		target: '"a"',
 		runes: [
-			{ glyph: '⊑', expr: '⊑' },
 			{ glyph: '1↑', expr: '1⊸↑' },
 			{ glyph: '⌽', expr: '⌽' }
 		]
