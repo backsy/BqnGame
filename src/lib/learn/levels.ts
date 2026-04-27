@@ -223,5 +223,110 @@ export const levels: Level[] = [
 			{ glyph: '3⥊', expr: '3⊸⥊' },
 			{ glyph: '↕', expr: '↕' }
 		]
+	},
+	// Level 21 — reshape a flat row into a 2D grid.
+	{
+		id: 21,
+		start: '↕6',
+		target: '2‿3⥊↕6',
+		runes: [
+			{ glyph: '2,3⥊', expr: '2‿3⊸⥊' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 22 — transpose a grid.
+	{
+		id: 22,
+		start: '2‿3⥊↕6',
+		target: '⍉ 2‿3⥊↕6',
+		runes: [
+			{ glyph: '⍉', expr: '⍉' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 23 — scalar all the way to a grid: range, then reshape.
+	{
+		id: 23,
+		start: '6',
+		target: '2‿3⥊↕6',
+		runes: [
+			{ glyph: '↕', expr: '↕' },
+			{ glyph: '2,3⥊', expr: '2‿3⊸⥊' }
+		]
+	},
+	// Level 24 — scan: running sums.
+	{
+		id: 24,
+		start: '1‿2‿3‿4',
+		target: '1‿3‿6‿10',
+		runes: [
+			{ glyph: '+`', expr: '+`' },
+			{ glyph: '+´', expr: '+´' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 25 — characters too: reverse a string.
+	{
+		id: 25,
+		start: '"hello"',
+		target: '"olleh"',
+		runes: [
+			{ glyph: '⌽', expr: '⌽' },
+			{ glyph: '∧', expr: '∧' }
+		]
+	},
+	// Level 26 — sum of doubles. Two taps in either order.
+	{
+		id: 26,
+		start: '1‿2‿3',
+		target: '12',
+		runes: [
+			{ glyph: '×2', expr: '×⟜2' },
+			{ glyph: '+´', expr: '+´' },
+			{ glyph: '+1', expr: '+⟜1' }
+		]
+	},
+	// Level 27 — reversed doubles. Two paths (commutative-ish chain).
+	{
+		id: 27,
+		start: '1‿2‿3',
+		target: '6‿4‿2',
+		runes: [
+			{ glyph: '×2', expr: '×⟜2' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 28 — pick first element.
+	{
+		id: 28,
+		start: '5‿7‿9',
+		target: '5',
+		runes: [
+			{ glyph: '⊑', expr: '⊑' },
+			{ glyph: '⌽', expr: '⌽' },
+			{ glyph: '+´', expr: '+´' }
+		]
+	},
+	// Level 29 — pick element at index 1.
+	{
+		id: 29,
+		start: '5‿7‿9',
+		target: '7',
+		runes: [
+			{ glyph: '1⊑', expr: '1⊸⊑' },
+			{ glyph: '⊑', expr: '⊑' },
+			{ glyph: '⌽', expr: '⌽' }
+		]
+	},
+	// Level 30 — full chain. Sum of 1..5 from a scalar 5.
+	{
+		id: 30,
+		start: '5',
+		target: '15',
+		runes: [
+			{ glyph: '↕', expr: '↕' },
+			{ glyph: '+1', expr: '+⟜1' },
+			{ glyph: '+´', expr: '+´' }
+		]
 	}
 ];
