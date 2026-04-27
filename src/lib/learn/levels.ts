@@ -81,7 +81,7 @@ export const levels: Level[] = [
 	{ id: 1, start: '3', target: '4', runes: [R.add1] },
 	{ id: 2, start: '3', target: '7', runes: [R.add1, R.add2] },
 	{ id: 3, start: '3', target: '10', runes: [R.add1, R.add2, R.mul2, R.mul3] },
-	{ id: 4, start: '10', target: '7', runes: [R.sub3, R.sub1, R.add1] },
+	{ id: 4, start: '10', target: '6', runes: [R.sub3, R.sub1, R.add1] },
 	{ id: 5, start: '10', target: '1', runes: [R.sub3, R.sub2, R.sub4] },
 	{ id: 6, start: '8', target: '4', runes: [R.div2, R.add2] },
 	{ id: 7, start: '8', target: '5', runes: [R.div2, R.add1, R.sub1] },
@@ -95,11 +95,11 @@ export const levels: Level[] = [
 	{ id: 11, start: '1‿2‿3', target: '3‿2‿1', runes: [R.rev] },
 	{ id: 12, start: '5', target: '↕5', runes: [R.range] },
 	{ id: 13, start: '5', target: '4‿3‿2‿1‿0', runes: [R.range, R.rev] },
-	{ id: 14, start: '1‿2‿3‿4‿5', target: '1‿2‿3', runes: [R.take3, R.drop2] },
-	{ id: 15, start: '1‿2‿3‿4‿5', target: '4‿5', runes: [R.take2, R.drop3] },
+	{ id: 14, start: '5‿4‿3‿2‿1', target: '1‿2‿3', runes: [R.rev, R.take3, R.drop2] },
+	{ id: 15, start: '1‿2‿3‿4‿5', target: '5‿4', runes: [R.rev, R.take2, R.drop3] },
 	{ id: 16, start: '1‿2‿3‿4‿5', target: '5‿4‿3', runes: [R.take3, R.rev] },
-	{ id: 17, start: '1‿2‿3', target: '5‿6‿7', runes: [R.add4, R.add2] },
-	{ id: 18, start: '1‿2‿3', target: '2‿4‿6', runes: [R.mul2, R.add1] },
+	{ id: 17, start: '1‿2‿3', target: '5‿6‿7', runes: [R.add1, R.add3] },
+	{ id: 18, start: '1‿2‿3', target: '4‿8‿12', runes: [R.mul2, R.add1] },
 	{ id: 19, start: '1‿2‿3', target: '4‿6‿8', runes: [R.add1, R.mul2] },
 	{ id: 20, start: '5', target: '1‿2‿3‿4‿5', runes: [R.range, R.add1] },
 
@@ -109,7 +109,7 @@ export const levels: Level[] = [
 	{ id: 21, start: '1‿2‿3', target: '6', runes: [R.sumf] },
 	{ id: 22, start: '1‿2‿3‿4', target: '24', runes: [R.prodf, R.sumf] },
 	{ id: 23, start: '5‿1‿4‿2‿3', target: '6', runes: [R.maxf, R.minf, R.add1] },
-	{ id: 24, start: '5‿1‿4‿2‿3', target: '15', runes: [R.sumf, R.prodf, R.maxf] },
+	{ id: 24, start: '5‿1‿4‿2‿3', target: '1', runes: [R.minf, R.prodf, R.maxf] },
 	{ id: 25, start: '1‿2‿3‿4‿5', target: '30', runes: [R.sumf, R.mul2, R.add5] },
 	{ id: 26, start: '1‿2‿3', target: '12', runes: [R.mul2, R.sumf] },
 	{ id: 27, start: '5', target: '10', runes: [R.range, R.sumf] },
@@ -169,7 +169,7 @@ export const levels: Level[] = [
 	// Block 6 — Shape: reshape and transpose
 	// ============================================================
 	{ id: 51, start: '7', target: '7‿7‿7', runes: [R.rep3, R.rep4] },
-	{ id: 52, start: '7', target: '7‿7‿7‿7', runes: [R.rep3, R.rep4, R.rev] },
+	{ id: 52, start: '7', target: '49‿49‿49', runes: [R.rep3, R.rep4, R.square] },
 	{ id: 53, start: '1‿2‿3‿4‿5‿6', target: '2‿3⥊1‿2‿3‿4‿5‿6', runes: [R.rs23, R.rs32] },
 	{
 		id: 54,
@@ -213,7 +213,7 @@ export const levels: Level[] = [
 	{ id: 64, start: '"hello"', target: '"leh"', runes: [R.rev, R.drop2, R.take3] },
 	{ id: 65, start: '"banana"', target: '"banan"', runes: [R.drop1, R.rev, R.take3] },
 	{ id: 66, start: '"banana"', target: '"ananab"', runes: [R.rot1] },
-	{ id: 67, start: '"hello"', target: '5', runes: [R.len] },
+	{ id: 67, start: '"hello"', target: '25', runes: [R.len, R.square] },
 	{ id: 68, start: '"hello"', target: '"olle"', runes: [R.rev, R.drop1, R.take3] },
 	{ id: 69, start: '"banana"', target: '"nnbaaa"', runes: [R.sortup, R.rev] },
 	{
@@ -248,17 +248,17 @@ export const levels: Level[] = [
 	{
 		id: 80,
 		start: '5‿2‿8‿1‿9‿3',
-		target: '8',
+		target: '9',
 		runes: [R.sortdn, R.pick2, R.first]
 	},
 
 	// ============================================================
 	// Block 9 — Element-wise: broadcasting and squaring lists
 	// ============================================================
-	{ id: 81, start: '1‿2‿3', target: '1‿4‿9', runes: [R.square] },
+	{ id: 81, start: '0‿1‿2', target: '1‿4‿9', runes: [R.square, R.add1] },
 	{ id: 82, start: '1‿2‿3', target: '4‿16‿36', runes: [R.square, R.double] },
 	{ id: 83, start: '0‿1‿2‿3', target: '1‿4‿9‿16', runes: [R.square, R.add1] },
-	{ id: 84, start: '4‿8‿12', target: '1‿2‿3', runes: [R.div2, R.div3, R.div4] },
+	{ id: 84, start: '4‿8‿12', target: '1‿2‿3', runes: [R.div2, R.div3] },
 	{ id: 85, start: '10‿8‿6', target: '4‿3‿2', runes: [R.div2, R.sub1] },
 	{ id: 86, start: '1‿2‿3‿4', target: '4‿9‿16‿25', runes: [R.add1, R.square] },
 	{ id: 87, start: '1‿2‿3', target: '14', runes: [R.square, R.sumf] },
@@ -314,8 +314,8 @@ export const levels: Level[] = [
 	{
 		id: 98,
 		start: '"banana"',
-		target: '6',
-		runes: [R.len, R.sortup, R.rev]
+		target: '36',
+		runes: [R.len, R.square, R.rev]
 	},
 	{
 		id: 99,
