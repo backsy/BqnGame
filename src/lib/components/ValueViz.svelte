@@ -35,11 +35,20 @@
 {:else if typeof value === 'string'}
 	<div class="char bqn">{value}</div>
 {:else if isArray(value) && shape(value).length === 1}
-	<div class="row">
-		{#each value as item}
-			<Self {max} value={item} />
-		{/each}
-	</div>
+	{@const allArrays = value.length > 0 && value.every((v) => Array.isArray(v))}
+	{#if allArrays}
+		<div class="stack">
+			{#each value as item}
+				<Self {max} value={item} />
+			{/each}
+		</div>
+	{:else}
+		<div class="row">
+			{#each value as item}
+				<Self {max} value={item} />
+			{/each}
+		</div>
+	{/if}
 {:else if isArray(value) && shape(value).length === 2}
 	{@const sh = shape(value)}
 	<div class="grid" style="grid-template-columns: repeat({sh[1]}, auto)">
@@ -83,6 +92,12 @@
 		display: flex;
 		align-items: flex-end;
 		gap: 0.25rem;
+	}
+	.stack {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.4rem;
 	}
 	.grid {
 		display: grid;
