@@ -84,11 +84,6 @@
 <div class="game" style="height: {appHeight};">
 	<header class="head">
 		<span class="lvl">Level {level.id}</span>
-		<div class="head-actions">
-			<button type="button" class="ha" onclick={undo} disabled={history.length === 0}>undo</button>
-			<button type="button" class="ha" onclick={reset} disabled={history.length === 0}>reset</button>
-			<span class="moves">{history.length}</span>
-		</div>
 		<a class="link" href="{base}/sandbox/">sandbox →</a>
 	</header>
 
@@ -101,6 +96,12 @@
 			<div class="cap">now</div>
 			<div class="viz"><ValueViz value={currentValue} /></div>
 		</div>
+	</section>
+
+	<section class="actions">
+		<button type="button" class="ha" onclick={undo} disabled={history.length === 0}>undo</button>
+		<button type="button" class="ha" onclick={reset} disabled={history.length === 0}>reset</button>
+		<span class="moves">{history.length} {history.length === 1 ? 'move' : 'moves'}</span>
 	</section>
 
 	{#if solved}
@@ -122,7 +123,7 @@
 <style>
 	.game {
 		display: grid;
-		grid-template-rows: auto 1fr auto;
+		grid-template-rows: auto 1fr auto auto;
 		background: var(--bg);
 		overflow: hidden;
 	}
@@ -157,22 +158,23 @@
 		letter-spacing: 0.1em;
 		flex: 0 0 auto;
 	}
-	.head-actions {
+	.actions {
 		display: flex;
-		gap: 0.4rem;
+		gap: 0.5rem;
 		align-items: center;
-		flex: 1 1 auto;
 		justify-content: center;
+		padding: 0.25rem 1rem;
 	}
 	.ha {
 		all: unset;
-		padding: 0.35rem 0.7rem;
+		padding: 0.4rem 0.85rem;
 		border: 1px solid #2a2a2a;
 		background: transparent;
 		color: #aaa;
 		border-radius: 0.4rem;
-		font-size: 0.85rem;
+		font-size: 0.9rem;
 		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
 	}
 	.ha:active {
 		background: #1a1a1a;
