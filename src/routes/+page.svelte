@@ -8,6 +8,8 @@
 	let levelIndex = $state(0);
 	let history = $state<string[]>([]); // accumulated rune.expr strings
 
+	const STORAGE_KEY = 'bqngame-level';
+
 	const level = $derived(levels[levelIndex]);
 
 	const stateExpr = $derived(
@@ -54,12 +56,28 @@
 
 	let appHeight = $state('100dvh');
 	onMount(() => {
+		const saved = localStorage.getItem(STORAGE_KEY);
+		if (saved !== null) {
+			const n = parseInt(saved, 10);
+			if (!Number.isNaN(n) && n >= 0 && n < levels.length) {
+				levelIndex = n;
+			}
+		}
 		const vv = window.visualViewport;
 		if (!vv) return;
 		const update = () => (appHeight = `${vv.height}px`);
 		update();
 		vv.addEventListener('resize', update);
 		return () => vv.removeEventListener('resize', update);
+	});
+
+	$effect(() => {
+		// Persist on every change of levelIndex.
+		try {
+			localStorage.setItem(STORAGE_KEY, String(levelIndex));
+		} catch {
+			// localStorage may be disabled (private mode); silently ignore.
+		}
 	});
 </script>
 
