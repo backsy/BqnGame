@@ -63,6 +63,11 @@
 		}
 	}
 
+	function resetProgress() {
+		levelIndex = 0;
+		history = [];
+	}
+
 	let appHeight = $state('100dvh');
 	onMount(() => {
 		const saved = localStorage.getItem(STORAGE_KEY);
@@ -93,7 +98,10 @@
 <div class="game" style="height: {appHeight};">
 	<header class="head">
 		<span class="lvl">Level {level.id}</span>
-		<a class="link" href="{base}/sandbox/">sandbox →</a>
+		<span class="head-right">
+			<button type="button" class="link link-btn" onclick={resetProgress}>reset</button>
+			<a class="link" href="{base}/sandbox/">sandbox →</a>
+		</span>
 	</header>
 
 	<section class="middle board">
@@ -202,6 +210,16 @@
 		font-size: 0.85rem;
 		text-decoration: none;
 		flex: 0 0 auto;
+	}
+	.head-right {
+		display: flex;
+		align-items: center;
+		gap: 0.9rem;
+	}
+	.link-btn {
+		all: unset;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
 	}
 	.board {
 		display: flex;
