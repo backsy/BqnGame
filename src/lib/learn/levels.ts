@@ -191,14 +191,17 @@ export const levels: Level[] = [
 			{ glyph: '⌽', expr: '⌽' }
 		]
 	},
-	// Level 18 — length of a row.
+	// Level 18 — length of a row. Start values deliberately don't
+	// include the answer so the user can't read "the biggest one is
+	// the answer" off the picture; only the count matches.
 	{
 		id: 18,
-		start: '1‿2‿3‿4',
+		start: '5‿6‿7‿8',
 		target: '4',
 		runes: [
 			{ glyph: '≠', expr: '≠' },
-			{ glyph: '+´', expr: '+´' }
+			{ glyph: '+´', expr: '+´' },
+			{ glyph: '⌈´', expr: '⌈´' }
 		]
 	},
 	// Level 19 — square each. self-multiply broadcasts elementwise.
