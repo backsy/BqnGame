@@ -17,7 +17,9 @@ const matches = (a, b) => {
 const toJs = (v) =>
 	v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? unstr(v) : String(v);
 
-const MAX_DEPTH = 6;
+const MAX_DEPTH = 5;
+const MAX_STATES = 5000;
+const PER_LEVEL_TIMEOUT_MS = 4000;
 
 let totalOk = 0;
 let totalBad = 0;
@@ -26,8 +28,14 @@ for (const level of levels) {
 	const seen = new Set();
 	const start = level.start;
 	let found = null;
+	let exhausted = false;
 	const queue = [{ expr: start, path: [] }];
+	const deadline = Date.now() + PER_LEVEL_TIMEOUT_MS;
 	while (queue.length) {
+		if (Date.now() > deadline || seen.size > MAX_STATES) {
+			exhausted = true;
+			break;
+		}
 		const { expr, path } = queue.shift();
 		if (matches(expr, level.target)) {
 			found = path;
@@ -42,6 +50,7 @@ for (const level of levels) {
 			} catch {
 				continue;
 			}
+			if (key.length > 500) continue; // skip absurdly large states
 			if (seen.has(key)) continue;
 			seen.add(key);
 			queue.push({ expr: next, path: [...path, rune.glyph] });
@@ -53,7 +62,9 @@ for (const level of levels) {
 		console.log(`Level ${level.id} OK in ${found.length} taps: [${found.join(', ')}]`);
 	} else {
 		totalBad++;
-		console.log(`Level ${level.id} UNREACHABLE within ${MAX_DEPTH} taps`);
+		console.log(
+			`Level ${level.id} ${exhausted ? 'EXHAUSTED' : 'UNREACHABLE'} (${seen.size} states explored)`
+		);
 	}
 }
 
