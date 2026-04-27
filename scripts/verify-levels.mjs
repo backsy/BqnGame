@@ -2,68 +2,59 @@
 // using only the listed runes via at least one tap-sequence (BFS over
 // rune applications, capped depth). Run with:
 //   node --experimental-strip-types scripts/verify-levels.mjs
+//
+// The vendored BQN interpreter retains state across many evaluations,
+// so we run each level in a fresh child process to keep memory bounded.
 
-import { compile, run, fmt, unstr } from '../src/lib/bqn/vendor/bqn.js';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
 import { levels } from '../src/lib/learn/levels.ts';
 
-const evalRaw = (src) => run(...compile(src));
-const matches = (a, b) => {
-	try {
-		return evalRaw(`(${a}) ≡ (${b})`) === 1;
-	} catch {
-		return false;
-	}
-};
-const toJs = (v) =>
-	v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? unstr(v) : String(v);
-
-const MAX_DEPTH = 5;
-const MAX_STATES = 5000;
-const PER_LEVEL_TIMEOUT_MS = 4000;
+const here = dirname(fileURLToPath(import.meta.url));
+const worker = resolve(here, 'verify-level-worker.mjs');
 
 let totalOk = 0;
 let totalBad = 0;
 
 for (const level of levels) {
-	const seen = new Set();
-	const start = level.start;
-	let found = null;
-	let exhausted = false;
-	const queue = [{ expr: start, path: [] }];
-	const deadline = Date.now() + PER_LEVEL_TIMEOUT_MS;
-	while (queue.length) {
-		if (Date.now() > deadline || seen.size > MAX_STATES) {
-			exhausted = true;
-			break;
+	const res = spawnSync(
+		process.execPath,
+		['--experimental-strip-types', worker],
+		{
+			input: JSON.stringify(level),
+			encoding: 'utf8',
+			maxBuffer: 8 * 1024 * 1024,
+			timeout: 15000
 		}
-		const { expr, path } = queue.shift();
-		if (matches(expr, level.target)) {
-			found = path;
-			break;
-		}
-		if (path.length >= MAX_DEPTH) continue;
-		for (const rune of level.runes) {
-			const next = `(${rune.expr}) (${expr})`;
-			let key;
-			try {
-				key = toJs(fmt(evalRaw(next)));
-			} catch {
-				continue;
-			}
-			if (key.length > 500) continue; // skip absurdly large states
-			if (seen.has(key)) continue;
-			seen.add(key);
-			queue.push({ expr: next, path: [...path, rune.glyph] });
-		}
+	);
+	const out = (res.stdout || '').trim();
+	if (res.status !== 0 || !out) {
+		totalBad++;
+		console.log(
+			`Level ${level.id} CRASHED (status=${res.status}, signal=${res.signal})`
+		);
+		continue;
 	}
-
-	if (found) {
+	const last = out.split('\n').pop();
+	let parsed;
+	try {
+		parsed = JSON.parse(last);
+	} catch {
+		totalBad++;
+		console.log(`Level ${level.id} BAD-OUTPUT: ${last.slice(0, 120)}`);
+		continue;
+	}
+	if (parsed.found) {
 		totalOk++;
-		console.log(`Level ${level.id} OK in ${found.length} taps: [${found.join(', ')}]`);
+		console.log(
+			`Level ${level.id} OK in ${parsed.found.length} taps: [${parsed.found.join(', ')}]`
+		);
 	} else {
 		totalBad++;
 		console.log(
-			`Level ${level.id} ${exhausted ? 'EXHAUSTED' : 'UNREACHABLE'} (${seen.size} states explored)`
+			`Level ${level.id} ${parsed.exhausted ? 'EXHAUSTED' : 'UNREACHABLE'} (${parsed.seen} states explored)`
 		);
 	}
 }
