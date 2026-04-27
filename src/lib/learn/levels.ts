@@ -809,7 +809,10 @@ export const levels: Level[] = [
 		start: '"abc"',
 		target: '"cba"',
 		runes: [
-			{ glyph: '⌽', expr: '⌽' }
+			{ glyph: '⌽', expr: '⌽' },
+			{ glyph: '1↑', expr: '1⊸↑' },
+			{ glyph: '2↑', expr: '2⊸↑' },
+			{ glyph: '∧', expr: '∧' }
 		]
 	},
 
