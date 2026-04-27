@@ -5,11 +5,13 @@
 //
 // Runes are unary: `result = (rune.expr) (current)`.
 //
-// The level list is organised as ten themed blocks of ten. We open with the
+// The level list is organised as themed blocks of ten. We open with the
 // most visually immediate primitives (⌽ reverse, ↕ range) so the first
 // minute feels like rearranging shapes, not arithmetic. Scalar arithmetic
 // shows up earlier as broadcast-over-rows ("sneak it in") and only gets its
 // own block much later, reframed as fine control over a single value.
+// Predicates and filter (Block 11) unlock the count-occurrences /
+// keep-where idioms that make APL feel like APL.
 
 export interface Rune {
 	glyph: string;
@@ -71,7 +73,15 @@ const R = {
 	rep3: { glyph: '3⥊', expr: '3⊸⥊' },
 	rep4: { glyph: '4⥊', expr: '4⊸⥊' },
 	transp: { glyph: '⍉', expr: '⍉' },
-	deshape: { glyph: '⥊', expr: '⥊' }
+	deshape: { glyph: '⥊', expr: '⥊' },
+	eq3: { glyph: '=3', expr: '=⟜3' },
+	eq1: { glyph: '=1', expr: '=⟜1' },
+	lt3: { glyph: '<3', expr: '<⟜3' },
+	lt5: { glyph: '<5', expr: '<⟜5' },
+	gt2: { glyph: '>2', expr: '>⟜2' },
+	keepLt5: { glyph: '/<5', expr: '(<⟜5)⊸/' },
+	keepLt6: { glyph: '/<6', expr: '(<⟜6)⊸/' },
+	keepEq1: { glyph: '/=1', expr: '(=⟜1)⊸/' }
 };
 
 export const levels: Level[] = [
@@ -333,5 +343,25 @@ export const levels: Level[] = [
 		start: '4',
 		target: '24',
 		runes: [R.range, R.add1, R.prodf, R.sumf]
+	},
+
+	// ============================================================
+	// Block 11 — Predicates & filter: =, <, > and (P⊸/) keep-where
+	// L103 (count occurrences via +´∘=⟜N) is the moment APL clicks.
+	// ============================================================
+	{ id: 101, start: '1‿2‿3', target: '0‿0‿1', runes: [R.eq3] },
+	{ id: 102, start: '5‿2‿8‿1‿9', target: '0‿1‿0‿1‿0', runes: [R.lt5] },
+	{ id: 103, start: '1‿3‿3‿2‿3', target: '3', runes: [R.eq3, R.sumf] },
+	{ id: 104, start: '2‿7‿3‿9‿4', target: '2‿3‿4', runes: [R.keepLt5] },
+	{ id: 105, start: '1‿8‿2‿7‿3', target: '6', runes: [R.keepLt5, R.sumf] },
+	{ id: 106, start: '1‿3‿1‿2‿1‿4', target: '1‿1‿1', runes: [R.keepEq1] },
+	{ id: 107, start: '5‿2‿8‿1‿9‿3', target: '2', runes: [R.lt3, R.sumf] },
+	{ id: 108, start: '2‿7‿3‿9‿4‿1', target: '4', runes: [R.keepLt5, R.len] },
+	{ id: 109, start: '5‿2‿8‿1‿9‿3', target: '5', runes: [R.keepLt6, R.maxf] },
+	{
+		id: 110,
+		start: '5',
+		target: '30',
+		runes: [R.range, R.add1, R.keepLt5, R.square, R.sumf]
 	}
 ];
