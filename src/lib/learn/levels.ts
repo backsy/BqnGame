@@ -80,11 +80,11 @@ export const levels: Level[] = [
 	// Open on the most visual primitives. Arithmetic sneaks in at the
 	// end as something that broadcasts over a row.
 	// ============================================================
-	{ id: 1, start: '1‿2‿3', target: '2‿3‿1', runes: [R.rot1] },
-	{ id: 2, start: '1‿2‿3', target: '3‿2‿1', runes: [R.rev, R.rot1] },
-	{ id: 3, start: '5', target: '↕5', runes: [R.range] },
-	{ id: 4, start: '5', target: '4‿3‿2‿1‿0', runes: [R.range, R.rev] },
-	{ id: 5, start: '5‿4‿3‿2‿1', target: '1‿2‿3', runes: [R.rev, R.take3, R.drop2] },
+	{ id: 1, start: '1‿2‿3', target: '3‿2‿1', runes: [R.rev] },
+	{ id: 2, start: '5', target: '↕5', runes: [R.range] },
+	{ id: 3, start: '5', target: '4‿3‿2‿1‿0', runes: [R.range, R.rev] },
+	{ id: 4, start: '5‿4‿3‿2‿1', target: '1‿2‿3', runes: [R.rev, R.take3, R.drop2] },
+	{ id: 5, start: '1‿2‿3‿4‿5', target: '5‿4', runes: [R.rev, R.take2, R.drop3] },
 	{ id: 6, start: '1‿2‿3‿4‿5', target: '5‿4‿3', runes: [R.take3, R.rev] },
 	{ id: 7, start: '1‿2‿3', target: '5‿6‿7', runes: [R.add1, R.add3] },
 	{ id: 8, start: '1‿2‿3', target: '4‿8‿12', runes: [R.mul2, R.add1] },
