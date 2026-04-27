@@ -116,6 +116,13 @@
 		padding: 1rem;
 		box-sizing: border-box;
 		z-index: 200;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-touch-callout: none;
+	}
+	.search-input {
+		user-select: text;
+		-webkit-user-select: text;
 	}
 	.modal {
 		width: min(28rem, 100%);

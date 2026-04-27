@@ -262,6 +262,9 @@
 		place-items: center;
 		padding: 1rem;
 		z-index: 100;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-touch-callout: none;
 	}
 	.help-card {
 		position: relative;
