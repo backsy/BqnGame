@@ -156,6 +156,7 @@
 
 	export interface EditorApi {
 		insert: (text: string) => void;
+		setValue: (text: string) => void;
 		value: () => string;
 		focus: () => void;
 		blur: () => void;
@@ -305,6 +306,12 @@
 			},
 			value() {
 				return view?.state.doc.toString() ?? '';
+			},
+			setValue(text) {
+				if (!view) return;
+				view.dispatch({
+					changes: { from: 0, to: view.state.doc.length, insert: text }
+				});
 			},
 			focus() {
 				view?.focus();

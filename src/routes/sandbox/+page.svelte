@@ -5,6 +5,10 @@
 	import GlyphPalette from '$lib/components/GlyphPalette.svelte';
 	import GlyphSearch from '$lib/components/GlyphSearch.svelte';
 	import { BqnClient } from '$lib/bqn/client';
+	import { levels } from '$lib/learn/levels';
+
+	const LEVEL_KEY = 'bqngame-level';
+	const HISTORY_KEY = 'bqngame-history';
 
 	let editor: EditorApi | undefined = $state();
 	let paletteOpen = $state(false);
@@ -65,6 +69,67 @@
 		if (next) editor?.blur();
 	}
 
+	function chooseLevel() {
+		const ans = prompt(`Jump to level (1–${levels.length})`);
+		if (ans === null) return;
+		const n = parseInt(ans, 10);
+		if (Number.isNaN(n) || n < 1 || n > levels.length) return;
+		try {
+			localStorage.setItem(LEVEL_KEY, String(n - 1));
+			localStorage.removeItem(HISTORY_KEY);
+		} catch {
+			// localStorage disabled; nothing to do
+		}
+		window.location.href = `${base}/`;
+	}
+
+	function exportMoves() {
+		const lvlRaw = (() => {
+			try {
+				return localStorage.getItem(LEVEL_KEY);
+			} catch {
+				return null;
+			}
+		})();
+		const histRaw = (() => {
+			try {
+				return localStorage.getItem(HISTORY_KEY);
+			} catch {
+				return null;
+			}
+		})();
+		const idx = (() => {
+			const n = parseInt(lvlRaw ?? '0', 10);
+			return Number.isFinite(n) && n >= 0 && n < levels.length ? n : 0;
+		})();
+		const hist: string[] = (() => {
+			try {
+				const p = histRaw == null ? [] : JSON.parse(histRaw);
+				return Array.isArray(p) && p.every((s) => typeof s === 'string') ? p : [];
+			} catch {
+				return [];
+			}
+		})();
+		const lvl = levels[idx];
+		const finalExpr = hist.reduce(
+			(acc, runeExpr) => `(${runeExpr}) (${acc})`,
+			lvl.start
+		);
+		const lines = [
+			`Level ${lvl.id}`,
+			`start:  ${lvl.start}`,
+			`target: ${lvl.target}`,
+			`moves (${hist.length}):`,
+			...hist.map((expr, i) => `  ${i + 1}. (${expr})`),
+			`final expression:`,
+			`  ${finalExpr}`
+		];
+		const text = lines.join('\n');
+		// Replace editor contents so the user can read / run / share it.
+		editor?.setValue(text);
+		navigator.clipboard?.writeText(text).catch(() => {});
+	}
+
 	async function run() {
 		if (!client || !editor || running) return;
 		running = true;
@@ -90,6 +155,11 @@
 	</section>
 
 	<GlyphPalette oninsert={insert} open={paletteOpen} onToggle={onPaletteToggle} />
+
+	<section class="debug" aria-label="debug">
+		<button type="button" class="dbg" onclick={chooseLevel}>level…</button>
+		<button type="button" class="dbg" onclick={exportMoves}>export moves</button>
+	</section>
 
 	<section class="lowest" aria-label="controls">
 		<a class="link" href="{base}/">← game</a>
@@ -147,9 +217,27 @@
 <style>
 	.app {
 		display: grid;
-		grid-template-rows: 1fr auto auto;
+		grid-template-rows: 1fr auto auto auto;
 		background: var(--bg);
 		overflow: hidden;
+	}
+	.debug {
+		display: flex;
+		gap: 0.5rem;
+		padding: 0 0.75rem;
+	}
+	.dbg {
+		all: unset;
+		font-size: 0.75rem;
+		color: #888;
+		border: 1px dashed #333;
+		border-radius: 0.3rem;
+		padding: 0.2rem 0.5rem;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.dbg:active {
+		background: #1a1a1a;
 	}
 
 	.editor {

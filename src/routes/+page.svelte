@@ -9,6 +9,7 @@
 	let history = $state<string[]>([]); // accumulated rune.expr strings
 
 	const STORAGE_KEY = 'bqngame-level';
+	const HISTORY_KEY = 'bqngame-history';
 
 	const level = $derived(levels[levelIndex]);
 
@@ -86,6 +87,17 @@
 				levelIndex = n;
 			}
 		}
+		const savedHist = localStorage.getItem(HISTORY_KEY);
+		if (savedHist !== null) {
+			try {
+				const parsed = JSON.parse(savedHist);
+				if (Array.isArray(parsed) && parsed.every((s) => typeof s === 'string')) {
+					history = parsed;
+				}
+			} catch {
+				// stale data; ignore
+			}
+		}
 		const vv = window.visualViewport;
 		if (!vv) return;
 		const update = () => (appHeight = `${vv.height}px`);
@@ -95,9 +107,10 @@
 	});
 
 	$effect(() => {
-		// Persist on every change of levelIndex.
+		// Persist on every change of levelIndex / history.
 		try {
 			localStorage.setItem(STORAGE_KEY, String(levelIndex));
+			localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 		} catch {
 			// localStorage may be disabled (private mode); silently ignore.
 		}
