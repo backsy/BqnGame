@@ -44,6 +44,8 @@
 		Math.max(findMaxNum(currentValue), findMaxNum(targetValue), 4)
 	);
 
+	const isLastLevel = $derived(levelIndex === levels.length - 1);
+
 	function applyRune(expr: string) {
 		if (solved) return;
 		history = [...history, expr];
@@ -144,10 +146,19 @@
 	</section>
 
 	{#if solved}
-		<section class="solved">
-			<span class="check">✓</span>
-			<button type="button" class="next" onclick={nextLevel}>next level →</button>
-		</section>
+		{#if isLastLevel}
+			<section class="solved finale">
+				<span class="finale-msg">
+					🎉 you finished all {levels.length} levels — that's all there is for now!
+				</span>
+				<button type="button" class="next" onclick={resetProgress}>start over</button>
+			</section>
+		{:else}
+			<section class="solved">
+				<span class="check">✓</span>
+				<button type="button" class="next" onclick={nextLevel}>next level →</button>
+			</section>
+		{/if}
 	{:else}
 		<section class="runes">
 			{#each level.runes as r}
@@ -285,6 +296,17 @@
 		justify-content: center;
 		align-items: center;
 		gap: 0.75rem;
+	}
+	.finale {
+		flex-direction: column;
+		gap: 0.6rem;
+		text-align: center;
+	}
+	.finale-msg {
+		color: #d7f0d7;
+		font-size: 1rem;
+		line-height: 1.4;
+		max-width: 28rem;
 	}
 	.check {
 		color: #5fcc5f;
