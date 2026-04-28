@@ -102,7 +102,10 @@ const R = {
 	wins4: { glyph: '4↕', expr: '4⊸↕' },
 	rowsum: { glyph: '+´˘', expr: '+´˘' },
 	rowmax: { glyph: '⌈´˘', expr: '⌈´˘' },
-	rowmin: { glyph: '⌊´˘', expr: '⌊´˘' }
+	rowmin: { glyph: '⌊´˘', expr: '⌊´˘' },
+	mod2: { glyph: '2|', expr: '2⊸|' },
+	mod3: { glyph: '3|', expr: '3⊸|' },
+	mod10: { glyph: '10|', expr: '10⊸|' }
 };
 
 export const levels: Level[] = [
@@ -569,5 +572,42 @@ export const levels: Level[] = [
 		start: '5‿1‿4‿2‿3',
 		target: '3‿4‿4‿5',
 		runes: [R.wins2, R.rowmax, R.rev]
+	},
+
+	// ============================================================
+	// Block 16 — Modulus: w|x is x mod w (BQN reads "divide w into x").
+	// 2⊸| gives the parity (1 = odd, 0 = even); 3⊸| cycles 0,1,2;
+	// 10⊸| pulls the last digit. Combined with +´ you can count odds
+	// or sum cycle-residues.
+	// ============================================================
+	{ id: 151, start: '1‿2‿3‿4', target: '1‿0‿1‿0', runes: [R.mod2] },
+	{ id: 152, start: '1‿2‿3‿4‿5‿6', target: '1‿2‿0‿1‿2‿0', runes: [R.mod3] },
+	{ id: 153, start: '13‿27‿35', target: '3‿7‿5', runes: [R.mod10] },
+	{ id: 154, start: '5', target: '0‿1‿0‿1‿0', runes: [R.range, R.mod2] },
+	{
+		id: 155,
+		start: '6',
+		target: '1‿2‿0‿1‿2‿0',
+		runes: [R.range, R.add1, R.mod3]
+	},
+	{ id: 156, start: '1‿2‿3‿4‿5', target: '3', runes: [R.mod2, R.sumf] },
+	{
+		id: 157,
+		start: '6',
+		target: '3',
+		runes: [R.range, R.mod2, R.sumf]
+	},
+	{ id: 158, start: '24‿15‿8‿3', target: '0‿1‿0‿1', runes: [R.mod2] },
+	{
+		id: 159,
+		start: '5',
+		target: '4',
+		runes: [R.range, R.mod3, R.sumf]
+	},
+	{
+		id: 160,
+		start: '1‿2‿3‿4‿5‿6',
+		target: '24',
+		runes: [R.mod3, R.sumf, R.mul2]
 	}
 ];

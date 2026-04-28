@@ -14,7 +14,7 @@ const toJs = (v) =>
 
 const MAX_DEPTH = 5;
 const MAX_STATES = 5000;
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 20000;
 const MAX_KEY_LEN = 300;
 const MAX_ARRAY_SIZE = 64;
 

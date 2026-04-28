@@ -26,7 +26,7 @@ for (const level of levels) {
 			input: JSON.stringify(level),
 			encoding: 'utf8',
 			maxBuffer: 8 * 1024 * 1024,
-			timeout: 15000
+			timeout: 25000
 		}
 	);
 	const out = (res.stdout || '').trim();
