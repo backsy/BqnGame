@@ -91,7 +91,12 @@ const R = {
 	selfcat: { glyph: '∾˜', expr: '∾˜' },
 	appDef: { glyph: '∾"def"', expr: '∾⟜"def"' },
 	prepHello: { glyph: '"hi "∾', expr: '"hi "⊸∾' },
-	appBang: { glyph: '∾"!"', expr: '∾⟜"!"' }
+	appBang: { glyph: '∾"!"', expr: '∾⟜"!"' },
+	addtab: { glyph: '+⌜˜', expr: '+⌜˜' },
+	multtab: { glyph: '×⌜˜', expr: '×⌜˜' },
+	idtab: { glyph: '=⌜˜', expr: '=⌜˜' },
+	lttab: { glyph: '<⌜˜', expr: '<⌜˜' },
+	gttab: { glyph: '>⌜˜', expr: '>⌜˜' }
 };
 
 export const levels: Level[] = [
@@ -444,5 +449,67 @@ export const levels: Level[] = [
 		start: '3',
 		target: '5‿4‿3‿2‿1',
 		runes: [R.range, R.add1, R.app45, R.rev]
+	},
+
+	// ============================================================
+	// Block 14 — Tables: F⌜ takes a dyadic verb and runs it across
+	// every (i,j) pair. F⌜˜ pairs x against itself, producing a grid.
+	// ↕5 paired with =⌜˜ is the 5×5 identity matrix; with <⌜˜ /
+	// >⌜˜ you get strict upper / lower triangles.
+	// ============================================================
+	{ id: 131, start: '1‿2‿3', target: '1‿2‿3 +⌜ 1‿2‿3', runes: [R.addtab] },
+	{
+		id: 132,
+		start: '1‿2‿3‿4',
+		target: '1‿2‿3‿4 ×⌜ 1‿2‿3‿4',
+		runes: [R.multtab]
+	},
+	{
+		id: 133,
+		start: '4',
+		target: '(↕4) +⌜ (↕4)',
+		runes: [R.range, R.addtab]
+	},
+	{
+		id: 134,
+		start: '4',
+		target: '1‿2‿3‿4 +⌜ 1‿2‿3‿4',
+		runes: [R.range, R.add1, R.addtab]
+	},
+	{
+		id: 135,
+		start: '4',
+		target: '(↕4) =⌜ (↕4)',
+		runes: [R.range, R.idtab]
+	},
+	{
+		id: 136,
+		start: '4',
+		target: '(↕4) <⌜ (↕4)',
+		runes: [R.range, R.lttab]
+	},
+	{
+		id: 137,
+		start: '5',
+		target: '(↕5) >⌜ (↕5)',
+		runes: [R.range, R.gttab]
+	},
+	{
+		id: 138,
+		start: '1‿2‿3',
+		target: '(1‿2‿3∾1‿2‿3) +⌜ (1‿2‿3∾1‿2‿3)',
+		runes: [R.selfcat, R.addtab]
+	},
+	{
+		id: 139,
+		start: '4',
+		target: '100',
+		runes: [R.range, R.add1, R.multtab, R.deshape, R.sumf]
+	},
+	{
+		id: 140,
+		start: '5',
+		target: '25',
+		runes: [R.range, R.idtab, R.deshape, R.len]
 	}
 ];
