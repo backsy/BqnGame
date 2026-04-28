@@ -81,7 +81,17 @@ const R = {
 	gt2: { glyph: '>2', expr: '>⟜2' },
 	keepLt5: { glyph: '/<5', expr: '(<⟜5)⊸/' },
 	keepLt6: { glyph: '/<6', expr: '(<⟜6)⊸/' },
-	keepEq1: { glyph: '/=1', expr: '(=⟜1)⊸/' }
+	keepEq1: { glyph: '/=1', expr: '(=⟜1)⊸/' },
+	app34: { glyph: '∾3‿4', expr: '∾⟜3‿4' },
+	app45: { glyph: '∾4‿5', expr: '∾⟜4‿5' },
+	app345: { glyph: '∾3‿4‿5', expr: '∾⟜3‿4‿5' },
+	app4: { glyph: '∾⟨4⟩', expr: '∾⟜⟨4⟩' },
+	app5: { glyph: '∾⟨5⟩', expr: '∾⟜⟨5⟩' },
+	prep12: { glyph: '1‿2∾', expr: '1‿2⊸∾' },
+	selfcat: { glyph: '∾˜', expr: '∾˜' },
+	appDef: { glyph: '∾"def"', expr: '∾⟜"def"' },
+	prepHello: { glyph: '"hi "∾', expr: '"hi "⊸∾' },
+	appBang: { glyph: '∾"!"', expr: '∾⟜"!"' }
 };
 
 export const levels: Level[] = [
@@ -384,5 +394,55 @@ export const levels: Level[] = [
 		start: '3',
 		target: '6‿4‿2',
 		runes: [R.range, R.add1, R.mul2, R.rev]
+	},
+
+	// ============================================================
+	// Block 13 — Joining: ∾ glues two lists end-to-end. Bound forms
+	// like (1‿2)⊸∾ prepend, ∾⟜(4‿5) append. ∾˜ joins x to itself.
+	// ============================================================
+	{ id: 121, start: '3‿4', target: '1‿2‿3‿4', runes: [R.prep12, R.app34] },
+	{
+		id: 122,
+		start: '1‿2',
+		target: '1‿2‿3‿4‿5',
+		runes: [R.app34, R.app5, R.app45]
+	},
+	{ id: 123, start: '1‿2', target: '1‿2‿1‿2', runes: [R.selfcat] },
+	{
+		id: 124,
+		start: '1‿2‿3',
+		target: '1‿2‿3‿1‿2‿3‿4‿5',
+		runes: [R.selfcat, R.app45]
+	},
+	{
+		id: 125,
+		start: '1‿2',
+		target: '5‿4‿3‿2‿1',
+		runes: [R.app345, R.rev, R.sortdn]
+	},
+	{ id: 126, start: '"abc"', target: '"abcdef"', runes: [R.appDef, R.rev] },
+	{
+		id: 127,
+		start: '"world"',
+		target: '"hi world"',
+		runes: [R.prepHello, R.appBang]
+	},
+	{
+		id: 128,
+		start: '"world"',
+		target: '"hi world!"',
+		runes: [R.prepHello, R.appBang]
+	},
+	{
+		id: 129,
+		start: '4',
+		target: '0‿1‿2‿3‿4',
+		runes: [R.range, R.app4, R.add1]
+	},
+	{
+		id: 130,
+		start: '3',
+		target: '5‿4‿3‿2‿1',
+		runes: [R.range, R.add1, R.app45, R.rev]
 	}
 ];
