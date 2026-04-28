@@ -96,7 +96,13 @@ const R = {
 	multtab: { glyph: '×⌜˜', expr: '×⌜˜' },
 	idtab: { glyph: '=⌜˜', expr: '=⌜˜' },
 	lttab: { glyph: '<⌜˜', expr: '<⌜˜' },
-	gttab: { glyph: '>⌜˜', expr: '>⌜˜' }
+	gttab: { glyph: '>⌜˜', expr: '>⌜˜' },
+	wins2: { glyph: '2↕', expr: '2⊸↕' },
+	wins3: { glyph: '3↕', expr: '3⊸↕' },
+	wins4: { glyph: '4↕', expr: '4⊸↕' },
+	rowsum: { glyph: '+´˘', expr: '+´˘' },
+	rowmax: { glyph: '⌈´˘', expr: '⌈´˘' },
+	rowmin: { glyph: '⌊´˘', expr: '⌊´˘' }
 };
 
 export const levels: Level[] = [
@@ -511,5 +517,57 @@ export const levels: Level[] = [
 		start: '5',
 		target: '25',
 		runes: [R.range, R.idtab, R.deshape, R.len]
+	},
+
+	// ============================================================
+	// Block 15 — Windows: n↕x slides a length-n frame across x and
+	// stacks the windows as rows. Pair it with +´˘ / ⌈´˘ / ⌊´˘ —
+	// the ˘ "cells" modifier runs the fold once per row — and you
+	// get sliding sums, sliding max, sliding min.
+	// ============================================================
+	{ id: 141, start: '1‿2‿3‿4', target: '2↕1‿2‿3‿4', runes: [R.wins2] },
+	{ id: 142, start: '"hello"', target: '3↕"hello"', runes: [R.wins3] },
+	{ id: 143, start: '5', target: '2↕↕5', runes: [R.range, R.wins2] },
+	{
+		id: 144,
+		start: '5',
+		target: '3↕1+↕5',
+		runes: [R.range, R.add1, R.wins3]
+	},
+	{
+		id: 145,
+		start: '1‿2‿3‿4',
+		target: '3‿5‿7',
+		runes: [R.wins2, R.rowsum]
+	},
+	{
+		id: 146,
+		start: '5‿1‿4‿2‿3',
+		target: '5‿4‿4‿3',
+		runes: [R.wins2, R.rowmax]
+	},
+	{
+		id: 147,
+		start: '5‿1‿4‿2‿3',
+		target: '1‿1‿2‿2',
+		runes: [R.wins2, R.rowmin]
+	},
+	{
+		id: 148,
+		start: '1‿2‿3‿4‿5',
+		target: '6‿9‿12',
+		runes: [R.wins3, R.rowsum]
+	},
+	{
+		id: 149,
+		start: '5',
+		target: '6‿9‿12',
+		runes: [R.range, R.add1, R.wins3, R.rowsum]
+	},
+	{
+		id: 150,
+		start: '5‿1‿4‿2‿3',
+		target: '3‿4‿4‿5',
+		runes: [R.wins2, R.rowmax, R.rev]
 	}
 ];
