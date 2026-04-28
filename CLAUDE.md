@@ -68,6 +68,14 @@ exactly (case-sensitive).
 5. **Mobile is the primary target.** Any UI change must be evaluated at a
    phone viewport (~390×844). Desktop is a nice-to-have, not the design
    constraint.
+6. **Show real BQN, never abbreviated.** The game's job is to make the
+   player absorb the language by playing — they need to see and recognise
+   the actual glyphs (`⊸`, `⟜`, `‿`, `´`, `` ` ``, `˜`, `˘`, `⌜`, …).
+   Rune buttons must display the real expression, not a friendlier ASCII
+   alias. If a label doesn't fit on a button, shrink the button or wrap;
+   do not shorten the BQN. The player learns the syntax secretly, by
+   pattern-matching against what they tap, so dropping a glyph defeats
+   the whole exercise.
 
 ## Working style
 
