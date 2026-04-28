@@ -363,5 +363,26 @@ export const levels: Level[] = [
 		start: '5',
 		target: '30',
 		runes: [R.range, R.add1, R.keepLt5, R.square, R.sumf]
+	},
+
+	// ============================================================
+	// Block 12 — Review: mix runes from earlier blocks so older
+	// concepts don't fade. Also pulls in the rarer glyphs (+˜, 1⌽,
+	// 1⊑, 4↑, 3↓, 4⥊, ×3, =1) that the main path under-uses.
+	// ============================================================
+	{ id: 111, start: '1‿4‿8‿1‿5', target: '5', runes: [R.sortdn, R.pick1, R.first] },
+	{ id: 112, start: '1‿2‿3', target: '4‿8‿12', runes: [R.double, R.mul2] },
+	{ id: 113, start: '1‿2‿3‿4', target: '3‿4‿1‿2', runes: [R.rot1, R.rev] },
+	{ id: 114, start: '8', target: '0‿1‿2‿3', runes: [R.range, R.take4, R.drop3] },
+	{ id: 115, start: '5', target: '25‿25‿25‿25', runes: [R.rep4, R.square] },
+	{ id: 116, start: '6', target: '3‿4‿5', runes: [R.range, R.drop3, R.rev] },
+	{ id: 117, start: '1‿2‿1‿3‿1', target: '3', runes: [R.eq1, R.sumf] },
+	{ id: 118, start: '5‿2‿8‿1‿9‿3', target: '9‿8‿5‿3', runes: [R.sortdn, R.take4] },
+	{ id: 119, start: '1‿2‿3', target: '18', runes: [R.mul3, R.sumf] },
+	{
+		id: 120,
+		start: '3',
+		target: '6‿4‿2',
+		runes: [R.range, R.add1, R.mul2, R.rev]
 	}
 ];
