@@ -68,6 +68,15 @@
 		history = [];
 	}
 
+	function jumpToLevel() {
+		const ans = prompt(`Jump to level (1–${levels.length})`, String(level.id));
+		if (ans === null) return;
+		const n = parseInt(ans, 10);
+		if (Number.isNaN(n) || n < 1 || n > levels.length) return;
+		levelIndex = n - 1;
+		history = [];
+	}
+
 	let appHeight = $state('100dvh');
 	onMount(() => {
 		const saved = localStorage.getItem(STORAGE_KEY);
@@ -97,7 +106,7 @@
 
 <div class="game" style="height: {appHeight};">
 	<header class="head">
-		<span class="lvl">Level {level.id}</span>
+		<button type="button" class="lvl lvl-btn" onclick={jumpToLevel}>Level {level.id}</button>
 		<span class="head-right">
 			<button type="button" class="link link-btn" onclick={resetProgress}>reset</button>
 			<a class="link" href="{base}/sandbox/">sandbox →</a>
@@ -174,6 +183,16 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		flex: 0 0 auto;
+	}
+	.lvl-btn {
+		all: unset;
+		color: #aaa;
+		font-size: 0.85rem;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		flex: 0 0 auto;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
 	}
 	.actions {
 		display: flex;
