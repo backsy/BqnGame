@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { base } from '$app/paths';
 	import ValueViz from '$lib/components/ValueViz.svelte';
+	import AnimatedRow from '$lib/components/AnimatedRow.svelte';
 	import { levels } from '$lib/learn/levels';
 	import { evalRaw, valueMatches } from '$lib/bqn/eval';
 
@@ -45,6 +46,49 @@
 	);
 
 	const isLastLevel = $derived(levelIndex === levels.length - 1);
+
+	// Cell tracking with stable ids so permutation runes (⌽ for now,
+	// later 1⊸⌽, ⍉, ∧/∨) can animate item movement instead of just
+	// swapping the value out from under us.
+	type Cell = { id: number; value: number | string };
+	let cells = $state<Cell[]>([]);
+	let nextCellId = 1;
+	let lastHistoryLen = 0;
+	let lastLevelIndex = -1;
+
+	function isSimpleRow(v: unknown): v is (number | string)[] {
+		if (!Array.isArray(v)) return false;
+		const sh = (v as { sh?: number[] }).sh;
+		if (sh && sh.length !== 1) return false;
+		return v.every((x) => typeof x === 'number' || typeof x === 'string');
+	}
+
+	$effect(() => {
+		const cur = currentValue;
+		const histLen = history.length;
+		const lvl = levelIndex;
+		untrack(() => {
+			const levelChanged = lvl !== lastLevelIndex;
+			const justTapped = !levelChanged && histLen > lastHistoryLen
+				? history[histLen - 1]
+				: null;
+			lastHistoryLen = histLen;
+			lastLevelIndex = lvl;
+
+			if (!isSimpleRow(cur)) {
+				cells = [];
+				return;
+			}
+
+			if (justTapped === '⌽' && cells.length === cur.length) {
+				const reversed = cells.slice().reverse();
+				cells = reversed.map((c, i) => ({ id: c.id, value: cur[i] }));
+				return;
+			}
+
+			cells = cur.map((value) => ({ id: nextCellId++, value }));
+		});
+	});
 
 	function applyRune(expr: string) {
 		if (solved) return;
@@ -135,7 +179,13 @@
 		</div>
 		<div class="cell now">
 			<div class="cap">now</div>
-			<div class="viz"><ValueViz value={currentValue} max={vizMax} /></div>
+			<div class="viz">
+				{#if cells.length > 0}
+					<AnimatedRow {cells} max={vizMax} />
+				{:else}
+					<ValueViz value={currentValue} max={vizMax} />
+				{/if}
+			</div>
 		</div>
 	</section>
 
