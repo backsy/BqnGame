@@ -14,12 +14,24 @@
   bounding rects so we can compute the arc.
 -->
 
-<script lang="ts" module>
-	import { flip as flipBuiltin } from 'svelte/animate';
+<script lang="ts">
+	import { flip } from 'svelte/animate';
 
-	type AnimArgs = { from: DOMRect; to: DOMRect };
+	interface Cell {
+		id: number;
+		value: number | string;
+	}
+
+	interface Props {
+		cells: Cell[];
+		max?: number;
+		op?: string | null;
+	}
+	let { cells, max = 12, op = null }: Props = $props();
 
 	const ARC_PEAK = 56;
+
+	type AnimArgs = { from: DOMRect; to: DOMRect };
 
 	// Each cell follows a half-sine vertical hump while sliding
 	// horizontally to its target. Result: it lifts, sails over its
@@ -38,28 +50,10 @@
 		};
 	}
 
-	export function swapAnim(
-		node: Element,
-		args: AnimArgs,
-		params: { op: string | null }
-	) {
+	function swapAnim(node: Element, args: AnimArgs, params: { op: string | null }) {
 		if (params.op === 'reverse') return arcMotion(node, args);
-		return flipBuiltin(node, args, { duration: 280 });
+		return flip(node, args, { duration: 280 });
 	}
-</script>
-
-<script lang="ts">
-	interface Cell {
-		id: number;
-		value: number | string;
-	}
-
-	interface Props {
-		cells: Cell[];
-		max?: number;
-		op?: string | null;
-	}
-	let { cells, max = 12, op = null }: Props = $props();
 </script>
 
 <div class="row">
