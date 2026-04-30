@@ -177,35 +177,40 @@
 	<section class="debug" aria-label="debug">
 		<button
 			type="button"
-			class="dbg dbg-toggle"
+			class="dbg-toggle"
 			aria-expanded={debugOpen}
 			onclick={() => (debugOpen = !debugOpen)}
 		>debug {debugOpen ? '▾' : '▸'}</button>
 		{#if debugOpen}
-			<button
-				type="button"
-				class="dbg"
-				onclick={() => {
-					debugOpen = false;
-					chooseLevel();
-				}}
-			>level…</button>
-			<button
-				type="button"
-				class="dbg"
-				onclick={() => {
-					debugOpen = false;
-					exportMoves();
-				}}
-			>export moves</button>
-			<button
-				type="button"
-				class="dbg"
-				onclick={() => {
-					debugOpen = false;
-					forceUpdate();
-				}}
-			>force update</button>
+			<div class="dbg-menu" role="menu">
+				<button
+					type="button"
+					class="dbg-item"
+					role="menuitem"
+					onclick={() => {
+						debugOpen = false;
+						chooseLevel();
+					}}
+				>jump to level…</button>
+				<button
+					type="button"
+					class="dbg-item"
+					role="menuitem"
+					onclick={() => {
+						debugOpen = false;
+						exportMoves();
+					}}
+				>export moves</button>
+				<button
+					type="button"
+					class="dbg-item"
+					role="menuitem"
+					onclick={() => {
+						debugOpen = false;
+						forceUpdate();
+					}}
+				>force update</button>
+			</div>
 		{/if}
 	</section>
 
@@ -271,25 +276,44 @@
 	}
 	.debug {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 0.4rem;
+		flex-direction: column;
+		gap: 0.5rem;
 		padding: 0 0.75rem;
 	}
-	.dbg {
+	.dbg-toggle {
 		all: unset;
+		align-self: flex-start;
 		font-size: 0.75rem;
-		color: #888;
+		color: #555;
 		border: 1px dashed #333;
 		border-radius: 0.3rem;
 		padding: 0.2rem 0.5rem;
 		cursor: pointer;
 		-webkit-tap-highlight-color: transparent;
 	}
-	.dbg:active {
+	.dbg-toggle:active {
 		background: #1a1a1a;
 	}
-	.dbg-toggle {
-		color: #555;
+	.dbg-menu {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.dbg-item {
+		all: unset;
+		text-align: center;
+		padding: 0.7rem 0.9rem;
+		background: #1a1a1a;
+		border: 1px solid #2a2a2a;
+		color: #ddd;
+		border-radius: 0.4rem;
+		font-size: 0.95rem;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.dbg-item:active {
+		background: #232323;
+		transform: scale(0.98);
 	}
 
 	.editor {
