@@ -9,8 +9,14 @@ const CACHE = `cache-${version}`;
 const ASSETS = [...build, ...files];
 
 sw.addEventListener('install', (event) => {
+	// Don't auto-skipWaiting — we want the page to keep using the old SW
+	// until the user taps "update". Otherwise the running app would be
+	// served fresh assets mid-session.
 	event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
-	sw.skipWaiting();
+});
+
+sw.addEventListener('message', (event) => {
+	if (event.data?.type === 'SKIP_WAITING') sw.skipWaiting();
 });
 
 sw.addEventListener('activate', (event) => {

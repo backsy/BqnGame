@@ -130,6 +130,23 @@
 		navigator.clipboard?.writeText(text).catch(() => {});
 	}
 
+	async function forceUpdate() {
+		try {
+			if ('serviceWorker' in navigator) {
+				const regs = await navigator.serviceWorker.getRegistrations();
+				await Promise.all(regs.map((r) => r.unregister()));
+			}
+			if ('caches' in window) {
+				const keys = await caches.keys();
+				await Promise.all(keys.map((k) => caches.delete(k)));
+			}
+		} catch {
+			// best-effort; reload anyway
+		}
+		// Bypass HTTP cache too. true is non-standard but iOS Safari respects it.
+		(location as Location & { reload(force?: boolean): void }).reload(true);
+	}
+
 	async function run() {
 		if (!client || !editor || running) return;
 		running = true;
@@ -159,6 +176,7 @@
 	<section class="debug" aria-label="debug">
 		<button type="button" class="dbg" onclick={chooseLevel}>level…</button>
 		<button type="button" class="dbg" onclick={exportMoves}>export moves</button>
+		<button type="button" class="dbg" onclick={forceUpdate}>force update</button>
 	</section>
 
 	<section class="lowest" aria-label="controls">
