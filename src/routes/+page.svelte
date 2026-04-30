@@ -18,23 +18,21 @@
 		history.reduce((acc, runeExpr) => `(${runeExpr}) (${acc})`, level.start)
 	);
 
-	let currentValue = $state<unknown>(null);
-	let targetValue = $state<unknown>(null);
-	let solved = $state(false);
-
-	$effect(() => {
+	const currentValue = $derived.by(() => {
 		try {
-			currentValue = evalRaw(stateExpr);
+			return evalRaw(stateExpr);
 		} catch {
-			currentValue = null;
+			return null;
 		}
-		try {
-			targetValue = evalRaw(level.target);
-		} catch {
-			targetValue = null;
-		}
-		solved = valueMatches(stateExpr, level.target);
 	});
+	const targetValue = $derived.by(() => {
+		try {
+			return evalRaw(level.target);
+		} catch {
+			return null;
+		}
+	});
+	const solved = $derived(valueMatches(stateExpr, level.target));
 
 	function findMaxNum(v: unknown): number {
 		if (typeof v === 'number') return Math.abs(v);
@@ -66,10 +64,14 @@
 	}
 
 	$effect(() => {
-		const cur = currentValue;
+		// Track only the things that change atomically when the player taps,
+		// undoes, or switches level. currentValue is a derived value, so
+		// reading it via untrack still gives us the up-to-date result without
+		// triggering this effect on its own.
 		const histLen = history.length;
 		const lvl = levelIndex;
 		untrack(() => {
+			const cur = currentValue;
 			const levelChanged = lvl !== lastLevelIndex;
 			const justTapped = !levelChanged && histLen > lastHistoryLen
 				? history[histLen - 1]
@@ -78,6 +80,7 @@
 			lastLevelIndex = lvl;
 
 			if (!isSimpleRow(cur)) {
+				op = null;
 				cells = [];
 				return;
 			}
