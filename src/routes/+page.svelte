@@ -357,7 +357,9 @@
 	.board {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		/* Big gap between goal and now so the reverse-arc (peak ~60px)
+		   doesn't overshoot into the goal row. */
+		gap: 4.5rem;
 		align-items: center;
 	}
 	.cell {
