@@ -68,14 +68,21 @@ exactly (case-sensitive).
 5. **Mobile is the primary target.** Any UI change must be evaluated at a
    phone viewport (~390×844). Desktop is a nice-to-have, not the design
    constraint.
-6. **Show real BQN, never abbreviated.** The game's job is to make the
-   player absorb the language by playing — they need to see and recognise
-   the actual glyphs (`⊸`, `⟜`, `‿`, `´`, `` ` ``, `˜`, `˘`, `⌜`, …).
-   Rune buttons must display the real expression, not a friendlier ASCII
-   alias. If a label doesn't fit on a button, shrink the button or wrap;
-   do not shorten the BQN. The player learns the syntax secretly, by
-   pattern-matching against what they tap, so dropping a glyph defeats
-   the whole exercise.
+6. **Show real BQN, never abbreviated — except the bind plumbing.**
+   The game teaches by recognition, so the operation glyphs and their
+   modifiers (`´`, `` ` ``, `˜`, `˘`, `⌜`, `‿`, `↑`, `↓`, `⌽`, `⥊`, `⊑`,
+   `↕`, `|`, `/`, `<`, `=`, …) belong on the rune button as the player
+   would type them in real BQN. The exception is `⊸` and `⟜`: those
+   only exist in our codebase to turn dyadic operations into one-argument
+   buttons (the rune system feeds in only the current state). They are
+   not how a human would write the same operation in a BQN script — you'd
+   just write `2↑x`, `+1+x`, etc. Strip `⊸`/`⟜` from `glyph` (the button
+   label) but keep them in `expr` (what we evaluate). Everything else
+   stays. If a label doesn't fit on a button, shrink the button or wrap;
+   never drop the operation glyph itself. The player learns the syntax
+   secretly, by pattern-matching against what they tap, so dropping a
+   real glyph defeats the exercise — but showing app-internal plumbing
+   muddles what's actually part of the language.
 
 ## Working style
 
