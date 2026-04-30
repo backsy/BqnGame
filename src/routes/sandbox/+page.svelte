@@ -13,6 +13,7 @@
 	let editor: EditorApi | undefined = $state();
 	let paletteOpen = $state(false);
 	let searchOpen = $state(false);
+	let debugOpen = $state(false);
 	let appHeight = $state('100dvh');
 	let keyboardUp = $state(false);
 
@@ -174,9 +175,38 @@
 	<GlyphPalette oninsert={insert} open={paletteOpen} onToggle={onPaletteToggle} />
 
 	<section class="debug" aria-label="debug">
-		<button type="button" class="dbg" onclick={chooseLevel}>level…</button>
-		<button type="button" class="dbg" onclick={exportMoves}>export moves</button>
-		<button type="button" class="dbg" onclick={forceUpdate}>force update</button>
+		<button
+			type="button"
+			class="dbg dbg-toggle"
+			aria-expanded={debugOpen}
+			onclick={() => (debugOpen = !debugOpen)}
+		>debug {debugOpen ? '▾' : '▸'}</button>
+		{#if debugOpen}
+			<button
+				type="button"
+				class="dbg"
+				onclick={() => {
+					debugOpen = false;
+					chooseLevel();
+				}}
+			>level…</button>
+			<button
+				type="button"
+				class="dbg"
+				onclick={() => {
+					debugOpen = false;
+					exportMoves();
+				}}
+			>export moves</button>
+			<button
+				type="button"
+				class="dbg"
+				onclick={() => {
+					debugOpen = false;
+					forceUpdate();
+				}}
+			>force update</button>
+		{/if}
 	</section>
 
 	<section class="lowest" aria-label="controls">
@@ -241,7 +271,8 @@
 	}
 	.debug {
 		display: flex;
-		gap: 0.5rem;
+		flex-wrap: wrap;
+		gap: 0.4rem;
 		padding: 0 0.75rem;
 	}
 	.dbg {
@@ -256,6 +287,9 @@
 	}
 	.dbg:active {
 		background: #1a1a1a;
+	}
+	.dbg-toggle {
+		color: #555;
 	}
 
 	.editor {
