@@ -52,8 +52,8 @@
 	// swapping the value out from under us.
 	type Cell = { id: number; value: number | string };
 	let cells = $state<Cell[]>([]);
-	let arcs = $state<[number, number][]>([]);
-	let arcTimer: ReturnType<typeof setTimeout> | null = null;
+	let op = $state<string | null>(null);
+	let opTimer: ReturnType<typeof setTimeout> | null = null;
 	let nextCellId = 1;
 	let lastHistoryLen = 0;
 	let lastLevelIndex = -1;
@@ -83,22 +83,18 @@
 			}
 
 			if (justTapped === '⌽' && cells.length === cur.length) {
+				op = 'reverse';
+				if (opTimer) clearTimeout(opTimer);
+				opTimer = setTimeout(() => {
+					op = null;
+					opTimer = null;
+				}, 950);
 				const reversed = cells.slice().reverse();
 				cells = reversed.map((c, i) => ({ id: c.id, value: cur[i] }));
-				// Pair cells (0↔n-1, 1↔n-2, …) so AnimatedRow can draw an
-				// arc over each swap. Skip the middle on odd lengths.
-				const n = cur.length;
-				const pairs: [number, number][] = [];
-				for (let i = 0; i < Math.floor(n / 2); i++) pairs.push([i, n - 1 - i]);
-				arcs = pairs;
-				if (arcTimer) clearTimeout(arcTimer);
-				arcTimer = setTimeout(() => {
-					arcs = [];
-					arcTimer = null;
-				}, 720);
 				return;
 			}
 
+			op = null;
 			cells = cur.map((value) => ({ id: nextCellId++, value }));
 		});
 	});
@@ -194,7 +190,7 @@
 			<div class="cap">now</div>
 			<div class="viz">
 				{#if cells.length > 0}
-					<AnimatedRow {cells} {arcs} max={vizMax} />
+					<AnimatedRow {cells} {op} max={vizMax} />
 				{:else}
 					<ValueViz value={currentValue} max={vizMax} />
 				{/if}

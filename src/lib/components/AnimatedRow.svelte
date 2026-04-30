@@ -1,21 +1,54 @@
 <!--
-  Renders a rank-1 list as a row of cells (bars for numbers, square
-  tiles for chars), animating each cell's position via animate:flip
-  when its stable id moves between renders. The parent decides which
-  cell carries which id; that's how a permutation rune like ⌽ tells
-  this component "the cell that was on the right is now on the left,
-  please slide it across."
+  Animated row for rank-1 lists. The animation shape is selected by
+  the parent via the `op` prop:
 
-  When `arcs` is non-empty, an SVG overlay draws curved arcs between
-  the paired cell indices (e.g. for ⌽ that's 0↔n-1, 1↔n-2, …) so the
-  player sees *which* cells are getting swapped rather than just a
-  blur of motion. The parent shows the arcs for ~700ms around the
-  swap, then clears them.
+    'reverse' — each cell lifts off the row, arcs over the others,
+                and lands in its mirrored position. Built so the
+                player physically sees pairs swapping in mid-air.
+
+    null      — straight-line FLIP (used when ids change but the
+                operation isn't one we have a custom motion for yet).
+
+  Cell identity is owned by the parent; we just key the each on
+  cell.id and let Svelte feed our animation function the from/to
+  bounding rects so we can compute the arc.
 -->
 
-<script lang="ts">
-	import { flip } from 'svelte/animate';
+<script lang="ts" module>
+	import { flip as flipBuiltin } from 'svelte/animate';
 
+	type AnimArgs = { from: DOMRect; to: DOMRect };
+
+	const ARC_PEAK = 56;
+
+	// Each cell follows a half-sine vertical hump while sliding
+	// horizontally to its target. Result: it lifts, sails over its
+	// neighbours, and settles.
+	function arcMotion(_node: Element, { from, to }: AnimArgs) {
+		const dx = from.left - to.left;
+		const dy = from.top - to.top;
+		return {
+			duration: 900,
+			easing: (t: number) => t,
+			css: (t: number) => {
+				const tx = dx * (1 - t);
+				const ty = dy * (1 - t) - ARC_PEAK * Math.sin(t * Math.PI);
+				return `transform: translate(${tx}px, ${ty}px); z-index: 10;`;
+			}
+		};
+	}
+
+	export function swapAnim(
+		node: Element,
+		args: AnimArgs,
+		params: { op: string | null }
+	) {
+		if (params.op === 'reverse') return arcMotion(node, args);
+		return flipBuiltin(node, args, { duration: 280 });
+	}
+</script>
+
+<script lang="ts">
 	interface Cell {
 		id: number;
 		value: number | string;
@@ -24,101 +57,37 @@
 	interface Props {
 		cells: Cell[];
 		max?: number;
-		// Pairs of indices to draw arcs between (purely visual, doesn't
-		// affect cell layout). Cleared by the parent after the animation.
-		arcs?: [number, number][];
+		op?: string | null;
 	}
-	let { cells, max = 12, arcs = [] }: Props = $props();
-
-	const CELL_W = 30; // matches .bar / .char width
-	const GAP = 4; // 0.25rem at 16px root
-	const STEP = CELL_W + GAP;
-	const ARC_H = 28; // peak rise of the arc
-	const PAD_X = 6; // svg horizontal padding so caps aren't clipped
-
-	function cellCenter(i: number) {
-		return PAD_X + i * STEP + CELL_W / 2;
-	}
-
-	const svgWidth = $derived(
-		cells.length === 0 ? 0 : 2 * PAD_X + cells.length * CELL_W + (cells.length - 1) * GAP
-	);
-	const svgHeight = ARC_H + 8;
+	let { cells, max = 12, op = null }: Props = $props();
 </script>
 
-<div class="rowwrap">
-	{#if arcs.length > 0 && cells.length > 1}
-		<svg
-			class="arcs"
-			width={svgWidth}
-			height={svgHeight}
-			viewBox="0 0 {svgWidth} {svgHeight}"
-			aria-hidden="true"
-		>
-			{#each arcs as [a, b] (`${a}-${b}`)}
-				{@const ax = cellCenter(a)}
-				{@const bx = cellCenter(b)}
-				{@const mx = (ax + bx) / 2}
-				<path
-					class="arc"
-					d="M {ax} {svgHeight} Q {mx} {svgHeight - ARC_H} {bx} {svgHeight}"
-					fill="none"
-				/>
-			{/each}
-		</svg>
-	{/if}
-	<div class="row">
-		{#each cells as cell (cell.id)}
-			<div class="wrap" animate:flip={{ duration: 480 }}>
-				{#if typeof cell.value === 'number'}
-					<div
-						class="bar"
-						style="height: {Math.min(Math.max(cell.value, 0), max) * (60 / max) + 18}px"
-					>
-						<span class="num">{cell.value}</span>
-					</div>
-				{:else}
-					<div class="char bqn">{cell.value}</div>
-				{/if}
-			</div>
-		{/each}
-	</div>
+<div class="row">
+	{#each cells as cell (cell.id)}
+		<div class="wrap" animate:swapAnim={{ op }}>
+			{#if typeof cell.value === 'number'}
+				<div
+					class="bar"
+					style="height: {Math.min(Math.max(cell.value, 0), max) * (60 / max) + 18}px"
+				>
+					<span class="num">{cell.value}</span>
+				</div>
+			{:else}
+				<div class="char bqn">{cell.value}</div>
+			{/if}
+		</div>
+	{/each}
 </div>
 
 <style>
-	.rowwrap {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-	}
-	.arcs {
-		display: block;
-		overflow: visible;
-		animation: arc-fade 720ms ease-out forwards;
-	}
-	.arc {
-		stroke: #5fcc5f;
-		stroke-width: 2;
-		stroke-linecap: round;
-	}
-	@keyframes arc-fade {
-		0% {
-			opacity: 0;
-		}
-		25% {
-			opacity: 1;
-		}
-		70% {
-			opacity: 1;
-		}
-		100% {
-			opacity: 0;
-		}
-	}
 	.row {
 		display: flex;
 		align-items: flex-end;
 		gap: 0.25rem;
+		/* Give the arc enough headroom so cells don't get clipped on
+		   their way over each other. */
+		padding-top: 64px;
+		margin-top: -64px;
 	}
 	.wrap {
 		display: flex;
