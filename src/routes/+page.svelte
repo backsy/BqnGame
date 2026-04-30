@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { base } from '$app/paths';
 	import ValueViz from '$lib/components/ValueViz.svelte';
+	import AnimatedRow from '$lib/components/AnimatedRow.svelte';
+	import { animations, type Cell } from '$lib/animations';
 	import { levels } from '$lib/learn/levels';
 	import { evalRaw, valueMatches } from '$lib/bqn/eval';
 
@@ -44,8 +46,87 @@
 
 	const isLastLevel = $derived(levelIndex === levels.length - 1);
 
-	function applyRune(expr: string) {
-		if (solved) return;
+	// Cell tracking with stable ids, so animations can identify which
+	// DOM element corresponds to which logical value across reorders.
+	let cells = $state<Cell[]>([]);
+	let nextCellId = 1;
+	let lastHistoryLen = 0;
+	let lastLevelIndex = -1;
+	let animating = $state(false);
+	const cellNodes = new Map<number, HTMLElement>();
+
+	function setNode(id: number, node: HTMLElement | null) {
+		if (node) cellNodes.set(id, node);
+		else cellNodes.delete(id);
+	}
+
+	function isSimpleRow(v: unknown): v is (number | string)[] {
+		if (!Array.isArray(v)) return false;
+		const sh = (v as { sh?: number[] }).sh;
+		if (sh && sh.length !== 1) return false;
+		return v.every((x) => typeof x === 'number' || typeof x === 'string');
+	}
+
+	$effect(() => {
+		const histLen = history.length;
+		const lvl = levelIndex;
+		untrack(() => {
+			const cur = currentValue;
+			const levelChanged = lvl !== lastLevelIndex;
+			const justTapped = !levelChanged && histLen > lastHistoryLen
+				? history[histLen - 1]
+				: null;
+			lastHistoryLen = histLen;
+			lastLevelIndex = lvl;
+
+			if (!isSimpleRow(cur)) {
+				cells = [];
+				return;
+			}
+
+			// ⌽: preserve ids, reverse the cell order, refresh values.
+			if (justTapped === '⌽' && cells.length === cur.length) {
+				const reversed = cells.slice().reverse();
+				cells = reversed.map((c, i) => ({ id: c.id, value: cur[i] }));
+				return;
+			}
+
+			cells = cur.map((value) => ({ id: nextCellId++, value }));
+		});
+	});
+
+	async function applyRune(expr: string) {
+		if (solved || animating) return;
+
+		const animFn = animations[expr];
+		if (animFn && isSimpleRow(currentValue)) {
+			// Capture old cell positions before mutating history. The cell
+			// tracker effect will then commit the new cells; we await the
+			// DOM tick and run the animation against new positions.
+			const oldRects = new Map<number, DOMRect>();
+			for (const cell of cells) {
+				const node = cellNodes.get(cell.id);
+				if (node) oldRects.set(cell.id, node.getBoundingClientRect());
+			}
+
+			animating = true;
+			history = [...history, expr];
+			await tick();
+
+			try {
+				await animFn({
+					cells,
+					getNode: (id) => cellNodes.get(id) ?? null,
+					oldRects
+				});
+			} catch (err) {
+				console.error('animation failed', err);
+			} finally {
+				animating = false;
+			}
+			return;
+		}
+
 		history = [...history, expr];
 	}
 
@@ -133,7 +214,13 @@
 		</div>
 		<div class="cell now">
 			<div class="cap">now</div>
-			<div class="viz"><ValueViz value={currentValue} max={vizMax} /></div>
+			<div class="viz">
+				{#if cells.length > 0}
+					<AnimatedRow {cells} max={vizMax} {setNode} />
+				{:else}
+					<ValueViz value={currentValue} max={vizMax} />
+				{/if}
+			</div>
 		</div>
 	</section>
 
@@ -160,7 +247,12 @@
 	{:else}
 		<section class="runes">
 			{#each level.runes as r}
-				<button type="button" class="rune bqn" onclick={() => applyRune(r.expr)}>
+				<button
+					type="button"
+					class="rune bqn"
+					onclick={() => applyRune(r.expr)}
+					disabled={animating}
+				>
 					{r.glyph}
 				</button>
 			{/each}
