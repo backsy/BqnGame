@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import ValueViz from '$lib/components/ValueViz.svelte';
-	import AnimatedRow from '$lib/components/AnimatedRow.svelte';
 	import { levels } from '$lib/learn/levels';
 	import { evalRaw, valueMatches } from '$lib/bqn/eval';
 
@@ -44,68 +43,6 @@
 	);
 
 	const isLastLevel = $derived(levelIndex === levels.length - 1);
-
-	// Cell tracking with stable ids so permutation runes (⌽ for now,
-	// later 1⊸⌽, ⍉, ∧/∨) can animate item movement instead of just
-	// swapping the value out from under us.
-	type Cell = { id: number; value: number | string };
-	let cells = $state<Cell[]>([]);
-	let op = $state<string | null>(null);
-	let opTimer: ReturnType<typeof setTimeout> | null = null;
-	let nextCellId = 1;
-	let lastHistoryLen = 0;
-	let lastLevelIndex = -1;
-
-	function isSimpleRow(v: unknown): v is (number | string)[] {
-		if (!Array.isArray(v)) return false;
-		const sh = (v as { sh?: number[] }).sh;
-		if (sh && sh.length !== 1) return false;
-		return v.every((x) => typeof x === 'number' || typeof x === 'string');
-	}
-
-	let debugMsg = $state('');
-
-	$effect(() => {
-		// Track only the things that change atomically when the player taps,
-		// undoes, or switches level. currentValue is a derived value, so
-		// reading it via untrack still gives us the up-to-date result without
-		// triggering this effect on its own.
-		const histLen = history.length;
-		const lvl = levelIndex;
-		untrack(() => {
-			const cur = currentValue;
-			const levelChanged = lvl !== lastLevelIndex;
-			const justTapped = !levelChanged && histLen > lastHistoryLen
-				? history[histLen - 1]
-				: null;
-			lastHistoryLen = histLen;
-			lastLevelIndex = lvl;
-
-			if (!isSimpleRow(cur)) {
-				debugMsg = `effect: not-simple-row (cells=${cells.length})`;
-				op = null;
-				cells = [];
-				return;
-			}
-
-			if (justTapped === '⌽' && cells.length === cur.length) {
-				debugMsg = `effect: REVERSE branch (cells=${cells.length}, cur=${cur.length})`;
-				op = 'reverse';
-				if (opTimer) clearTimeout(opTimer);
-				opTimer = setTimeout(() => {
-					op = null;
-					opTimer = null;
-				}, 950);
-				const reversed = cells.slice().reverse();
-				cells = reversed.map((c, i) => ({ id: c.id, value: cur[i] }));
-				return;
-			}
-
-			debugMsg = `effect: fresh-ids (just=${justTapped ?? 'null'}, cells=${cells.length}→${cur.length})`;
-			op = null;
-			cells = cur.map((value) => ({ id: nextCellId++, value }));
-		});
-	});
 
 	function applyRune(expr: string) {
 		if (solved) return;
@@ -188,9 +125,6 @@
 			<a class="link" href="{base}/sandbox/">sandbox →</a>
 		</span>
 	</header>
-	{#if debugMsg}
-		<div class="dbg-msg">{debugMsg} | op={op} | cellIds=[{cells.map((c) => c.id).join(',')}]</div>
-	{/if}
 
 	<section class="middle board">
 		<div class="cell">
@@ -199,13 +133,7 @@
 		</div>
 		<div class="cell now">
 			<div class="cap">now</div>
-			<div class="viz">
-				{#if cells.length > 0}
-					<AnimatedRow {cells} {op} max={vizMax} />
-				{:else}
-					<ValueViz value={currentValue} max={vizMax} />
-				{/if}
-			</div>
+			<div class="viz"><ValueViz value={currentValue} max={vizMax} /></div>
 		</div>
 	</section>
 
@@ -277,13 +205,6 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		flex: 0 0 auto;
-	}
-	.dbg-msg {
-		font-size: 0.7rem;
-		color: #6a8aaa;
-		padding: 0.2rem 1rem;
-		font-family: monospace;
-		word-break: break-all;
 	}
 	.lvl-btn {
 		all: unset;
