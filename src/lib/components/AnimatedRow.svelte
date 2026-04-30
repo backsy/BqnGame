@@ -33,12 +33,11 @@
 
 	type AnimArgs = { from: DOMRect; to: DOMRect };
 
-	// Each cell follows a half-sine vertical hump while sliding
-	// horizontally to its target. Result: it lifts, sails over its
-	// neighbours, and settles.
 	function arcMotion(_node: Element, { from, to }: AnimArgs) {
 		const dx = from.left - to.left;
 		const dy = from.top - to.top;
+		// eslint-disable-next-line no-console
+		console.log('[anim] arcMotion', { dx, dy });
 		return {
 			duration: 900,
 			easing: (t: number) => t,
@@ -51,6 +50,8 @@
 	}
 
 	function swapAnim(node: Element, args: AnimArgs, params: { op: string | null }) {
+		// eslint-disable-next-line no-console
+		console.log('[anim] swapAnim called, op=', params.op, 'from-to dx=', args.from.left - args.to.left);
 		if (params.op === 'reverse') return arcMotion(node, args);
 		return flip(node, args, { duration: 280 });
 	}

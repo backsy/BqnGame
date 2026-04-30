@@ -63,6 +63,8 @@
 		return v.every((x) => typeof x === 'number' || typeof x === 'string');
 	}
 
+	let debugMsg = $state('');
+
 	$effect(() => {
 		// Track only the things that change atomically when the player taps,
 		// undoes, or switches level. currentValue is a derived value, so
@@ -80,12 +82,14 @@
 			lastLevelIndex = lvl;
 
 			if (!isSimpleRow(cur)) {
+				debugMsg = `effect: not-simple-row (cells=${cells.length})`;
 				op = null;
 				cells = [];
 				return;
 			}
 
 			if (justTapped === '⌽' && cells.length === cur.length) {
+				debugMsg = `effect: REVERSE branch (cells=${cells.length}, cur=${cur.length})`;
 				op = 'reverse';
 				if (opTimer) clearTimeout(opTimer);
 				opTimer = setTimeout(() => {
@@ -97,6 +101,7 @@
 				return;
 			}
 
+			debugMsg = `effect: fresh-ids (just=${justTapped ?? 'null'}, cells=${cells.length}→${cur.length})`;
 			op = null;
 			cells = cur.map((value) => ({ id: nextCellId++, value }));
 		});
@@ -183,6 +188,9 @@
 			<a class="link" href="{base}/sandbox/">sandbox →</a>
 		</span>
 	</header>
+	{#if debugMsg}
+		<div class="dbg-msg">{debugMsg} | op={op} | cellIds=[{cells.map((c) => c.id).join(',')}]</div>
+	{/if}
 
 	<section class="middle board">
 		<div class="cell">
@@ -269,6 +277,13 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		flex: 0 0 auto;
+	}
+	.dbg-msg {
+		font-size: 0.7rem;
+		color: #6a8aaa;
+		padding: 0.2rem 1rem;
+		font-family: monospace;
+		word-break: break-all;
 	}
 	.lvl-btn {
 		all: unset;
