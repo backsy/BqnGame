@@ -80,10 +80,9 @@ export function broadcast(label: string): AnimationFn {
 		// Commit: Svelte renders each bar with its new inline height.
 		await commit();
 
-		// Phase 2 (merged): each badge plunges down into its bar and
-		// scales to zero AS the bar pumps up to the new height. Reads
-		// as cause-and-effect — the operation badge is what 'gives'
-		// the bar its new value.
+		// Phase 2 (sequenced): each badge plunges into its bar first;
+		// the bar's growth kicks in as the badge accelerates downward,
+		// so the read is cause-and-effect (badge → bar grows).
 		const merge: Promise<unknown>[] = [];
 		for (let i = 0; i < cells.length; i++) {
 			const cell = cells[i];
@@ -97,13 +96,6 @@ export function broadcast(label: string): AnimationFn {
 			bar.style.height = `${oldH}px`;
 			void bar.offsetHeight;
 
-			const barAnim = animate(
-				bar,
-				{ height: [`${oldH}px`, `${newH}px`] },
-				{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }
-			);
-			merge.push(barAnim.finished);
-
 			const badge = badges[i];
 			if (badge) {
 				const badgeAnim = animate(
@@ -111,15 +103,22 @@ export function broadcast(label: string): AnimationFn {
 					{
 						transform: [
 							'translate(-50%, 0) scale(1)',
-							'translate(-50%, -4px) scale(1.08)',
-							'translate(-50%, 30px) scale(0)'
+							'translate(-50%, 32px) scale(0)'
 						],
-						opacity: [1, 1, 0]
+						opacity: [1, 0]
 					},
-					{ duration: 0.55, ease: [0.5, 0, 0.7, 0.4] }
+					// Ease-in: slow start, fast finish — reads like falling.
+					{ duration: 0.32, ease: [0.5, 0, 0.75, 0] }
 				);
 				merge.push(badgeAnim.finished);
 			}
+
+			const barAnim = animate(
+				bar,
+				{ height: [`${oldH}px`, `${newH}px`] },
+				{ duration: 0.5, delay: 0.16, ease: [0.22, 1, 0.36, 1] }
+			);
+			merge.push(barAnim.finished);
 		}
 		await Promise.all(merge);
 
