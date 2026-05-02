@@ -282,19 +282,49 @@
 		</span>
 	</header>
 
-	<section class="middle board">
-		<div class="cell goal">
-			<div class="viz ghost" class:filled={solved}>
-				<ValueViz value={targetValue} max={vizMax} />
+	<section class="middle">
+		<div class="board">
+			<div class="cell goal">
+				<div class="viz ghost" class:filled={solved}>
+					<ValueViz value={targetValue} max={vizMax} />
+				</div>
 			</div>
-		</div>
-		<div class="cell now" class:winning={solved}>
-			<div class="viz">
-				{#if cells.length > 0}
-					<AnimatedRow {cells} max={vizMax} {setNode} />
-				{:else}
-					<ValueViz value={currentValue} max={vizMax} />
-				{/if}
+			{#if solved}
+				<div
+					class="celebration"
+					in:scale={{ duration: 480, start: 0.2, opacity: 0, easing: backOut }}
+					aria-hidden="true"
+				>
+					<div class="stamp">
+						<svg viewBox="0 0 56 56" class="stamp-svg">
+							<circle
+								cx="28"
+								cy="28"
+								r="25"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							/>
+							<path
+								d="M16 29 L24 37 L40 19"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="3.2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+						</svg>
+					</div>
+				</div>
+			{/if}
+			<div class="cell now" class:winning={solved}>
+				<div class="viz">
+					{#if cells.length > 0}
+						<AnimatedRow {cells} max={vizMax} {setNode} />
+					{:else}
+						<ValueViz value={currentValue} max={vizMax} />
+					{/if}
+				</div>
 			</div>
 		</div>
 	</section>
@@ -321,78 +351,15 @@
 
 	<div class="bottom-shell">
 	{#if solved}
-		{#if isLastLevel}
-			<section class="solved finale">
-				<div
-					class="stamp finale-stamp"
-					in:scale={{ duration: 520, start: 0.2, opacity: 0, easing: backOut }}
-				>
-					<svg viewBox="0 0 56 56" class="stamp-svg" aria-hidden="true">
-						<circle cx="28" cy="28" r="25" fill="none" stroke="currentColor" stroke-width="2" />
-						<path
-							d="M16 29 L24 37 L40 19"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="3.2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						/>
-					</svg>
-				</div>
-				<button
-					type="button"
-					class="next big"
-					onclick={resetProgress}
-					in:fly={{ y: 18, duration: 380, delay: 460, easing: cubicOut }}
-					aria-label="start over"
-				>↻</button>
-			</section>
-		{:else}
-			<section class="solved">
-				<div
-					class="stamp"
-					in:scale={{ duration: 480, start: 0.2, opacity: 0, easing: backOut }}
-				>
-					<svg viewBox="0 0 56 56" class="stamp-svg" aria-hidden="true">
-						<circle cx="28" cy="28" r="25" fill="none" stroke="currentColor" stroke-width="2" />
-						<path
-							d="M16 29 L24 37 L40 19"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="3.2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						/>
-					</svg>
-				</div>
-				{#if history.length > 0}
-					<div class="history-strip" aria-hidden="true">
-						{#each history as expr, i (i)}
-							{@const rune = level.runes.find((r) => r.expr === expr)}
-							{#if rune}
-								<span
-									class="hist-glyph bqn"
-									in:scale={{
-										duration: 240,
-										delay: 220 + i * 45,
-										start: 0.2,
-										opacity: 0,
-										easing: backOut
-									}}
-								>{rune.glyph}</span>
-							{/if}
-						{/each}
-					</div>
-				{/if}
-				<button
-					type="button"
-					class="next big"
-					onclick={nextLevel}
-					in:fly={{ y: 18, duration: 380, delay: 460, easing: cubicOut }}
-					aria-label="next level"
-				>→</button>
-			</section>
-		{/if}
+		<section class="solved">
+			<button
+				type="button"
+				class="rune cta-rune bqn"
+				onclick={isLastLevel ? resetProgress : nextLevel}
+				in:fly={{ y: 14, duration: 320, delay: 200, easing: cubicOut }}
+				aria-label={isLastLevel ? 'start over' : 'next level'}
+			>{isLastLevel ? '↻' : '→'}</button>
+		</section>
 	{:else}
 		<section class="runes">
 			{#each level.runes as r}
@@ -437,6 +404,20 @@
 		padding: 18vh 1rem 0.5rem;
 		min-height: 0;
 		flex: 0 0 auto;
+	}
+	.board {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+	/* Use margins instead of flex gap so we can insert a 0-height
+	   .celebration between goal and now without doubling the gap. */
+	.cell.goal {
+		margin-bottom: 2.25rem;
+	}
+	.cell.now {
+		margin-top: 2.25rem;
 	}
 	.runes,
 	.solved {
@@ -533,12 +514,6 @@
 		-webkit-tap-highlight-color: transparent;
 	}
 
-	.board {
-		display: flex;
-		flex-direction: column;
-		gap: 4.5rem;
-		align-items: center;
-	}
 	.cell {
 		display: flex;
 		flex-direction: column;
@@ -679,73 +654,48 @@
 		}
 	}
 
-	.solved {
+	/* Celebration overlay: 0-height block placed between goal and now
+	   in the gap. The stamp is centered on its line and overflows
+	   visibly above and below into both cells' areas. Doesn't push
+	   any layout because its own height is 0. */
+	.celebration {
+		position: relative;
+		height: 0;
+		width: 100%;
 		display: flex;
-		flex-direction: column;
-		justify-content: center;
 		align-items: center;
-		gap: 0.65rem;
+		justify-content: center;
+		pointer-events: none;
+		z-index: 5;
 	}
-	.finale {
-		text-align: center;
-	}
-
 	.stamp {
+		flex: 0 0 auto;
 		width: 68px;
 		height: 68px;
-		display: grid;
-		place-items: center;
 		color: var(--accent);
 		filter: drop-shadow(0 0 14px var(--accent-soft));
-	}
-	.finale-stamp {
-		width: 84px;
-		height: 84px;
 	}
 	.stamp-svg {
 		width: 100%;
 		height: 100%;
+		display: block;
 	}
 
-	.history-strip {
+	.solved {
 		display: flex;
-		flex-wrap: wrap;
+		gap: 0.4rem;
 		justify-content: center;
-		gap: 0.25rem 0.4rem;
-		max-width: min(28rem, 100%);
-		font-family: var(--font-bqn);
+		flex-wrap: wrap;
 	}
-	.hist-glyph {
-		display: inline-block;
-		font-size: 1.15rem;
-		color: #8aa3c2;
-		line-height: 1;
-		opacity: 0.85;
-	}
-
-	.next {
-		all: unset;
-		display: inline-grid;
-		place-items: center;
-		padding: 0.55rem 1.1rem;
+	/* Sized exactly like a rune button so the bottom-shell footprint
+	   doesn't change between play and solved. */
+	.cta-rune {
+		border-color: #2a6a2a;
 		background: var(--accent-deep);
-		border: 1px solid #2a6a2a;
 		color: #d7f0d7;
-		border-radius: 0.45rem;
-		font-size: 1.4rem;
-		line-height: 1;
-		cursor: pointer;
-		-webkit-tap-highlight-color: transparent;
 	}
-	.next.big {
-		min-width: 4.2rem;
-		min-height: 2.6rem;
-		font-size: 1.7rem;
-		box-shadow: 0 0 0 1px rgba(95, 204, 95, 0.08), 0 6px 22px -10px rgba(95, 204, 95, 0.55);
-	}
-	.next:active {
+	.cta-rune:active {
 		background: #225722;
-		transform: scale(0.97);
 	}
 
 	.runes {
