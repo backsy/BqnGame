@@ -1,9 +1,9 @@
-// F´ fold (+´, ×´, ⌈´, ⌊´): the operator glyph appears between every
-// pair of bars, then a left-to-right sweep collapses pairs into a
-// running accumulator. Each step pulses the operator, slides the
-// right bar into bar 0, updates bar 0's height + number to the
-// partial result, and fades the operator. The final accumulator is
-// what remains when commit fires (the scalar result).
+// F´ fold (+´, ×´, ⌈´, ⌊´): the row spreads to make room for operator
+// glyphs between every pair, the player reads '1 + 2 + 3 + 4', then a
+// left-to-right wave collapses the leftmost trio (bar, op, bar) into
+// one bar carrying the partial result, and everything to the right
+// slides left by one column. Repeat until only the accumulator
+// remains.
 
 import { animate } from 'motion';
 import type { AnimationFn } from './types';
@@ -17,13 +17,28 @@ const OP_FN: Record<string, (a: number, b: number) => number> = {
 	'⌊': (a, b) => Math.min(a, b)
 };
 
+// Layout constants matching AnimatedRow's CSS (.bar width 30px,
+// .row gap 0.25rem ≈ 4px). SPREAD_GAP is the extra space we add
+// between bars to fit a badge.
+const BAR_WIDTH = 30;
+const ORIG_GAP = 4;
+const SPREAD_GAP = 28;
+const COL_UNIT = BAR_WIDTH + ORIG_GAP + SPREAD_GAP;
+const BADGE_SIZE = 22;
+
 const formatNum = (n: number) =>
 	Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
+
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function fold(operator: string): AnimationFn {
 	return async ({ cells, getNode, commit }) => {
 		const op = OP_FN[operator];
-		if (!op || cells.length < 2 || cells.some((c) => typeof c.value !== 'number')) {
+		if (
+			!op ||
+			cells.length < 2 ||
+			cells.some((c) => typeof c.value !== 'number')
+		) {
 			await commit();
 			return;
 		}
@@ -32,16 +47,23 @@ export function fold(operator: string): AnimationFn {
 		const finalAcc = values.slice(1).reduce((a, b) => op(a, b), values[0]);
 
 		const wraps = cells.map((c) => getNode(c.id));
-		const bars = wraps.map((w) => w?.querySelector('.bar') as HTMLElement | null);
-		const nums = bars.map((b) => b?.querySelector('.num') as HTMLElement | null);
+		const bars = wraps.map(
+			(w) => w?.querySelector('.bar') as HTMLElement | null
+		);
+		const nums = bars.map(
+			(b) => b?.querySelector('.num') as HTMLElement | null
+		);
 
-		if (!wraps[0] || !bars[0] || !nums[0]) {
+		const acc0Wrap = wraps[0];
+		const acc0Bar = bars[0];
+		const acc0Num = nums[0];
+		if (!acc0Wrap || !acc0Bar || !acc0Num) {
 			await commit();
 			return;
 		}
 
-		// Derive the bars' visual scale from any existing rendered bar
-		// so our intermediate heights match the row.
+		// Derive the existing visual scale from any rendered bar so
+		// intermediate heights match the row, then widen for finalAcc.
 		const derivedMax = (() => {
 			for (let i = 0; i < bars.length; i++) {
 				const b = bars[i];
@@ -56,35 +78,52 @@ export function fold(operator: string): AnimationFn {
 		const valToH = (v: number) =>
 			Math.min(Math.max(v, 0), visualMax) * (60 / visualMax) + 18;
 
-		const row = wraps[0].parentElement;
+		const row = acc0Wrap.parentElement;
 		if (!row) {
 			await commit();
 			return;
 		}
 		row.style.position = 'relative';
 
-		// Phase 1: insert operator badges between consecutive bars.
+		// Phase 1a: spread the bars apart so there's room for badges.
+		const wrapDelta = wraps.map((_, i) => i * SPREAD_GAP);
+		await Promise.all(
+			wraps.map((w, i) =>
+				w
+					? animate(
+							w,
+							{ x: wrapDelta[i] },
+							{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }
+						).finished
+					: Promise.resolve()
+			)
+		);
+
+		// Phase 1b: drop operator badges into the new gaps.
 		const rowRect = row.getBoundingClientRect();
-		const opBadges: HTMLElement[] = [];
+		const opBadges: (HTMLElement | null)[] = [];
+		const opDelta: number[] = [];
 		for (let i = 0; i < wraps.length - 1; i++) {
 			const wA = wraps[i];
-			const wB = wraps[i + 1];
-			if (!wA || !wB) continue;
+			if (!wA) {
+				opBadges.push(null);
+				opDelta.push(0);
+				continue;
+			}
 			const aRect = wA.getBoundingClientRect();
-			const bRect = wB.getBoundingClientRect();
-			const midX = (aRect.right + bRect.left) / 2 - rowRect.left;
+			const midX = aRect.right + (ORIG_GAP + SPREAD_GAP) / 2 - rowRect.left;
 			const midY = aRect.top + aRect.height / 2 - rowRect.top;
 
 			const badge = document.createElement('div');
 			badge.textContent = operator;
 			Object.assign(badge.style, {
 				position: 'absolute',
-				left: `${midX}px`,
-				top: `${midY}px`,
-				transform: 'translate(-50%, -50%) scale(0)',
+				left: `${midX - BADGE_SIZE / 2}px`,
+				top: `${midY - BADGE_SIZE / 2}px`,
+				transform: 'scale(0)',
 				opacity: '0',
-				width: '22px',
-				height: '22px',
+				width: `${BADGE_SIZE}px`,
+				height: `${BADGE_SIZE}px`,
 				display: 'grid',
 				placeItems: 'center',
 				background: '#5fcc5f',
@@ -100,98 +139,111 @@ export function fold(operator: string): AnimationFn {
 			});
 			row.appendChild(badge);
 			opBadges.push(badge);
+			opDelta.push(0);
 		}
 
 		await Promise.all(
-			opBadges.map(
-				(b, i) =>
-					animate(
-						b,
-						{
-							opacity: [0, 1],
-							transform: [
-								'translate(-50%, -50%) scale(0)',
-								'translate(-50%, -50%) scale(1.2)',
-								'translate(-50%, -50%) scale(1)'
-							]
-						},
-						{ duration: 0.35, delay: i * 0.04, ease: [0.34, 1.56, 0.64, 1] }
-					).finished
+			opBadges.map((b, i) =>
+				b
+					? animate(
+							b,
+							{ opacity: [0, 1], scale: [0, 1.2, 1] },
+							{ duration: 0.35, delay: i * 0.04, ease: [0.34, 1.56, 0.64, 1] }
+						).finished
+					: Promise.resolve()
 			)
 		);
-		await new Promise((r) => setTimeout(r, 280));
+		await delay(280);
 
-		// Phase 2: sweep left to right.
+		// Phase 2: collapse leftmost trio, shift the rest left, repeat.
 		let acc = values[0];
-		for (let i = 1; i < cells.length; i++) {
-			const rightWrap = wraps[i];
-			const rightBadge = opBadges[i - 1];
-			if (!rightWrap) continue;
-
-			const newAcc = op(acc, values[i]);
+		for (let step = 0; step < cells.length - 1; step++) {
+			const mergeIdx = step + 1;
+			const newAcc = op(acc, values[mergeIdx]);
 			const oldH = valToH(acc);
 			const newH = valToH(newAcc);
 
-			// Pin bar 0's height to the current acc before animating.
-			bars[0]!.style.height = `${oldH}px`;
-			void bars[0]!.offsetHeight;
+			acc0Bar.style.height = `${oldH}px`;
+			void acc0Bar.offsetHeight;
 
-			// Pulse the operator about to fire.
-			if (rightBadge) {
-				animate(
-					rightBadge,
-					{
-						transform: [
-							'translate(-50%, -50%) scale(1)',
-							'translate(-50%, -50%) scale(1.4)',
-							'translate(-50%, -50%) scale(1)'
-						]
-					},
-					{ duration: 0.25 }
+			const tasks: Promise<unknown>[] = [];
+
+			// Leftmost operator pulses then fades.
+			const opBadge = opBadges[step];
+			if (opBadge) {
+				tasks.push(
+					animate(
+						opBadge,
+						{ scale: [1, 1.4, 0.6], opacity: [1, 1, 0] },
+						{ duration: 0.42, ease: [0.5, 0, 0.7, 1] }
+					).finished
 				);
 			}
 
-			// Compute the slide distance so right wrap lands on bar 0.
-			const accRect = wraps[0]!.getBoundingClientRect();
-			const rightRect = rightWrap.getBoundingClientRect();
-			const dx =
-				accRect.left + accRect.width / 2 - rightRect.left - rightRect.width / 2;
+			// Right bar slides into bar 0 (negate its CSS-flow offset).
+			const mergeWrap = wraps[mergeIdx];
+			if (mergeWrap) {
+				const mergeTargetX = -mergeIdx * (BAR_WIDTH + ORIG_GAP);
+				tasks.push(
+					animate(
+						mergeWrap,
+						{ x: mergeTargetX, opacity: 0, scale: 0.5 },
+						{ duration: 0.42, ease: [0.5, 0, 0.7, 1] }
+					).finished
+				);
+				wrapDelta[mergeIdx] = mergeTargetX;
+			}
 
-			const slide = animate(
-				rightWrap,
-				{ x: dx, opacity: [1, 0], scale: [1, 0.5] },
-				{ duration: 0.42, ease: [0.5, 0, 0.7, 1] }
-			).finished;
-
-			// Snap the accumulator number partway through the slide.
+			// Bar 0's height grows/shrinks; number snaps mid-animation.
 			setTimeout(() => {
-				if (nums[0]) nums[0].textContent = formatNum(newAcc);
+				acc0Num.textContent = formatNum(newAcc);
 			}, 240);
-
-			const grow = animate(
-				bars[0]!,
-				{ height: [`${oldH}px`, `${newH}px`] },
-				{ duration: 0.4, delay: 0.18, ease: [0.22, 1, 0.36, 1] }
-			).finished;
-
-			if (rightBadge) {
+			tasks.push(
 				animate(
-					rightBadge,
-					{ opacity: 0, transform: 'translate(-50%, -50%) scale(0.6)' },
-					{ duration: 0.25, delay: 0.22 }
-				);
+					acc0Bar,
+					{ height: [`${oldH}px`, `${newH}px`] },
+					{ duration: 0.4, delay: 0.2, ease: [0.22, 1, 0.36, 1] }
+				).finished
+			);
+
+			// Everything to the right shifts left by one column.
+			for (let k = mergeIdx + 1; k < wraps.length; k++) {
+				wrapDelta[k] -= COL_UNIT;
+				const w = wraps[k];
+				if (w) {
+					tasks.push(
+						animate(
+							w,
+							{ x: wrapDelta[k] },
+							{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }
+						).finished
+					);
+				}
+			}
+			for (let k = step + 1; k < opBadges.length; k++) {
+				opDelta[k] -= COL_UNIT;
+				const b = opBadges[k];
+				if (b) {
+					tasks.push(
+						animate(
+							b,
+							{ x: opDelta[k] },
+							{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }
+						).finished
+					);
+				}
 			}
 
-			await Promise.all([slide, grow]);
+			await Promise.all(tasks);
 			acc = newAcc;
-
-			await new Promise((r) => setTimeout(r, 90));
+			await delay(80);
 		}
 
-		await new Promise((r) => setTimeout(r, 220));
+		await delay(220);
 		await commit();
 
-		// Cleanup: remove operator badges (row may have unmounted).
-		for (const b of opBadges) b.remove();
+		for (const b of opBadges) {
+			if (b) b.remove();
+		}
 	};
 }
