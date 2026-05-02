@@ -10,6 +10,7 @@ import { drop } from './drop';
 import { range } from './range';
 import { sort } from './sort';
 import { broadcast } from './broadcast';
+import { fold } from './fold';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -29,6 +30,8 @@ const BCAST_DYAD_RE = /^([+\-×÷=<>])⟜(\d+)$/;
 const BCAST_MOD_RE = /^(\d+)⊸\|$/;
 // op˜: +˜ (double), ×˜ (square) — self-application.
 const BCAST_SELF_RE = /^([+\-×])˜$/;
+// F´: +´, ×´, ⌈´, ⌊´ — fold a row into a scalar.
+const FOLD_RE = /^([+\-×÷⌈⌊])´$/;
 
 export function getAnimation(expr: string): AnimationFn | null {
 	const direct = exact[expr];
@@ -48,6 +51,9 @@ export function getAnimation(expr: string): AnimationFn | null {
 
 	const selfMatch = BCAST_SELF_RE.exec(expr);
 	if (selfMatch) return broadcast(`${selfMatch[1]}˜`);
+
+	const foldMatch = FOLD_RE.exec(expr);
+	if (foldMatch) return fold(foldMatch[1]);
 
 	return null;
 }
