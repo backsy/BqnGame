@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
+	import { scale, fly } from 'svelte/transition';
+	import { backOut, cubicOut } from 'svelte/easing';
 	import { base } from '$app/paths';
 	import ValueViz from '$lib/components/ValueViz.svelte';
 	import AnimatedRow from '$lib/components/AnimatedRow.svelte';
@@ -200,7 +202,9 @@
 
 <div class="game" style="height: {appHeight};">
 	<header class="head">
-		<button type="button" class="lvl lvl-btn" onclick={jumpToLevel}>Level {level.id}</button>
+		<button type="button" class="lvl-btn" onclick={jumpToLevel} aria-label="Jump to level">
+			<span class="lvl-mark">№</span><span class="lvl-num">{level.id}</span>
+		</button>
 		<span class="head-right">
 			<button type="button" class="link link-btn" onclick={resetProgress}>reset</button>
 			<a class="link" href="{base}/sandbox/">sandbox →</a>
@@ -208,12 +212,10 @@
 	</header>
 
 	<section class="middle board">
-		<div class="cell">
-			<div class="cap">goal</div>
-			<div class="viz"><ValueViz value={targetValue} max={vizMax} /></div>
+		<div class="cell goal">
+			<div class="viz ghost"><ValueViz value={targetValue} max={vizMax} /></div>
 		</div>
-		<div class="cell now">
-			<div class="cap">now</div>
+		<div class="cell now" class:winning={solved}>
 			<div class="viz">
 				{#if cells.length > 0}
 					<AnimatedRow {cells} max={vizMax} {setNode} />
@@ -224,24 +226,97 @@
 		</div>
 	</section>
 
-	<section class="actions">
-		<button type="button" class="ha" onclick={undo} disabled={history.length === 0}>undo</button>
-		<button type="button" class="ha" onclick={reset} disabled={history.length === 0}>reset</button>
-		<span class="moves">{history.length} {history.length === 1 ? 'move' : 'moves'}</span>
+	<section class="actions" aria-label="actions">
+		<button
+			type="button"
+			class="ha bqn"
+			onclick={undo}
+			disabled={history.length === 0}
+			aria-label="undo"
+		>↶</button>
+		<button
+			type="button"
+			class="ha bqn"
+			onclick={reset}
+			disabled={history.length === 0}
+			aria-label="reset attempt"
+		>↺</button>
+		{#if history.length > 0}
+			<span class="moves" aria-label="{history.length} moves">{history.length}</span>
+		{/if}
 	</section>
 
 	{#if solved}
 		{#if isLastLevel}
 			<section class="solved finale">
-				<span class="finale-msg">
-					🎉 you finished all {levels.length} levels — that's all there is for now!
-				</span>
-				<button type="button" class="next" onclick={resetProgress}>start over</button>
+				<div
+					class="stamp finale-stamp"
+					in:scale={{ duration: 520, start: 0.2, opacity: 0, easing: backOut }}
+				>
+					<svg viewBox="0 0 56 56" class="stamp-svg" aria-hidden="true">
+						<circle cx="28" cy="28" r="25" fill="none" stroke="currentColor" stroke-width="2" />
+						<path
+							d="M16 29 L24 37 L40 19"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="3.2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</div>
+				<button
+					type="button"
+					class="next big"
+					onclick={resetProgress}
+					in:fly={{ y: 18, duration: 380, delay: 460, easing: cubicOut }}
+					aria-label="start over"
+				>↻</button>
 			</section>
 		{:else}
 			<section class="solved">
-				<span class="check">✓</span>
-				<button type="button" class="next" onclick={nextLevel}>next level →</button>
+				<div
+					class="stamp"
+					in:scale={{ duration: 480, start: 0.2, opacity: 0, easing: backOut }}
+				>
+					<svg viewBox="0 0 56 56" class="stamp-svg" aria-hidden="true">
+						<circle cx="28" cy="28" r="25" fill="none" stroke="currentColor" stroke-width="2" />
+						<path
+							d="M16 29 L24 37 L40 19"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="3.2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</div>
+				{#if history.length > 0}
+					<div class="history-strip" aria-hidden="true">
+						{#each history as expr, i (i)}
+							{@const rune = level.runes.find((r) => r.expr === expr)}
+							{#if rune}
+								<span
+									class="hist-glyph bqn"
+									in:scale={{
+										duration: 240,
+										delay: 220 + i * 45,
+										start: 0.2,
+										opacity: 0,
+										easing: backOut
+									}}
+								>{rune.glyph}</span>
+							{/if}
+						{/each}
+					</div>
+				{/if}
+				<button
+					type="button"
+					class="next big"
+					onclick={nextLevel}
+					in:fly={{ y: 18, duration: 380, delay: 460, easing: cubicOut }}
+					aria-label="next level"
+				>→</button>
 			</section>
 		{/if}
 	{:else}
@@ -264,10 +339,13 @@
 	.game {
 		display: grid;
 		grid-template-rows: auto 1fr auto auto;
-		background: var(--bg);
 		overflow: hidden;
 	}
 	.head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.6rem;
 		padding: 0.75rem 1rem;
 		padding-top: calc(0.75rem + env(safe-area-inset-top));
 	}
@@ -285,59 +363,69 @@
 		padding: 0.75rem 1rem;
 		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 	}
-	.head {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 0.6rem;
-	}
-	.lvl {
-		color: #aaa;
-		font-size: 0.85rem;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		flex: 0 0 auto;
-	}
+
 	.lvl-btn {
 		all: unset;
-		color: #aaa;
-		font-size: 0.85rem;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.2rem;
 		flex: 0 0 auto;
 		cursor: pointer;
 		-webkit-tap-highlight-color: transparent;
+		font-family: var(--font-display);
 	}
+	.lvl-mark {
+		font-style: italic;
+		font-size: 1rem;
+		color: #6c8a6c;
+		line-height: 1;
+	}
+	.lvl-num {
+		font-size: 1.25rem;
+		font-weight: 500;
+		color: #ddd;
+		line-height: 1;
+		font-feature-settings: 'lnum' 1;
+	}
+
 	.actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: 0.4rem;
 		align-items: center;
 		justify-content: center;
 		padding: 0.25rem 1rem;
 	}
 	.ha {
 		all: unset;
-		padding: 0.4rem 0.85rem;
+		display: inline-grid;
+		place-items: center;
+		min-width: 2.5rem;
+		min-height: 2.2rem;
+		padding: 0.35rem 0.7rem;
 		border: 1px solid #2a2a2a;
-		background: transparent;
 		color: #aaa;
 		border-radius: 0.4rem;
-		font-size: 0.9rem;
+		font-size: 1.3rem;
+		line-height: 1;
 		cursor: pointer;
 		-webkit-tap-highlight-color: transparent;
 	}
 	.ha:active {
 		background: #1a1a1a;
+		transform: scale(0.96);
 	}
 	.ha:disabled {
-		opacity: 0.4;
+		opacity: 0.35;
 		cursor: default;
 	}
 	.moves {
-		color: #555;
-		font-size: 0.8rem;
-		margin-left: 0.3rem;
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 0.95rem;
+		color: #6a7a6a;
+		margin-left: 0.4rem;
 	}
+
 	.link {
 		color: #6a8aaa;
 		font-size: 0.85rem;
@@ -354,11 +442,10 @@
 		cursor: pointer;
 		-webkit-tap-highlight-color: transparent;
 	}
+
 	.board {
 		display: flex;
 		flex-direction: column;
-		/* Big gap between goal and now so the reverse-arc (peak ~60px)
-		   doesn't overshoot into the goal row. */
 		gap: 4.5rem;
 		align-items: center;
 	}
@@ -366,53 +453,126 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.3rem;
-	}
-	.cap {
-		color: #777;
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
 	}
 	.viz {
 		display: flex;
 		align-items: flex-end;
 		min-height: 50px;
 	}
+
+	/* Goal cell: outlined "blueprint" — bars become dashed silhouettes,
+	   chars become dashed slots. The shape is the spec; the player fills
+	   it in with the now cell. */
+	.ghost :global(.bar) {
+		background: transparent !important;
+		border: 1.5px dashed rgba(95, 204, 95, 0.55);
+		box-shadow: none;
+	}
+	.ghost :global(.bar .num) {
+		color: rgba(95, 204, 95, 0.78);
+		text-shadow: none;
+		font-weight: 500;
+	}
+	.ghost :global(.char) {
+		background: transparent;
+		border: 1.5px dashed rgba(169, 199, 230, 0.55);
+		color: rgba(169, 199, 230, 0.85);
+	}
+	.ghost :global(.grid),
+	.ghost :global(.row),
+	.ghost :global(.stack) {
+		opacity: 0.95;
+	}
+
 	.now .viz {
-		filter: drop-shadow(0 0 8px rgba(95, 204, 95, 0.15));
+		filter: drop-shadow(0 0 10px rgba(95, 204, 95, 0.18));
+	}
+	.now.winning .viz {
+		animation: solvedPulse 1.5s ease-in-out infinite;
+	}
+	@keyframes solvedPulse {
+		0%,
+		100% {
+			filter: drop-shadow(0 0 12px rgba(95, 204, 95, 0.35));
+		}
+		50% {
+			filter: drop-shadow(0 0 22px rgba(95, 204, 95, 0.65));
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.now.winning .viz {
+			animation: none;
+			filter: drop-shadow(0 0 14px rgba(95, 204, 95, 0.45));
+		}
 	}
 
 	.solved {
 		display: flex;
+		flex-direction: column;
 		justify-content: center;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.65rem;
 	}
 	.finale {
-		flex-direction: column;
-		gap: 0.6rem;
 		text-align: center;
 	}
-	.finale-msg {
-		color: #d7f0d7;
-		font-size: 1rem;
-		line-height: 1.4;
-		max-width: 28rem;
+
+	.stamp {
+		width: 68px;
+		height: 68px;
+		display: grid;
+		place-items: center;
+		color: var(--accent);
+		filter: drop-shadow(0 0 14px var(--accent-soft));
 	}
-	.check {
-		color: #5fcc5f;
-		font-size: 1.5rem;
+	.finale-stamp {
+		width: 84px;
+		height: 84px;
 	}
+	.stamp-svg {
+		width: 100%;
+		height: 100%;
+	}
+
+	.history-strip {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.25rem 0.4rem;
+		max-width: min(28rem, 100%);
+		font-family: var(--font-bqn);
+	}
+	.hist-glyph {
+		display: inline-block;
+		font-size: 1.15rem;
+		color: #8aa3c2;
+		line-height: 1;
+		opacity: 0.85;
+	}
+
 	.next {
 		all: unset;
-		padding: 0.6rem 0.9rem;
-		background: #173d17;
+		display: inline-grid;
+		place-items: center;
+		padding: 0.55rem 1.1rem;
+		background: var(--accent-deep);
 		border: 1px solid #2a6a2a;
 		color: #d7f0d7;
-		border-radius: 0.4rem;
+		border-radius: 0.45rem;
 		font-size: 1.4rem;
+		line-height: 1;
 		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.next.big {
+		min-width: 4.2rem;
+		min-height: 2.6rem;
+		font-size: 1.7rem;
+		box-shadow: 0 0 0 1px rgba(95, 204, 95, 0.08), 0 6px 22px -10px rgba(95, 204, 95, 0.55);
+	}
+	.next:active {
+		background: #225722;
+		transform: scale(0.97);
 	}
 
 	.runes {
@@ -442,5 +602,4 @@
 	.rune:disabled {
 		opacity: 0.5;
 	}
-
 </style>

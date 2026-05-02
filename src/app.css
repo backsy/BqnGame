@@ -11,7 +11,11 @@
 	--fg: #eee;
 	--tile: #222;
 	--font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-display: ui-serif, 'Iowan Old Style', 'Apple Garamond', Baskerville, 'Times New Roman', serif;
 	--font-bqn: 'BQN386', 'DejaVu Sans Mono', ui-monospace, monospace;
+	--accent: #5fcc5f;
+	--accent-soft: rgba(95, 204, 95, 0.18);
+	--accent-deep: #173d17;
 }
 
 html,
@@ -20,7 +24,9 @@ body {
 	height: 100%;
 	overflow: hidden;
 	overscroll-behavior: none;
-	background: var(--bg);
+	background:
+		radial-gradient(ellipse at 50% 0%, #1a1a1d 0%, #0a0a0c 70%),
+		#0a0a0c;
 	color: var(--fg);
 	font-family: var(--font-sans);
 	-webkit-font-smoothing: antialiased;

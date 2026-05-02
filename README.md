@@ -1,9 +1,23 @@
 # BqnGame
 
-Mobile-first BQN playground. Built as a PWA with SvelteKit, CBQN compiled to
-WebAssembly running in a Web Worker.
+A mobile-first BQN puzzle **game**, shipped as a PWA with SvelteKit. There's
+a secondary REPL/playground at `/sandbox/`, but the game is the primary
+experience right now — playground is a side surface, not the headline.
 
 Deployed to GitHub Pages: https://backsy.github.io/BqnGame/
+
+## BQN runtime
+
+Currently: the self-hosted JavaScript BQN interpreter from
+[mlochbaum/BQN](https://github.com/mlochbaum/BQN) is vendored at
+`src/lib/bqn/vendor/bqn.js` and runs synchronously on the main thread.
+Vendoring it was a one-file job, which is why this landed first.
+
+Potential future: if the JS interpreter ever stops serving our needs — perf,
+cancellation, isolation — swap it for **CBQN compiled to WebAssembly running
+in a Web Worker**. The protocol shim and a placeholder worker already exist
+at `src/lib/bqn/worker.ts` and `src/lib/bqn/protocol.ts`, so the swap would
+be a different worker implementation behind the same message contract.
 
 ## Dev environment
 
