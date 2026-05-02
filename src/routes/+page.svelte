@@ -113,6 +113,19 @@
 				return;
 			}
 
+			// Element-wise broadcasts (+N, -N, ×N, ÷N, =N, <N, >N, N|,
+			// +˜, ×˜): preserve ids, just refresh values per slot.
+			if (
+				justTapped &&
+				cells.length === cur.length &&
+				(/^[+\-×÷=<>]⟜\d+$/.test(justTapped) ||
+					/^\d+⊸\|$/.test(justTapped) ||
+					/^[+\-×]˜$/.test(justTapped))
+			) {
+				cells = cells.map((c, i) => ({ id: c.id, value: cur[i] }));
+				return;
+			}
+
 			// N⊸↑: preserve ids of the first N cells, drop the rest. The
 			// take animation needs the dropped cells' DOM during its drop
 			// phase, so it commits AFTER measuring; by the time this
