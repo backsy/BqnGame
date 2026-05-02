@@ -80,12 +80,11 @@ export function broadcast(label: string): AnimationFn {
 		// Commit: Svelte renders each bar with its new inline height.
 		await commit();
 
-		// Phase 2 (sequenced): each badge plunges into its bar first;
-		// the bar's growth kicks in as the badge accelerates downward,
-		// so the read is cause-and-effect (badge → bar grows).
-		const merge: Promise<unknown>[] = [];
-		for (let i = 0; i < cells.length; i++) {
-			const cell = cells[i];
+		// Capture new heights, reset bars back to old heights so we
+		// can animate from there. Single forced reflow so the old
+		// state paints before phase 2a starts.
+		const barSpecs: { bar: HTMLElement; oldH: number; newH: number }[] = [];
+		for (const cell of cells) {
 			const wrap = getNode(cell.id);
 			if (!wrap) continue;
 			const bar = wrap.querySelector('.bar') as HTMLElement | null;
@@ -94,33 +93,40 @@ export function broadcast(label: string): AnimationFn {
 			const newH = parseFloat(bar.style.height);
 			if (oldH == null || isNaN(newH)) continue;
 			bar.style.height = `${oldH}px`;
-			void bar.offsetHeight;
-
-			const badge = badges[i];
-			if (badge) {
-				const badgeAnim = animate(
-					badge,
-					{
-						transform: [
-							'translate(-50%, 0) scale(1)',
-							'translate(-50%, 32px) scale(0)'
-						],
-						opacity: [1, 0]
-					},
-					// Ease-in: slow start, fast finish — reads like falling.
-					{ duration: 0.32, ease: [0.5, 0, 0.75, 0] }
-				);
-				merge.push(badgeAnim.finished);
-			}
-
-			const barAnim = animate(
-				bar,
-				{ height: [`${oldH}px`, `${newH}px`] },
-				{ duration: 0.5, delay: 0.16, ease: [0.22, 1, 0.36, 1] }
-			);
-			merge.push(barAnim.finished);
+			barSpecs.push({ bar, oldH, newH });
 		}
-		await Promise.all(merge);
+		void document.body.offsetHeight;
+
+		// Phase 2a: all badges plunge in parallel and fully complete.
+		await Promise.all(
+			badges.map(
+				(b) =>
+					animate(
+						b,
+						{
+							transform: [
+								'translate(-50%, 0) scale(1)',
+								'translate(-50%, 32px) scale(0)'
+							],
+							opacity: [1, 0]
+						},
+						// Mild ease-in so the fall accelerates without
+						// looking stuck at the start.
+						{ duration: 0.32, ease: [0.4, 0, 0.7, 1] }
+					).finished
+			)
+		);
+
+		// Phase 2b: only now do the bars pump up to their new heights.
+		await Promise.all(
+			barSpecs.map(({ bar, oldH, newH }) =>
+				animate(
+					bar,
+					{ height: [`${oldH}px`, `${newH}px`] },
+					{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }
+				).finished
+			)
+		);
 
 		for (const b of badges) b.remove();
 		for (const cell of cells) {
