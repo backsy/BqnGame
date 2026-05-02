@@ -377,8 +377,8 @@
 
 <style>
 	.game {
-		display: grid;
-		grid-template-rows: auto 1fr auto auto;
+		display: flex;
+		flex-direction: column;
 		overflow: hidden;
 	}
 	.head {
@@ -392,11 +392,11 @@
 	.middle {
 		display: flex;
 		flex-direction: column;
-		justify-content: center;
 		align-items: center;
 		overflow: auto;
 		padding: 0.5rem 1rem;
 		min-height: 0;
+		flex: 0 1 auto;
 	}
 	.runes,
 	.solved {
@@ -404,16 +404,10 @@
 		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 	}
 
-	/* Reserve enough height for the tallest bottom state (the solved
-	   panel with stamp + history + next button) so the puzzle row above
-	   doesn't shift when it appears. flex-end pins the runes to the
-	   bottom during play (visually identical to before); the solved
-	   panel fills the shell from top to bottom. */
 	.bottom-shell {
 		display: flex;
 		flex-direction: column;
-		justify-content: flex-end;
-		min-height: calc(11rem + env(safe-area-inset-bottom));
+		flex: 0 0 auto;
 	}
 
 	.lvl-btn {
@@ -446,6 +440,10 @@
 		align-items: center;
 		justify-content: center;
 		padding: 0.25rem 1rem;
+		/* margin-top: auto pushes actions + bottom-shell to the viewport
+		   bottom; whatever space is left above grows/shrinks to absorb
+		   bottom-shell's size changes, so the puzzle box never moves. */
+		margin-top: auto;
 	}
 	.ha {
 		all: unset;
