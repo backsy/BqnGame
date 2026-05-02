@@ -213,7 +213,9 @@
 
 	<section class="middle board">
 		<div class="cell goal">
-			<div class="viz ghost"><ValueViz value={targetValue} max={vizMax} /></div>
+			<div class="viz ghost" class:filled={solved}>
+				<ValueViz value={targetValue} max={vizMax} />
+			</div>
 		</div>
 		<div class="cell now" class:winning={solved}>
 			<div class="viz">
@@ -461,27 +463,110 @@
 	}
 
 	/* Goal cell: outlined "blueprint" — bars become dashed silhouettes,
-	   chars become dashed slots. The shape is the spec; the player fills
-	   it in with the now cell. */
+	   chars become dashed slots. On solve, the spec fills in: each bar
+	   pours from the bottom (staggered left→right) and chars settle into
+	   their filled state. The fill is a ::after layer scaled vertically
+	   so the gradient can transition smoothly (gradients can't tween
+	   directly). */
 	.ghost :global(.bar) {
+		position: relative;
+		overflow: hidden;
 		background: transparent !important;
 		border: 1.5px dashed rgba(95, 204, 95, 0.55);
 		box-shadow: none;
+		transition: border-color 450ms ease, box-shadow 600ms ease;
+	}
+	.ghost :global(.bar)::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(to top, #2a6a2a, #5fcc5f);
+		transform: scaleY(0);
+		transform-origin: bottom;
+		transition: transform 700ms cubic-bezier(0.34, 1.4, 0.64, 1);
+		z-index: 0;
 	}
 	.ghost :global(.bar .num) {
+		position: relative;
+		z-index: 1;
 		color: rgba(95, 204, 95, 0.78);
 		text-shadow: none;
 		font-weight: 500;
+		transition: color 380ms ease 200ms, text-shadow 380ms ease 200ms;
 	}
 	.ghost :global(.char) {
 		background: transparent;
 		border: 1.5px dashed rgba(169, 199, 230, 0.55);
 		color: rgba(169, 199, 230, 0.85);
+		transition:
+			background-color 500ms ease,
+			border-color 500ms ease,
+			color 400ms ease;
 	}
 	.ghost :global(.grid),
 	.ghost :global(.row),
 	.ghost :global(.stack) {
 		opacity: 0.95;
+	}
+
+	.ghost.filled :global(.bar) {
+		border-color: rgba(95, 204, 95, 0);
+		box-shadow: 0 0 8px rgba(95, 204, 95, 0.4);
+	}
+	.ghost.filled :global(.bar)::after {
+		transform: scaleY(1);
+	}
+	.ghost.filled :global(.bar .num) {
+		color: #f0fff0;
+		text-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+	}
+	.ghost.filled :global(.char) {
+		background-color: #15212e;
+		border-color: #2c4365;
+		border-style: solid;
+		color: #a9c7e6;
+	}
+	.ghost.filled :global(.grid),
+	.ghost.filled :global(.row),
+	.ghost.filled :global(.stack) {
+		opacity: 1;
+	}
+
+	/* Stagger the fill so the wave reads from left → right. Enumerated
+	   up to 12 — typical row size; ValueViz already truncates beyond. */
+	.ghost.filled :global(.row > .bar:nth-child(1))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(1))::after { transition-delay: 80ms; }
+	.ghost.filled :global(.row > .bar:nth-child(2))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(2))::after { transition-delay: 130ms; }
+	.ghost.filled :global(.row > .bar:nth-child(3))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(3))::after { transition-delay: 180ms; }
+	.ghost.filled :global(.row > .bar:nth-child(4))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(4))::after { transition-delay: 230ms; }
+	.ghost.filled :global(.row > .bar:nth-child(5))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(5))::after { transition-delay: 280ms; }
+	.ghost.filled :global(.row > .bar:nth-child(6))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(6))::after { transition-delay: 330ms; }
+	.ghost.filled :global(.row > .bar:nth-child(7))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(7))::after { transition-delay: 380ms; }
+	.ghost.filled :global(.row > .bar:nth-child(8))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(8))::after { transition-delay: 430ms; }
+	.ghost.filled :global(.row > .bar:nth-child(9))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(9))::after { transition-delay: 480ms; }
+	.ghost.filled :global(.row > .bar:nth-child(10))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(10))::after { transition-delay: 530ms; }
+	.ghost.filled :global(.row > .bar:nth-child(11))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(11))::after { transition-delay: 580ms; }
+	.ghost.filled :global(.row > .bar:nth-child(12))::after,
+	.ghost.filled :global(.stack > .bar:nth-child(12))::after { transition-delay: 630ms; }
+
+	@media (prefers-reduced-motion: reduce) {
+		.ghost :global(.bar),
+		.ghost :global(.bar)::after,
+		.ghost :global(.bar .num),
+		.ghost :global(.char) {
+			transition-duration: 0.001ms !important;
+			transition-delay: 0ms !important;
+		}
 	}
 
 	.now .viz {
