@@ -7,11 +7,13 @@ import type { AnimationFn } from './types';
 import { reverse } from './reverse';
 import { take } from './take';
 import { drop } from './drop';
+import { range } from './range';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
 const exact: Record<string, AnimationFn> = {
-	'⌽': reverse
+	'⌽': reverse,
+	'↕': range
 };
 
 const TAKE_RE = /^(\d+)⊸↑$/;

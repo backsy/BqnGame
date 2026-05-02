@@ -128,11 +128,12 @@
 		if (solved || animating) return;
 
 		const animFn = getAnimation(expr);
-		if (animFn && isSimpleRow(currentValue)) {
+		if (animFn) {
 			// Capture old cell positions before any state mutation. The
 			// animation decides when to commit (FLIP-only animations call
 			// commit() immediately; animations that need the OLD DOM run
-			// pre-commit work first).
+			// pre-commit work first; animations that birth new cells (↕)
+			// use commit's return value).
 			const oldRects = new Map<number, DOMRect>();
 			for (const cell of cells) {
 				const node = cellNodes.get(cell.id);
@@ -142,10 +143,11 @@
 			animating = true;
 			let committed = false;
 			const commit = async () => {
-				if (committed) return;
+				if (committed) return cells;
 				committed = true;
 				history = [...history, expr];
 				await tick();
+				return cells;
 			};
 
 			try {

@@ -20,8 +20,10 @@ export type AnimationCtx = {
 	// Commit the pending state mutation. Animations that need access to
 	// the OLD DOM (cells about to unmount, like ↑) must run that work
 	// before calling commit; FLIP-only animations (like ⌽) can call it
-	// immediately and then animate from old → new positions.
-	commit: () => Promise<void>;
+	// immediately and then animate from old → new positions. Returns
+	// the post-commit cells so animations that birth new ones (like ↕)
+	// can iterate them.
+	commit: () => Promise<Cell[]>;
 };
 
 export type AnimationFn = (ctx: AnimationCtx) => Promise<void>;
