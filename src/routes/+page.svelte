@@ -108,6 +108,18 @@
 				}
 			}
 
+			// N⊸↓: preserve ids of cells from index N onward, drop the
+			// first N. Same id-preservation rationale as ↑.
+			const dropMatch = justTapped?.match(/^(\d+)⊸↓$/);
+			if (dropMatch) {
+				const n = parseInt(dropMatch[1], 10);
+				if (cells.length >= n && cur.length === cells.length - n) {
+					const survivors = cells.slice(n);
+					cells = survivors.map((c, i) => ({ id: c.id, value: cur[i] }));
+					return;
+				}
+			}
+
 			cells = cur.map((value) => ({ id: nextCellId++, value }));
 		});
 	});
