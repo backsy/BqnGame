@@ -14,7 +14,8 @@ import type { AnimationFn } from './types';
 const ARC_PEAK = 60;
 const SAMPLES = 16;
 
-export const reverse: AnimationFn = async ({ cells, getNode, oldRects }) => {
+export const reverse: AnimationFn = async ({ cells, getNode, oldRects, commit }) => {
+	await commit();
 	const tasks: Promise<unknown>[] = [];
 	for (const cell of cells) {
 		const node = getNode(cell.id);

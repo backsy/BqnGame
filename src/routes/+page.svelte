@@ -5,7 +5,7 @@
 	import { base } from '$app/paths';
 	import ValueViz from '$lib/components/ValueViz.svelte';
 	import AnimatedRow from '$lib/components/AnimatedRow.svelte';
-	import { animations, type Cell } from '$lib/animations';
+	import { getAnimation, type Cell } from '$lib/animations';
 	import { levels } from '$lib/learn/levels';
 	import { evalRaw, valueMatches } from '$lib/bqn/eval';
 
@@ -93,6 +93,21 @@
 				return;
 			}
 
+			// N⊸↑: preserve ids of the first N cells, drop the rest. The
+			// take animation needs the dropped cells' DOM during its drop
+			// phase, so it commits AFTER measuring; by the time this
+			// effect runs the kept cells will keep their nodes (Svelte
+			// matches by id) and the dropped wraps will unmount.
+			const takeMatch = justTapped?.match(/^(\d+)⊸↑$/);
+			if (takeMatch) {
+				const n = parseInt(takeMatch[1], 10);
+				if (cur.length === n && cells.length >= n) {
+					const kept = cells.slice(0, n);
+					cells = kept.map((c, i) => ({ id: c.id, value: cur[i] }));
+					return;
+				}
+			}
+
 			cells = cur.map((value) => ({ id: nextCellId++, value }));
 		});
 	});
@@ -100,11 +115,12 @@
 	async function applyRune(expr: string) {
 		if (solved || animating) return;
 
-		const animFn = animations[expr];
+		const animFn = getAnimation(expr);
 		if (animFn && isSimpleRow(currentValue)) {
-			// Capture old cell positions before mutating history. The cell
-			// tracker effect will then commit the new cells; we await the
-			// DOM tick and run the animation against new positions.
+			// Capture old cell positions before any state mutation. The
+			// animation decides when to commit (FLIP-only animations call
+			// commit() immediately; animations that need the OLD DOM run
+			// pre-commit work first).
 			const oldRects = new Map<number, DOMRect>();
 			for (const cell of cells) {
 				const node = cellNodes.get(cell.id);
@@ -112,17 +128,25 @@
 			}
 
 			animating = true;
-			history = [...history, expr];
-			await tick();
+			let committed = false;
+			const commit = async () => {
+				if (committed) return;
+				committed = true;
+				history = [...history, expr];
+				await tick();
+			};
 
 			try {
 				await animFn({
 					cells,
 					getNode: (id) => cellNodes.get(id) ?? null,
-					oldRects
+					oldRects,
+					commit
 				});
+				if (!committed) await commit();
 			} catch (err) {
 				console.error('animation failed', err);
+				if (!committed) await commit();
 			} finally {
 				animating = false;
 			}

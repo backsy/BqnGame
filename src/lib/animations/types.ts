@@ -17,6 +17,11 @@ export type AnimationCtx = {
 	cells: Cell[];
 	getNode: (id: number) => HTMLElement | null;
 	oldRects: Map<number, DOMRect>;
+	// Commit the pending state mutation. Animations that need access to
+	// the OLD DOM (cells about to unmount, like ↑) must run that work
+	// before calling commit; FLIP-only animations (like ⌽) can call it
+	// immediately and then animate from old → new positions.
+	commit: () => Promise<void>;
 };
 
 export type AnimationFn = (ctx: AnimationCtx) => Promise<void>;
