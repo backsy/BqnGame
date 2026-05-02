@@ -80,11 +80,13 @@ export function broadcast(label: string): AnimationFn {
 		// Commit: Svelte renders each bar with its new inline height.
 		await commit();
 
-		// Phase 2: override the just-rendered height back to old, then
-		// animate to new. Forced reflow ensures the old height paints
-		// first.
-		const heights: Promise<unknown>[] = [];
-		for (const cell of cells) {
+		// Phase 2 (merged): each badge plunges down into its bar and
+		// scales to zero AS the bar pumps up to the new height. Reads
+		// as cause-and-effect — the operation badge is what 'gives'
+		// the bar its new value.
+		const merge: Promise<unknown>[] = [];
+		for (let i = 0; i < cells.length; i++) {
+			const cell = cells[i];
 			const wrap = getNode(cell.id);
 			if (!wrap) continue;
 			const bar = wrap.querySelector('.bar') as HTMLElement | null;
@@ -94,24 +96,32 @@ export function broadcast(label: string): AnimationFn {
 			if (oldH == null || isNaN(newH)) continue;
 			bar.style.height = `${oldH}px`;
 			void bar.offsetHeight;
-			const a = animate(
+
+			const barAnim = animate(
 				bar,
 				{ height: [`${oldH}px`, `${newH}px`] },
-				{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }
+				{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }
 			);
-			heights.push(a.finished);
-		}
-		await Promise.all(heights);
+			merge.push(barAnim.finished);
 
-		// Phase 3: badges fade.
-		const outs = badges.map((b) =>
-			animate(
-				b,
-				{ opacity: 0, transform: 'translate(-50%, -8px) scale(0.9)' },
-				{ duration: 0.28, ease: 'easeIn' }
-			).finished
-		);
-		await Promise.all(outs);
+			const badge = badges[i];
+			if (badge) {
+				const badgeAnim = animate(
+					badge,
+					{
+						transform: [
+							'translate(-50%, 0) scale(1)',
+							'translate(-50%, -4px) scale(1.08)',
+							'translate(-50%, 30px) scale(0)'
+						],
+						opacity: [1, 1, 0]
+					},
+					{ duration: 0.55, ease: [0.5, 0, 0.7, 0.4] }
+				);
+				merge.push(badgeAnim.finished);
+			}
+		}
+		await Promise.all(merge);
 
 		for (const b of badges) b.remove();
 		for (const cell of cells) {
