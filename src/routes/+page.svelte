@@ -394,9 +394,14 @@
 		flex-direction: column;
 		align-items: center;
 		overflow: auto;
-		padding: 0.5rem 1rem;
+		/* Top offset bumps the puzzle down to roughly the visual
+		   position the original 1fr-centered layout used; .middle is
+		   then content-sized and won't shrink when the bottom row
+		   grows on solve. The flexible auto-margin on .actions absorbs
+		   that delta. */
+		padding: 18vh 1rem 0.5rem;
 		min-height: 0;
-		flex: 0 1 auto;
+		flex: 0 0 auto;
 	}
 	.runes,
 	.solved {
