@@ -284,6 +284,7 @@
 		{/if}
 	</section>
 
+	<div class="bottom-shell">
 	{#if solved}
 		{#if isLastLevel}
 			<section class="solved finale">
@@ -371,6 +372,7 @@
 			{/each}
 		</section>
 	{/if}
+	</div>
 </div>
 
 <style>
@@ -400,6 +402,18 @@
 	.solved {
 		padding: 0.75rem 1rem;
 		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+	}
+
+	/* Reserve enough height for the tallest bottom state (the solved
+	   panel with stamp + history + next button) so the puzzle row above
+	   doesn't shift when it appears. flex-end pins the runes to the
+	   bottom during play (visually identical to before); the solved
+	   panel fills the shell from top to bottom. */
+	.bottom-shell {
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		min-height: calc(11rem + env(safe-area-inset-bottom));
 	}
 
 	.lvl-btn {
