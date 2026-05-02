@@ -8,12 +8,15 @@ import { reverse } from './reverse';
 import { take } from './take';
 import { drop } from './drop';
 import { range } from './range';
+import { sort } from './sort';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
 const exact: Record<string, AnimationFn> = {
 	'⌽': reverse,
-	'↕': range
+	'↕': range,
+	'∧': sort,
+	'∨': sort
 };
 
 const TAKE_RE = /^(\d+)⊸↑$/;

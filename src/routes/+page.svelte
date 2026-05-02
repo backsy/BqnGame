@@ -93,6 +93,26 @@
 				return;
 			}
 
+			// ∧ / ∨: preserve ids, sort the cell order by value to match
+			// cur. JS Array.prototype.sort is stable since ES2019, which
+			// matches BQN's stable sort for duplicates.
+			if (
+				(justTapped === '∧' || justTapped === '∨') &&
+				cells.length === cur.length
+			) {
+				const ascending = justTapped === '∧';
+				const sortable = cells.slice();
+				sortable.sort((a, b) => {
+					const av = a.value;
+					const bv = b.value;
+					if (av < bv) return ascending ? -1 : 1;
+					if (av > bv) return ascending ? 1 : -1;
+					return 0;
+				});
+				cells = sortable.map((c, i) => ({ id: c.id, value: cur[i] }));
+				return;
+			}
+
 			// N⊸↑: preserve ids of the first N cells, drop the rest. The
 			// take animation needs the dropped cells' DOM during its drop
 			// phase, so it commits AFTER measuring; by the time this
