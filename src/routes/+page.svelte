@@ -68,6 +68,35 @@
 		return '3vh';
 	});
 
+	// For 2D targets, reserve enough vertical space in each cell to hold
+	// the full grid even before reshape commits. This is what gives the
+	// reshape animation room to fan symmetrically around the cell center
+	// instead of clipping the lower rows.
+	const targetCellHeight = $derived.by(() => {
+		const tv = targetValue;
+		if (!Array.isArray(tv)) return null;
+		const sh = (tv as { sh?: number[] }).sh;
+		if (!sh || sh.length !== 2) return null;
+		const [r, c] = sh;
+		const flat = tv as unknown[];
+		let total = 0;
+		for (let i = 0; i < r; i++) {
+			let rowMax = 18;
+			for (let j = 0; j < c; j++) {
+				const v = flat[i * c + j];
+				if (typeof v === 'number') {
+					const h = Math.min(Math.max(v, 0), vizMax) * (60 / vizMax) + 18;
+					if (h > rowMax) rowMax = h;
+				} else {
+					rowMax = Math.max(rowMax, 30);
+				}
+			}
+			total += rowMax;
+		}
+		total += (r - 1) * 4;
+		return total;
+	});
+
 	// Cell tracking with stable ids, so animations can identify which
 	// DOM element corresponds to which logical value across reorders.
 	let cells = $state<Cell[]>([]);
@@ -334,7 +363,12 @@
 		</span>
 	</header>
 
-	<section class="middle" style="--puzzle-pt: {puzzlePaddingTop}">
+	<section
+		class="middle"
+		style="--puzzle-pt: {puzzlePaddingTop}; --target-h: {targetCellHeight
+			? targetCellHeight + 'px'
+			: '50px'}"
+	>
 		<div class="board">
 			<div class="cell goal">
 				<div class="viz ghost" class:filled={solved}>
@@ -562,8 +596,12 @@
 	}
 	.viz {
 		display: flex;
-		align-items: flex-end;
-		min-height: 50px;
+		align-items: center;
+		justify-content: center;
+		/* For 2D-target levels, --target-h pre-reserves the grid's
+		   final vertical space so the reshape animation has room to
+		   fan symmetrically around the cell center. */
+		min-height: var(--target-h, 50px);
 	}
 
 	/* Goal cell: outlined "blueprint" — bars become dashed silhouettes,
