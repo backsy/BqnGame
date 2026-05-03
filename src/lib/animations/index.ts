@@ -11,6 +11,7 @@ import { range } from './range';
 import { sort } from './sort';
 import { broadcast } from './broadcast';
 import { fold } from './fold';
+import { scan } from './scan';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -32,6 +33,8 @@ const BCAST_MOD_RE = /^(\d+)⊸\|$/;
 const BCAST_SELF_RE = /^([+\-×])˜$/;
 // F´: +´, ×´, ⌈´, ⌊´ — fold a row into a scalar.
 const FOLD_RE = /^([+\-×÷⌈⌊])´$/;
+// F`: +`, ×`, ⌈`, ⌊` — scan: running fold, same-length result.
+const SCAN_RE = /^([+\-×÷⌈⌊])`$/;
 
 export function getAnimation(expr: string): AnimationFn | null {
 	const direct = exact[expr];
@@ -54,6 +57,9 @@ export function getAnimation(expr: string): AnimationFn | null {
 
 	const foldMatch = FOLD_RE.exec(expr);
 	if (foldMatch) return fold(foldMatch[1]);
+
+	const scanMatch = SCAN_RE.exec(expr);
+	if (scanMatch) return scan(scanMatch[1]);
 
 	return null;
 }
