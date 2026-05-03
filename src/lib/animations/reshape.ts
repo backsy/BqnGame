@@ -62,13 +62,21 @@ export function reshape(rows: number, cols: number): AnimationFn {
 		// coords, and grid row r's bottom is at rowBottoms[r].
 		const sourceBottom = (gridH + sourceRowH) / 2;
 
+		// Source row is centered horizontally in .viz, and so is the grid
+		// post-commit. For a row with N bars vs a grid row with `cols`
+		// bars, the grid's left edge is shifted right by half the width
+		// difference. Each bar needs that shift in addition to its
+		// (col - i) * COL_STEP column delta.
+		const N = wraps.length;
+		const centerOffset = ((N - cols) * COL_STEP) / 2;
+
 		const tasks: Promise<unknown>[] = [];
-		for (let i = 0; i < wraps.length; i++) {
+		for (let i = 0; i < N; i++) {
 			const w = wraps[i];
 			if (!w) continue;
 			const col = i % cols;
 			const r = Math.floor(i / cols);
-			const dx = (col - i) * COL_STEP;
+			const dx = centerOffset + (col - i) * COL_STEP;
 			const dy = rowBottoms[r] - sourceBottom;
 			tasks.push(
 				animate(
