@@ -16,6 +16,7 @@ import { filter } from './filter';
 import { reshape } from './reshape';
 import { pick } from './pick';
 import { join } from './join';
+import { length } from './length';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -25,7 +26,8 @@ const exact: Record<string, AnimationFn> = {
 	'∧': sort,
 	'∨': sort,
 	'⊑': pick(0),
-	'∾˜': join('self')
+	'∾˜': join('self'),
+	'≠': length
 };
 
 const TAKE_RE = /^(\d+)⊸↑$/;
