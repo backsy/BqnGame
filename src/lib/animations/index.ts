@@ -17,6 +17,10 @@ import { reshape } from './reshape';
 import { pick } from './pick';
 import { join } from './join';
 import { length } from './length';
+import { transpose } from './transpose';
+import { deshape } from './deshape';
+import { tables } from './tables';
+import { windows } from './windows';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -27,7 +31,9 @@ const exact: Record<string, AnimationFn> = {
 	'∨': sort,
 	'⊑': pick(0),
 	'∾˜': join('self'),
-	'≠': length
+	'≠': length,
+	'⍉': transpose,
+	'⥊': deshape
 };
 
 const TAKE_RE = /^(\d+)⊸↑$/;
@@ -49,6 +55,11 @@ const FILTER_RE = /^\(([=<>])⟜(\d+)\)⊸\/$/;
 const RESHAPE_RE = /^(\d+)‿(\d+)⊸⥊$/;
 // N⊸⊑: pick the Nth element (0-indexed in BQN).
 const PICK_RE = /^(\d+)⊸⊑$/;
+// F⌜˜: self-table — pair every element of x with every other element
+// under F. Uses the table modifier `⌜` and the swap modifier `˜`.
+const TABLE_SELF_RE = /^([+\-×÷⌈⌊=<>])⌜˜$/;
+// N⊸↕: sliding length-N windows over a row.
+const WINDOWS_RE = /^(\d+)⊸↕$/;
 
 export function getAnimation(expr: string): AnimationFn | null {
 	const direct = exact[expr];
@@ -84,6 +95,12 @@ export function getAnimation(expr: string): AnimationFn | null {
 
 	const pickMatch = PICK_RE.exec(expr);
 	if (pickMatch) return pick(parseInt(pickMatch[1], 10));
+
+	const tableMatch = TABLE_SELF_RE.exec(expr);
+	if (tableMatch) return tables(tableMatch[1]);
+
+	const winsMatch = WINDOWS_RE.exec(expr);
+	if (winsMatch) return windows(parseInt(winsMatch[1], 10));
 
 	// Join: ∾⟜<value> appends, <value>⊸∾ prepends. Match by start /
 	// end so any value (number, list, string) is captured uniformly.
