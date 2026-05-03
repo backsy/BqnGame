@@ -1,47 +1,47 @@
-// Architectural template for per-glyph animations. Each animation is
-// an async function that:
+// Animations are pure functions. Each one takes structured DOM /
+// rect / value inputs and returns a Promise<void>. They never read
+// game state, never mutate history, never call commit. The
+// controller (in +page.svelte) is the only place that knows both
+// the state layer and the animation layer.
 //
-//   1. Reads `oldRects` — cell positions captured *before* state mutation.
-//   2. Reads new positions via `getNode(id).getBoundingClientRect()`.
-//   3. Drives the motion via Motion's animate() returning per-element
-//      Animation objects, and awaits Promise.all of their .finished.
+// Snapshot below is what the controller assembles for each tap:
+// pre-commit cells/rects/DOM clone + post-commit cells/DOM. The
+// per-animation dispatch (in animations/index.ts) consumes a
+// Snapshot and feeds the right slice of it into a pure animation
+// function.
 //
-// Svelte still owns rendering and reactive cell state; this layer
-// only choreographs the visual transition between two committed states.
-// The same function can be replayed in an intro card by passing a
-// canned set of cells / nodes / rects.
-
-// Invariant: every animation here must start from the cells' actual
-// rendered geometry and end at the exact positions Svelte will render
-// post-commit. No "approximately right" — pixel-clean both ends.
-//
-// Practical implications:
-//  - Read starting sizes/positions via getBoundingClientRect, not
-//    inline style.height/width. The .bar has padding-top: 0.2rem
-//    (~3.2px) that inline style doesn't reflect.
-//  - For handoffs between AnimatedRow (rank-1) and ValueViz (other
-//    ranks), reserve the post-commit container size before the
-//    animation runs (e.g. --target-h on .viz) so the destination
-//    geometry is stable when commit fires.
-//  - For FLIP animations on the same DOM (reverse / sort / take /
-//    drop / scan), measure newRect after commit() and animate from
-//    the captured oldRect to that newRect.
-//  - Account for centering: if a parent centers content, the natural
-//    flex-flow positions are offset; add the centerOffset to dx.
+// Pixel-clean handoff invariant still holds: every animation must
+// land at the exact post-commit positions ValueViz / AnimatedRow
+// will render. The .viz CSS reserves --target-h for 2D targets so
+// the live grid lands where the animation drove its ghost.
 
 export type Cell = { id: number; value: number | string };
 
-export type AnimationCtx = {
+export type Snapshot = {
+	/** Cells right before the rune was tapped. */
+	oldCells: Cell[];
+	/** Cells after the synchronous commit (what Svelte just rendered). */
 	cells: Cell[];
-	getNode: (id: number) => HTMLElement | null;
+	/** Pre-commit bounding rects keyed by old cell id. Only populated
+	 *  for rank-1 (AnimatedRow) source values — cellNodes is not
+	 *  populated for ValueViz-rendered scalars / grids. */
 	oldRects: Map<number, DOMRect>;
-	// Commit the pending state mutation. Animations that need access to
-	// the OLD DOM (cells about to unmount, like ↑) must run that work
-	// before calling commit; FLIP-only animations (like ⌽) can call it
-	// immediately and then animate from old → new positions. Returns
-	// the post-commit cells so animations that birth new ones (like ↕)
-	// can iterate them.
-	commit: () => Promise<Cell[]>;
+	/** Live (post-commit) wrap lookup by cell id. Only useful for
+	 *  rank-1 post-commit values. */
+	getLiveNode: (id: number) => HTMLElement | null;
+	/** A clone of `.cell.now .viz` from before the commit, parked
+	 *  position: fixed at the original's viewport coords with z-index 20.
+	 *  Animations can mine it, animate it, or remove it; the
+	 *  controller disposes it in `finally` if anything's left. */
+	ghost: HTMLElement;
+	/** Map old cell id → its clone wrap inside `ghost`, for rank-1
+	 *  source values. */
+	getGhostNode: (id: number) => HTMLElement | null;
+	/** The post-commit `.cell.now .viz` (currently hidden, sitting
+	 *  behind the ghost). Animations should reveal it via revealLive
+	 *  before they want the user to see post-commit content. */
+	liveViz: HTMLElement;
+	/** Make liveViz visible. Idempotent. The controller calls this
+	 *  in `finally` if the animation forgot. */
+	revealLive: () => void;
 };
-
-export type AnimationFn = (ctx: AnimationCtx) => Promise<void>;

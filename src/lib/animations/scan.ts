@@ -1,21 +1,13 @@
-// F` scan (+`, ×`, ⌈`, ⌊`): like fold, but each bar stays put and
-// updates to its partial-result value instead of being absorbed into
-// the accumulator. The row spreads apart, operator badges drop in
-// between every pair, then a left-to-right sweep pulses each
-// operator and animates the corresponding bar from its old value to
-// its running accumulator. Bars un-spread at the end before commit.
+// F` scan (+`, ×`, ⌈`, ⌊`): the row spreads apart to make room for
+// operator badges between every pair, then a left-to-right sweep
+// pulses each operator and animates the corresponding bar from its
+// old value to its running accumulator. Bars un-spread before the
+// final state.
+//
+// Pure function: takes per-cell items with old/new values and a
+// pre-built valToH function (so the caller's vizMax matches Svelte's).
 
 import { animate } from 'motion';
-import type { AnimationFn } from './types';
-
-const OP_FN: Record<string, (a: number, b: number) => number> = {
-	'+': (a, b) => a + b,
-	'-': (a, b) => a - b,
-	'×': (a, b) => a * b,
-	'÷': (a, b) => a / b,
-	'⌈': (a, b) => Math.max(a, b),
-	'⌊': (a, b) => Math.min(a, b)
-};
 
 const BAR_WIDTH = 30;
 const ORIG_GAP = 4;
@@ -27,199 +19,139 @@ const formatNum = (n: number) =>
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-export function scan(operator: string): AnimationFn {
-	return async ({ cells, getNode, commit }) => {
-		const op = OP_FN[operator];
-		if (
-			!op ||
-			cells.length < 2 ||
-			cells.some((c) => typeof c.value !== 'number')
-		) {
-			await commit();
-			return;
-		}
+export type ScanItem = {
+	wrap: HTMLElement;
+	bar: HTMLElement;
+	num: HTMLElement | null;
+	/** Pre-commit value (the input). */
+	oldValue: number;
+	/** Post-commit value (the running accumulator). */
+	newValue: number;
+};
 
-		const values = cells.map((c) => c.value as number);
+export async function scan(
+	items: ScanItem[],
+	operator: string,
+	valToH: (v: number) => number
+): Promise<void> {
+	if (items.length < 2) return;
 
-		const acc: number[] = [values[0]];
-		for (let i = 1; i < values.length; i++) {
-			acc.push(op(acc[i - 1], values[i]));
-		}
+	const row = items[0].wrap.parentElement;
+	if (!row) return;
+	const restoreRowPos = row.style.position;
+	row.style.position = 'relative';
 
-		const wraps = cells.map((c) => getNode(c.id));
-		const bars = wraps.map(
-			(w) => w?.querySelector('.bar') as HTMLElement | null
-		);
-		const nums = bars.map(
-			(b) => b?.querySelector('.num') as HTMLElement | null
-		);
+	// Pin every bar to its OLD value's height so the per-step tween
+	// starts where we expect (Svelte already updated to newValue's
+	// height on commit).
+	for (const item of items) {
+		item.bar.style.height = `${valToH(item.oldValue)}px`;
+		if (item.num) item.num.textContent = formatNum(item.oldValue);
+	}
+	void items[0].bar.offsetHeight;
 
-		const firstWrap = wraps[0];
-		const firstBar = bars[0];
-		if (!firstWrap || !firstBar) {
-			await commit();
-			return;
-		}
+	const wraps = items.map((it) => it.wrap);
 
-		// Derive the existing visual scale from any rendered bar so
-		// intermediate heights match the row, then widen for the largest
-		// accumulator value the scan will hit.
-		const derivedMax = (() => {
-			for (let i = 0; i < bars.length; i++) {
-				const b = bars[i];
-				const v = values[i];
-				if (!b || v === 0) continue;
-				const h = parseFloat(b.style.height);
-				if (!isNaN(h) && h > 18) return (v * 60) / (h - 18);
-			}
-			return Math.max(...values.map(Math.abs), 4);
-		})();
-		const visualMax = Math.max(derivedMax, ...acc.map(Math.abs), 4);
-		const valToH = (v: number) =>
-			Math.min(Math.max(v, 0), visualMax) * (60 / visualMax) + 18;
+	// Phase 1a: spread the bars apart.
+	const wrapDelta = wraps.map((_, i) => i * SPREAD_GAP);
+	await Promise.all(
+		wraps.map((w, i) =>
+			animate(
+				w,
+				{ x: wrapDelta[i] },
+				{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }
+			).finished
+		)
+	);
 
-		const row = firstWrap.parentElement;
-		if (!row) {
-			await commit();
-			return;
-		}
-		row.style.position = 'relative';
+	// Phase 1b: drop operator badges between consecutive bars.
+	const rowRect = row.getBoundingClientRect();
+	const opBadges: HTMLElement[] = [];
+	for (let i = 0; i < wraps.length - 1; i++) {
+		const aRect = wraps[i].getBoundingClientRect();
+		const midX = aRect.right + (ORIG_GAP + SPREAD_GAP) / 2 - rowRect.left;
+		const midY = aRect.top + aRect.height / 2 - rowRect.top;
 
-		// Pin every bar to its current value's derived height so the
-		// later sweep animations interpolate from a known starting point.
-		for (let i = 0; i < bars.length; i++) {
-			const b = bars[i];
-			if (b) b.style.height = `${valToH(values[i])}px`;
-		}
-		void firstBar.offsetHeight;
+		const badge = document.createElement('div');
+		badge.textContent = operator;
+		Object.assign(badge.style, {
+			position: 'absolute',
+			left: `${midX - BADGE_SIZE / 2}px`,
+			top: `${midY - BADGE_SIZE / 2}px`,
+			transform: 'scale(0)',
+			opacity: '0',
+			width: `${BADGE_SIZE}px`,
+			height: `${BADGE_SIZE}px`,
+			display: 'grid',
+			placeItems: 'center',
+			background: '#5fcc5f',
+			color: '#0a0a0a',
+			borderRadius: '50%',
+			fontFamily: "'BQN386', ui-monospace, monospace",
+			fontSize: '0.95rem',
+			fontWeight: '700',
+			lineHeight: '1',
+			zIndex: '5',
+			pointerEvents: 'none',
+			boxShadow: '0 0 10px rgba(95, 204, 95, 0.55)'
+		});
+		row.appendChild(badge);
+		opBadges.push(badge);
+	}
+	await Promise.all(
+		opBadges.map((b, i) =>
+			animate(
+				b,
+				{ opacity: [0, 1], scale: [0, 1.2, 1] },
+				{ duration: 0.35, delay: i * 0.04, ease: [0.34, 1.56, 0.64, 1] }
+			).finished
+		)
+	);
+	await delay(280);
 
-		// Phase 1a: spread the bars apart to make room for the badges.
-		const wrapDelta = wraps.map((_, i) => i * SPREAD_GAP);
-		await Promise.all(
-			wraps.map((w, i) =>
-				w
-					? animate(
-							w,
-							{ x: wrapDelta[i] },
-							{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }
-						).finished
-					: Promise.resolve()
-			)
-		);
+	// Phase 2: sweep left-to-right. Each step pulses the operator
+	// between bar[i-1] and bar[i], then bar[i] grows / shrinks to its
+	// running accumulator value.
+	for (let i = 1; i < items.length; i++) {
+		const item = items[i];
+		const opBadge = opBadges[i - 1];
+		const oldH = valToH(item.oldValue);
+		const newH = valToH(item.newValue);
+		const tasks: Promise<unknown>[] = [];
 
-		// Phase 1b: drop in operator badges between consecutive bars.
-		const rowRect = row.getBoundingClientRect();
-		const opBadges: (HTMLElement | null)[] = [];
-		for (let i = 0; i < wraps.length - 1; i++) {
-			const wA = wraps[i];
-			if (!wA) {
-				opBadges.push(null);
-				continue;
-			}
-			const aRect = wA.getBoundingClientRect();
-			const midX = aRect.right + (ORIG_GAP + SPREAD_GAP) / 2 - rowRect.left;
-			const midY = aRect.top + aRect.height / 2 - rowRect.top;
-
-			const badge = document.createElement('div');
-			badge.textContent = operator;
-			Object.assign(badge.style, {
-				position: 'absolute',
-				left: `${midX - BADGE_SIZE / 2}px`,
-				top: `${midY - BADGE_SIZE / 2}px`,
-				transform: 'scale(0)',
-				opacity: '0',
-				width: `${BADGE_SIZE}px`,
-				height: `${BADGE_SIZE}px`,
-				display: 'grid',
-				placeItems: 'center',
-				background: '#5fcc5f',
-				color: '#0a0a0a',
-				borderRadius: '50%',
-				fontFamily: "'BQN386', ui-monospace, monospace",
-				fontSize: '0.95rem',
-				fontWeight: '700',
-				lineHeight: '1',
-				zIndex: '5',
-				pointerEvents: 'none',
-				boxShadow: '0 0 10px rgba(95, 204, 95, 0.55)'
-			});
-			row.appendChild(badge);
-			opBadges.push(badge);
-		}
-
-		await Promise.all(
-			opBadges.map((b, i) =>
-				b
-					? animate(
-							b,
-							{ opacity: [0, 1], scale: [0, 1.2, 1] },
-							{ duration: 0.35, delay: i * 0.04, ease: [0.34, 1.56, 0.64, 1] }
-						).finished
-					: Promise.resolve()
-			)
-		);
-		await delay(280);
-
-		// Phase 2: sweep left-to-right. Each step pulses the operator
-		// between bar[i-1] and bar[i], then bar[i] grows / shrinks to its
-		// running accumulator value.
-		for (let i = 1; i < cells.length; i++) {
-			const opBadge = opBadges[i - 1];
-			const bar = bars[i];
-			const num = nums[i];
-			if (!bar) {
-				await delay(80);
-				continue;
-			}
-
-			const oldH = valToH(values[i]);
-			const newH = valToH(acc[i]);
-			const tasks: Promise<unknown>[] = [];
-
-			if (opBadge) {
-				tasks.push(
-					animate(
-						opBadge,
-						{ scale: [1, 1.4, 0.6], opacity: [1, 1, 0] },
-						{ duration: 0.5, ease: [0.5, 0, 0.7, 1] }
-					).finished
-				);
-			}
-
-			setTimeout(() => {
-				if (num) num.textContent = formatNum(acc[i]);
-			}, 220);
+		if (opBadge) {
 			tasks.push(
 				animate(
-					bar,
-					{ height: [`${oldH}px`, `${newH}px`] },
-					{ duration: 0.42, delay: 0.16, ease: [0.22, 1, 0.36, 1] }
+					opBadge,
+					{ scale: [1, 1.4, 0.6], opacity: [1, 1, 0] },
+					{ duration: 0.5, ease: [0.5, 0, 0.7, 1] }
 				).finished
 			);
-
-			await Promise.all(tasks);
-			await delay(70);
 		}
 
-		await delay(180);
-
-		// Phase 3: bars slide back together before commit.
-		await Promise.all(
-			wraps.map((w) =>
-				w
-					? animate(
-							w,
-							{ x: 0 },
-							{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }
-						).finished
-					: Promise.resolve()
-			)
+		setTimeout(() => {
+			if (item.num) item.num.textContent = formatNum(item.newValue);
+		}, 220);
+		tasks.push(
+			animate(
+				item.bar,
+				{ height: [`${oldH}px`, `${newH}px`] },
+				{ duration: 0.42, delay: 0.16, ease: [0.22, 1, 0.36, 1] }
+			).finished
 		);
 
-		await commit();
+		await Promise.all(tasks);
+		await delay(70);
+	}
+	await delay(180);
 
-		for (const b of opBadges) {
-			if (b) b.remove();
-		}
-	};
+	// Phase 3: bars slide back together.
+	await Promise.all(
+		wraps.map((w) =>
+			animate(w, { x: 0 }, { duration: 0.3, ease: [0.22, 1, 0.36, 1] }).finished
+		)
+	);
+
+	for (const b of opBadges) b.remove();
+	row.style.position = restoreRowPos;
 }

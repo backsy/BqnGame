@@ -2,99 +2,73 @@
 // stays put, so they slide outward by half the added width), and new
 // bars cascade in from the appropriate side.
 //
-// Three forms share this animation:
-//   - ∾⟜list: append at the right.
-//   - list⊸∾: prepend at the left.
-//   - ∾˜:     self-cat — append a copy of the row.
-//
-// Pre-commit existing bar rects → post-commit existing bar rects via
-// FLIP (cells preserve ids; cell tracker handles append/prepend
-// cases). New bars get their initial transform set synchronously
-// after commit so they don't flash visible before the cascade starts.
+// Pure function: takes existing items (with from/to rects) and new
+// items (with their position and slide-direction) plus the side
+// from which new bars enter.
 
 import { animate } from 'motion';
-import type { AnimationFn } from './types';
 
 const SLIDE_DIST = 120;
 
-export function join(direction: 'append' | 'prepend' | 'self'): AnimationFn {
-	return async ({ cells, getNode, commit }) => {
-		// Capture old positions of the bars that already exist.
-		const oldRects = cells.map((c) => {
-			const w = getNode(c.id);
-			return w?.getBoundingClientRect() ?? null;
-		});
+export type JoinExisting = {
+	wrap: HTMLElement;
+	oldRect: DOMRect;
+	newRect: DOMRect;
+};
 
-		const newCells = await commit();
+export type JoinNew = {
+	wrap: HTMLElement;
+	cascadeIndex: number; // staggers entry order
+};
 
-		if (newCells.length <= cells.length) return;
+export async function join(
+	existing: JoinExisting[],
+	added: JoinNew[],
+	direction: 'left' | 'right'
+): Promise<void> {
+	const slideFromX = direction === 'left' ? -SLIDE_DIST : SLIDE_DIST;
 
-		const addedCount = newCells.length - cells.length;
-		const isPrepend = direction === 'prepend';
-		const newRange = isPrepend
-			? { from: 0, to: addedCount }
-			: { from: cells.length, to: newCells.length };
-		const slideFromX = isPrepend ? -SLIDE_DIST : SLIDE_DIST;
+	// Hide new wraps synchronously so the browser doesn't paint them
+	// before the cascade starts.
+	for (const { wrap } of added) {
+		wrap.style.opacity = '0';
+		wrap.style.transform = `translateX(${slideFromX}px)`;
+	}
 
-		// Hide new bars synchronously so the browser doesn't paint them
-		// at full opacity before we kick off the cascade.
-		for (let i = newRange.from; i < newRange.to; i++) {
-			const w = getNode(newCells[i].id);
-			if (w) {
-				w.style.opacity = '0';
-				w.style.transform = `translateX(${slideFromX}px)`;
-			}
-		}
+	const tasks: Promise<unknown>[] = [];
 
-		const tasks: Promise<unknown>[] = [];
+	// FLIP existing from old to new positions.
+	for (const { wrap, oldRect, newRect } of existing) {
+		const dx = oldRect.left - newRect.left;
+		if (Math.abs(dx) < 0.5) continue;
+		tasks.push(
+			animate(
+				wrap,
+				{ x: [dx, 0] },
+				{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }
+			).finished
+		);
+	}
 
-		// FLIP existing bars from their old positions back to current.
-		for (let i = 0; i < cells.length; i++) {
-			const oldRect = oldRects[i];
-			if (!oldRect) continue;
-			const cell = cells[i];
-			const newWrap = getNode(cell.id);
-			if (!newWrap) continue;
-			const newRect = newWrap.getBoundingClientRect();
-			const dx = oldRect.left - newRect.left;
-			if (Math.abs(dx) < 0.5) continue;
-			tasks.push(
-				animate(
-					newWrap,
-					{ x: [dx, 0] },
-					{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }
-				).finished
-			);
-		}
+	// Cascade added wraps in from the appropriate side.
+	for (const { wrap, cascadeIndex } of added) {
+		tasks.push(
+			animate(
+				wrap,
+				{ opacity: [0, 1], x: [slideFromX, 0] },
+				{
+					duration: 0.5,
+					delay: cascadeIndex * 0.07,
+					ease: [0.34, 1.2, 0.64, 1]
+				}
+			).finished
+		);
+	}
 
-		// Cascade the added bars in from the appropriate side.
-		let cascadeIdx = 0;
-		for (let i = newRange.from; i < newRange.to; i++) {
-			const w = getNode(newCells[i].id);
-			if (!w) {
-				cascadeIdx++;
-				continue;
-			}
-			tasks.push(
-				animate(
-					w,
-					{ opacity: [0, 1], x: [slideFromX, 0] },
-					{ duration: 0.5, delay: cascadeIdx * 0.07, ease: [0.34, 1.2, 0.64, 1] }
-				).finished
-			);
-			cascadeIdx++;
-		}
+	await Promise.all(tasks);
 
-		await Promise.all(tasks);
-
-		// Clear the inline styles we set so subsequent state changes
-		// don't carry leftover transforms.
-		for (let i = newRange.from; i < newRange.to; i++) {
-			const w = getNode(newCells[i].id);
-			if (w) {
-				w.style.opacity = '';
-				w.style.transform = '';
-			}
-		}
-	};
+	for (const { wrap } of added) {
+		wrap.style.opacity = '';
+		wrap.style.transform = '';
+	}
 }

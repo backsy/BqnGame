@@ -1,30 +1,32 @@
-// ≠ length: a counting badge ticks 1..N over the row, pulsing each
-// bar in turn, then all bars fade and drop. Commit replaces the row
-// with the scalar bar, which fades in at its rendered center
-// position. Reads as 'I'm counting these — there are N.'
+// ≠ length: a counting badge ticks 1..N over each ghost bar,
+// pulsing each in turn, then all bars fade and drop. The post-commit
+// scalar then fades in at the .viz center.
+//
+// Pure function: takes the ghost wraps + the live scalar bar (so we
+// can fade it in at the end).
 
 import { animate } from 'motion';
-import type { AnimationFn } from './types';
 
 const STEP_MS = 130;
 const HOLD_MS = 220;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-export const length: AnimationFn = async ({ cells, getNode, commit }) => {
-	if (cells.length === 0) {
-		await commit();
-		return;
-	}
+export type LengthInput = {
+	/** Ghost wraps for every pre-commit cell (clones, in body). */
+	ghostWraps: HTMLElement[];
+	/** Live scalar bar that will appear at the end. May be null if
+	 *  the post-commit value is missing. */
+	liveScalarBar: HTMLElement | null;
+};
 
-	const wraps = cells.map((c) => getNode(c.id));
-	const firstWrap = wraps.find((w): w is HTMLElement => !!w);
-	if (!firstWrap || !firstWrap.parentElement) {
-		await commit();
-		return;
-	}
+export async function length({ ghostWraps, liveScalarBar }: LengthInput): Promise<void> {
+	if (ghostWraps.length === 0) return;
 
-	const rowRect = firstWrap.parentElement.getBoundingClientRect();
+	const firstWrap = ghostWraps[0];
+	const parent = firstWrap.parentElement;
+	if (!parent) return;
+	const rowRect = parent.getBoundingClientRect();
 
 	const counter = document.createElement('div');
 	counter.textContent = '0';
@@ -56,61 +58,43 @@ export const length: AnimationFn = async ({ cells, getNode, commit }) => {
 		{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }
 	).finished;
 
-	// Tick counter and pulse each bar in turn.
-	for (let i = 0; i < cells.length; i++) {
+	for (let i = 0; i < ghostWraps.length; i++) {
 		counter.textContent = String(i + 1);
 		animate(
 			counter,
 			{ transform: ['scale(1)', 'scale(1.3)', 'scale(1)'] },
 			{ duration: 0.28 }
 		);
-
-		const w = wraps[i];
-		if (w) {
-			animate(
-				w,
-				{ scale: [1, 1.15, 1] },
-				{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }
-			);
-		}
-
-		if (i < cells.length - 1) await delay(STEP_MS);
+		animate(
+			ghostWraps[i],
+			{ scale: [1, 1.15, 1] },
+			{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }
+		);
+		if (i < ghostWraps.length - 1) await delay(STEP_MS);
 	}
 	await delay(HOLD_MS);
 
-	// All bars fade and drop in unison-with-stagger.
-	const fadeTasks: Promise<unknown>[] = [];
-	for (let i = 0; i < wraps.length; i++) {
-		const w = wraps[i];
-		if (!w) continue;
-		fadeTasks.push(
+	// Bars fade and drop.
+	await Promise.all(
+		ghostWraps.map((w, i) =>
 			animate(
 				w,
 				{ opacity: [1, 0], y: [0, 30] },
 				{ duration: 0.4, delay: i * 0.04, ease: [0.4, 0, 0.6, 1] }
 			).finished
-		);
-	}
-	await Promise.all(fadeTasks);
+		)
+	);
 
-	// Commit hands off to ValueViz which will render the scalar bar at
-	// the .viz center. Pin it invisible synchronously so it doesn't
-	// flash before the fade-in.
-	await commit();
-
-	const scalarBar = document.querySelector(
-		'.cell.now .viz .bar'
-	) as HTMLElement | null;
-	if (scalarBar) {
-		scalarBar.style.opacity = '0';
-		void scalarBar.offsetHeight;
+	// Fade in the live scalar bar.
+	if (liveScalarBar) {
+		liveScalarBar.style.opacity = '0';
+		void liveScalarBar.offsetHeight;
 		await animate(
-			scalarBar,
+			liveScalarBar,
 			{ opacity: [0, 1] },
 			{ duration: 0.32, ease: 'easeOut' }
 		).finished;
-		// Clear so subsequent state changes don't carry over.
-		scalarBar.style.opacity = '';
+		liveScalarBar.style.opacity = '';
 	}
 
 	await delay(150);
@@ -120,4 +104,4 @@ export const length: AnimationFn = async ({ cells, getNode, commit }) => {
 		{ duration: 0.3, ease: 'easeIn' }
 	).finished;
 	counter.remove();
-};
+}

@@ -5,12 +5,18 @@
 	import { base } from '$app/paths';
 	import ValueViz from '$lib/components/ValueViz.svelte';
 	import AnimatedRow from '$lib/components/AnimatedRow.svelte';
-	import { getAnimation, type Cell } from '$lib/animations';
+	import {
+		dispatchAnimation,
+		hasAnimation,
+		type Cell,
+		type Snapshot
+	} from '$lib/animations';
 	import { levels } from '$lib/learn/levels';
 	import { evalRaw, valueMatches } from '$lib/bqn/eval';
 
 	let levelIndex = $state(0);
 	let history = $state<string[]>([]); // accumulated rune.expr strings
+	let animating = $state(false);
 
 	const STORAGE_KEY = 'bqngame-level';
 	const HISTORY_KEY = 'bqngame-history';
@@ -36,6 +42,13 @@
 		}
 	});
 	const solved = $derived(valueMatches(stateExpr, level.target));
+
+	// Visible solved state — deferred until any in-flight animation
+	// completes, so post-tap output (solved view, goal fill, .winning
+	// glow) appears at the end of the animation, not at the moment
+	// the synchronous commit fires. State is committed on tap; only
+	// the OUTPUT defers.
+	const visibleSolved = $derived(solved && !animating);
 
 	function findMaxNum(v: unknown): number {
 		if (typeof v === 'number') return Math.abs(v);
@@ -106,7 +119,6 @@
 	let nextCellId = 1;
 	let lastHistoryLen = 0;
 	let lastLevelIndex = -1;
-	let animating = $state(false);
 	const cellNodes = new Map<number, HTMLElement>();
 
 	function setNode(id: number, node: HTMLElement | null) {
@@ -282,47 +294,94 @@
 	async function applyRune(expr: string) {
 		if (solved || animating) return;
 
-		const animFn = getAnimation(expr);
-		if (animFn) {
-			// Capture old cell positions before any state mutation. The
-			// animation decides when to commit (FLIP-only animations call
-			// commit() immediately; animations that need the OLD DOM run
-			// pre-commit work first; animations that birth new cells (↕)
-			// use commit's return value).
-			const oldRects = new Map<number, DOMRect>();
-			for (const cell of cells) {
-				const node = cellNodes.get(cell.id);
-				if (node) oldRects.set(cell.id, node.getBoundingClientRect());
-			}
-
-			animating = true;
-			let committed = false;
-			const commit = async () => {
-				if (committed) return cells;
-				committed = true;
-				history = [...history, expr];
-				await tick();
-				return cells;
-			};
-
-			try {
-				await animFn({
-					cells,
-					getNode: (id) => cellNodes.get(id) ?? null,
-					oldRects,
-					commit
-				});
-				if (!committed) await commit();
-			} catch (err) {
-				console.error('animation failed', err);
-				if (!committed) await commit();
-			} finally {
-				animating = false;
-			}
+		// No animation registered → commit synchronously and return.
+		// State is the source of truth; animation is purely visual.
+		if (!hasAnimation(expr)) {
+			history = [...history, expr];
 			return;
 		}
 
+		// Snapshot pre-commit state (cells + per-id rects).
+		const oldCells = cells;
+		const oldRects = new Map<number, DOMRect>();
+		for (const cell of oldCells) {
+			const node = cellNodes.get(cell.id);
+			if (node) oldRects.set(cell.id, node.getBoundingClientRect());
+		}
+
+		// Clone .cell.now .viz as a ghost overlay parked at viewport
+		// coords on top of the original. The ghost is what the user
+		// sees during the animation while the live viz is hidden
+		// underneath. Animations transform the ghost (cross-DOM cases)
+		// or reveal the live viz with FLIP transforms (same-DOM cases).
+		const viz = document.querySelector('.cell.now .viz') as HTMLElement | null;
+		if (!viz) {
+			history = [...history, expr];
+			return;
+		}
+		const vizRect = viz.getBoundingClientRect();
+		const ghost = viz.cloneNode(true) as HTMLElement;
+		Object.assign(ghost.style, {
+			position: 'fixed',
+			left: `${vizRect.left}px`,
+			top: `${vizRect.top}px`,
+			width: `${vizRect.width}px`,
+			height: `${vizRect.height}px`,
+			margin: '0',
+			zIndex: '20',
+			pointerEvents: 'none'
+		});
+		document.body.appendChild(ghost);
+
+		// Map old cell ids → ghost wraps (rank-1 source values only).
+		const ghostNodesByOldId = new Map<number, HTMLElement>();
+		const ghostRow = ghost.querySelector(':scope > .row');
+		if (ghostRow) {
+			const ghostWraps = Array.from(ghostRow.children).filter(
+				(e): e is HTMLElement =>
+					e instanceof HTMLElement && e.classList.contains('wrap')
+			);
+			for (let i = 0; i < oldCells.length && i < ghostWraps.length; i++) {
+				ghostNodesByOldId.set(oldCells[i].id, ghostWraps[i]);
+			}
+		}
+
+		// Hide the live viz behind the ghost.
+		const prevVisibility = viz.style.visibility;
+		viz.style.visibility = 'hidden';
+		let liveRevealed = false;
+		const revealLive = () => {
+			if (liveRevealed) return;
+			liveRevealed = true;
+			viz.style.visibility = prevVisibility;
+		};
+
+		// SYNCHRONOUS COMMIT. Animation runs against already-committed
+		// state — it can't change history, can't delay state, can't
+		// touch anything other than DOM under its cleanup responsibility.
 		history = [...history, expr];
+		await tick();
+
+		animating = true;
+		try {
+			const snap: Snapshot = {
+				oldCells,
+				cells,
+				oldRects,
+				getLiveNode: (id) => cellNodes.get(id) ?? null,
+				ghost,
+				getGhostNode: (id) => ghostNodesByOldId.get(id) ?? null,
+				liveViz: viz,
+				revealLive
+			};
+			await dispatchAnimation(expr, snap);
+		} catch (err) {
+			console.error('animation failed', err);
+		} finally {
+			animating = false;
+			revealLive();
+			if (ghost.parentNode) ghost.remove();
+		}
 	}
 
 	function undo() {
@@ -412,11 +471,11 @@
 	>
 		<div class="board">
 			<div class="cell goal">
-				<div class="viz ghost" class:filled={solved}>
+				<div class="viz ghost" class:filled={visibleSolved}>
 					<ValueViz value={targetValue} max={vizMax} />
 				</div>
 			</div>
-			<div class="cell now" class:winning={solved}>
+			<div class="cell now" class:winning={visibleSolved}>
 				<div class="viz">
 					{#if cells.length > 0}
 						<AnimatedRow {cells} max={vizMax} {setNode} />
@@ -449,7 +508,7 @@
 	</section>
 
 	<div class="bottom-shell">
-	{#if solved}
+	{#if visibleSolved}
 		<section class="solved">
 			<div
 				class="solved-stamp"

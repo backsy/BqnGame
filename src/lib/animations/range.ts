@@ -1,37 +1,31 @@
 // ↕ range: a single counting badge floats above the row and ticks
 // 1, 2, …, N as bars cascade in left-to-right. Reads as "I'm making
-// N indices, watch me count them out". After the last bar lands the
-// counter holds a beat then fades.
-//
-// Works for monadic ↕ on a scalar (the common case in the levels).
-// If the result isn't a simple row (e.g. ↕ of a list, which produces
-// a multi-rank index array), the cell tracker leaves cells empty and
-// the animation just commits silently.
+// N indices, watch me count them out". Pure function: takes the
+// post-commit wraps (already in the DOM) and animates them in.
 
 import { animate } from 'motion';
-import type { AnimationFn } from './types';
 
 const STEP_MS = 130;
 const HOLD_MS = 280;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-export const range: AnimationFn = async ({ getNode, commit }) => {
-	const newCells = await commit();
-	if (newCells.length === 0) return;
+export type RangeItem = { node: HTMLElement };
+
+export async function range(items: RangeItem[]): Promise<void> {
+	if (items.length === 0) return;
 
 	// Hide each new wrap synchronously so the browser doesn't paint
 	// them at full size before the cascade starts.
-	const wraps = newCells.map((c) => getNode(c.id));
-	for (const node of wraps) {
-		if (!node) continue;
+	for (const { node } of items) {
 		node.style.opacity = '0';
 		node.style.transform = 'translateY(-10px) scale(0.4)';
 	}
 
-	const firstNode = wraps.find((n): n is HTMLElement => n != null);
-	if (!firstNode || !firstNode.parentElement) return;
-	const rowRect = firstNode.parentElement.getBoundingClientRect();
+	const firstNode = items[0].node;
+	const parent = firstNode.parentElement;
+	if (!parent) return;
+	const rowRect = parent.getBoundingClientRect();
 
 	const counter = document.createElement('div');
 	counter.textContent = '0';
@@ -63,7 +57,7 @@ export const range: AnimationFn = async ({ getNode, commit }) => {
 		{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }
 	).finished;
 
-	for (let i = 0; i < newCells.length; i++) {
+	for (let i = 0; i < items.length; i++) {
 		counter.textContent = String(i + 1);
 		animate(
 			counter,
@@ -71,23 +65,21 @@ export const range: AnimationFn = async ({ getNode, commit }) => {
 			{ duration: 0.28 }
 		);
 
-		const node = wraps[i];
-		if (node) {
-			animate(
-				node,
-				{
-					opacity: [0, 1],
-					transform: [
-						'translateY(-10px) scale(0.4)',
-						'translateY(0) scale(1.15)',
-						'translateY(0) scale(1)'
-					]
-				},
-				{ duration: 0.42, ease: [0.34, 1.56, 0.64, 1] }
-			);
-		}
+		const { node } = items[i];
+		animate(
+			node,
+			{
+				opacity: [0, 1],
+				transform: [
+					'translateY(-10px) scale(0.4)',
+					'translateY(0) scale(1.15)',
+					'translateY(0) scale(1)'
+				]
+			},
+			{ duration: 0.42, ease: [0.34, 1.56, 0.64, 1] }
+		);
 
-		if (i < newCells.length - 1) await delay(STEP_MS);
+		if (i < items.length - 1) await delay(STEP_MS);
 	}
 
 	await delay(HOLD_MS);
@@ -98,9 +90,8 @@ export const range: AnimationFn = async ({ getNode, commit }) => {
 	).finished;
 	counter.remove();
 
-	for (const node of wraps) {
-		if (!node) continue;
+	for (const { node } of items) {
 		node.style.opacity = '';
 		node.style.transform = '';
 	}
-};
+}

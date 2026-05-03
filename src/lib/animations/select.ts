@@ -1,33 +1,26 @@
 // Shared "count off the first N cells" intro used by ↑ (take) and ↓
-// (drop). Lifts each selected cell ~10px and pops a numbered badge above
-// it, staggered so the count reads as a sequence, not a flash.
+// (drop). Lifts each selected wrap ~10px and pops a numbered badge
+// above it, staggered so the count reads as a sequence, not a flash.
 //
-// What happens after the intro is the caller's choice: take drops the
-// *unselected* cells; drop drops the *selected* ones.
+// Pure function: takes the wraps directly. Caller decides what they
+// represent.
 
 import { animate } from 'motion';
-import type { Cell } from './types';
 
 export const SELECT_LIFT_PX = 10;
 
 export type Selection = {
-	selected: { cell: Cell; node: HTMLElement; badge: HTMLElement }[];
+	selected: { node: HTMLElement; badge: HTMLElement }[];
 	introFinished: Promise<void>;
 };
 
-export function selectFirst(
-	cells: Cell[],
-	n: number,
-	getNode: (id: number) => HTMLElement | null
-): Selection {
+export function selectFirst(wraps: HTMLElement[], n: number): Selection {
 	const selected: Selection['selected'] = [];
 	const tasks: Promise<unknown>[] = [];
 
-	const count = Math.min(n, cells.length);
+	const count = Math.min(n, wraps.length);
 	for (let i = 0; i < count; i++) {
-		const cell = cells[i];
-		const node = getNode(cell.id);
-		if (!node) continue;
+		const node = wraps[i];
 
 		const lift = animate(
 			node,
@@ -36,7 +29,7 @@ export function selectFirst(
 		);
 		tasks.push(lift.finished);
 
-		node.style.position = 'relative';
+		if (!node.style.position) node.style.position = 'relative';
 		const badge = createBadge(i + 1);
 		node.appendChild(badge);
 
@@ -54,7 +47,7 @@ export function selectFirst(
 		);
 		tasks.push(badgeAnim.finished);
 
-		selected.push({ cell, node, badge });
+		selected.push({ node, badge });
 	}
 
 	return {

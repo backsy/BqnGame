@@ -1,53 +1,63 @@
-// N↑ take: count off the first N cells (the kept ones), then drop the
-// rest. After the dropped cells are off-screen, commit and let the kept
-// cells settle into the re-centered row.
+// N↑ take: count off the first N cells (the kept ones), then drop
+// the rest. After the dropped cells are off-screen, the kept cells
+// settle into the re-centered row.
+//
+// Pure function: takes a 'kept' list (live wraps + FLIP rects) and a
+// 'dropped' list (ghost wraps that fall off, since the live ones are
+// already gone post-commit).
 
 import { animate } from 'motion';
-import type { AnimationFn } from './types';
 import { selectFirst, fadeBadges, clearWrapStyles, SELECT_LIFT_PX } from './select';
 
 const DROP_PX = 38;
 
-export function take(n: number): AnimationFn {
-	return async ({ cells, oldRects, getNode, commit }) => {
-		const dropped = cells.slice(n);
-		const { selected, introFinished } = selectFirst(cells, n, getNode);
+export type TakeKept = {
+	wrap: HTMLElement; // live (post-commit)
+	oldRect: DOMRect;
+	newRect: DOMRect;
+};
 
-		// Unselected cells dim and slide down in parallel with the count
-		// intro — the overlap reads as 'these are leaving' before the
-		// count even finishes.
-		const dropTasks = dropped.map((cell, i) => {
-			const node = getNode(cell.id);
-			if (!node) return Promise.resolve();
-			return animate(
-				node,
-				{ opacity: [1, 0.35, 0], y: [0, 0, DROP_PX] },
-				{ duration: 0.7, ease: [0.4, 0, 0.6, 1], delay: 0.18 + i * 0.04 }
-			).finished;
-		});
+export type TakeDropped = {
+	wrap: HTMLElement; // ghost (pre-commit clone)
+};
 
-		await Promise.all([introFinished, ...dropTasks]);
-		await commit();
+export async function take(
+	kept: TakeKept[],
+	dropped: TakeDropped[]
+): Promise<void> {
+	// Intro counts off the live KEPT wraps. Lifts them with badges.
+	const { selected, introFinished } = selectFirst(
+		kept.map((k) => k.wrap),
+		kept.length
+	);
 
-		// FLIP: kept cells settle from old positions (still lifted) to
-		// new re-centered positions (no lift).
-		const settleTasks: Promise<unknown>[] = [];
-		for (const sel of selected) {
-			const node = getNode(sel.cell.id);
-			const oldRect = oldRects.get(sel.cell.id);
-			if (!node || !oldRect) continue;
-			const newRect = node.getBoundingClientRect();
-			const dx = oldRect.left - newRect.left;
-			const a = animate(
-				node,
+	// Unselected (dropped) ghost wraps dim and slide down.
+	const dropTasks = dropped.map((d, i) =>
+		animate(
+			d.wrap,
+			{ opacity: [1, 0.35, 0], y: [0, 0, DROP_PX] },
+			{ duration: 0.7, ease: [0.4, 0, 0.6, 1], delay: 0.18 + i * 0.04 }
+		).finished
+	);
+
+	await Promise.all([introFinished, ...dropTasks]);
+
+	// FLIP: kept wraps settle from old positions (still lifted) to
+	// their new re-centered positions (no lift).
+	const settleTasks: Promise<unknown>[] = [];
+	for (let i = 0; i < kept.length; i++) {
+		const { wrap, oldRect, newRect } = kept[i];
+		const dx = oldRect.left - newRect.left;
+		settleTasks.push(
+			animate(
+				wrap,
 				{ x: [dx, 0], y: [-SELECT_LIFT_PX, 0] },
 				{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }
-			);
-			settleTasks.push(a.finished);
-		}
-		await Promise.all(settleTasks);
+			).finished
+		);
+	}
+	await Promise.all(settleTasks);
 
-		await fadeBadges(selected.map((s) => s.badge));
-		clearWrapStyles(selected.map((s) => s.node));
-	};
+	await fadeBadges(selected.map((s) => s.badge));
+	clearWrapStyles(selected.map((s) => s.node));
 }

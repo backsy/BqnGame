@@ -1,121 +1,809 @@
-// Registry mapping rune.expr (the BQN source the player taps) to its
-// animation function. Adding a new animated glyph is one new file in
-// this directory plus one entry below — for parametric ones (like N↑,
-// +⟜N, etc.), add a regex case to getAnimation.
+// Controller. The single entry point that the +page.svelte hooks into.
+// Maps each rune expression to the right pure animation, builds the
+// inputs the animation expects from the Snapshot, and runs it.
+//
+// State is already committed by the time dispatchAnimation is called
+// (see applyRune in +page.svelte). Animations are pure functions and
+// never see history, never call commit, never know what a "cell" is.
 
-import type { AnimationFn } from './types';
-import { reverse } from './reverse';
-import { take } from './take';
-import { drop } from './drop';
-import { range } from './range';
-import { sort } from './sort';
-import { broadcast } from './broadcast';
+import type { Cell, Snapshot } from './types';
+export type { Cell, Snapshot } from './types';
+
+import { reverse, type ReverseItem } from './reverse';
+import { sort, type SortItem } from './sort';
+import { range, type RangeItem } from './range';
+import { broadcast, type BroadcastItem } from './broadcast';
+import { scan, type ScanItem } from './scan';
 import { fold } from './fold';
-import { scan } from './scan';
-import { filter } from './filter';
-import { reshape } from './reshape';
+import { filter, type FilterItem } from './filter';
+import { join, type JoinExisting, type JoinNew } from './join';
+import { take, type TakeKept, type TakeDropped } from './take';
+import { drop, type DropDropped, type DropSurvivor } from './drop';
 import { pick } from './pick';
-import { join } from './join';
 import { length } from './length';
-import { transpose } from './transpose';
-import { deshape } from './deshape';
+import { reshape, type ReshapeItem } from './reshape';
+import { transpose, type TransposeItem } from './transpose';
+import { deshape, type DeshapeItem } from './deshape';
 import { tables } from './tables';
 import { windows } from './windows';
 
-export type { AnimationCtx, AnimationFn, Cell } from './types';
+// ─────────────────────────── helpers ────────────────────────────
 
-const exact: Record<string, AnimationFn> = {
-	'⌽': reverse,
-	'↕': range,
-	'∧': sort,
-	'∨': sort,
-	'⊑': pick(0),
-	'∾˜': join('self'),
-	'≠': length,
-	'⍉': transpose,
-	'⥊': deshape
+function ghostBarHeight(ghost: HTMLElement | null): number {
+	if (!ghost) return NaN;
+	const bar = ghost.querySelector('.bar') as HTMLElement | null;
+	if (!bar) return NaN;
+	return parseFloat(bar.style.height);
+}
+
+function liveBarHeight(live: HTMLElement | null): number {
+	if (!live) return NaN;
+	const bar = live.querySelector('.bar') as HTMLElement | null;
+	if (!bar) return NaN;
+	return parseFloat(bar.style.height);
+}
+
+function findGhostBars(ghost: HTMLElement): HTMLElement[] {
+	const grid = ghost.querySelector(':scope > .grid');
+	if (grid) return Array.from(grid.children) as HTMLElement[];
+	return [];
+}
+
+function findLiveGridChildren(viz: HTMLElement): HTMLElement[] {
+	const grid = viz.querySelector(':scope > .grid');
+	if (!grid) return [];
+	return Array.from(grid.children) as HTMLElement[];
+}
+
+function findLiveScalarBar(viz: HTMLElement): HTMLElement | null {
+	return viz.querySelector(':scope > .bar') as HTMLElement | null;
+}
+
+function readVizMaxFromBar(bar: HTMLElement | null, value: number): number {
+	if (!bar) return Math.max(Math.abs(value), 4);
+	const h = parseFloat(bar.style.height);
+	if (isNaN(h) || h <= 18 || value === 0) return Math.max(Math.abs(value), 4);
+	return (Math.abs(value) * 60) / (h - 18);
+}
+
+const PREDICATE_FN: Record<string, (a: number, n: number) => boolean> = {
+	'<': (a, n) => a < n,
+	'>': (a, n) => a > n,
+	'=': (a, n) => a === n
 };
+
+// ──────────────────────────── runners ───────────────────────────
+
+async function runReverse(snap: Snapshot): Promise<void> {
+	snap.revealLive();
+	snap.ghost.remove();
+	const items: ReverseItem[] = [];
+	for (const cell of snap.cells) {
+		const node = snap.getLiveNode(cell.id);
+		const oldRect = snap.oldRects.get(cell.id);
+		if (!node || !oldRect) continue;
+		items.push({ node, oldRect, newRect: node.getBoundingClientRect() });
+	}
+	await reverse(items);
+}
+
+async function runSort(snap: Snapshot): Promise<void> {
+	snap.revealLive();
+	snap.ghost.remove();
+	const items: SortItem[] = [];
+	for (let i = 0; i < snap.cells.length; i++) {
+		const cell = snap.cells[i];
+		const node = snap.getLiveNode(cell.id);
+		const oldRect = snap.oldRects.get(cell.id);
+		if (!node || !oldRect) continue;
+		items.push({
+			node,
+			oldRect,
+			newRect: node.getBoundingClientRect(),
+			staggerIndex: i
+		});
+	}
+	await sort(items);
+}
+
+async function runRange(snap: Snapshot): Promise<void> {
+	snap.revealLive();
+	snap.ghost.remove();
+	const items: RangeItem[] = [];
+	for (const cell of snap.cells) {
+		const node = snap.getLiveNode(cell.id);
+		if (node) items.push({ node });
+	}
+	await range(items);
+}
+
+async function runBroadcast(snap: Snapshot, label: string): Promise<void> {
+	// Row case: same-length pre/post (cell tracker preserved ids).
+	if (
+		snap.oldCells.length > 0 &&
+		snap.cells.length === snap.oldCells.length
+	) {
+		snap.revealLive();
+		snap.ghost.remove();
+		const items: BroadcastItem[] = [];
+		for (let i = 0; i < snap.cells.length; i++) {
+			const cell = snap.cells[i];
+			const liveWrap = snap.getLiveNode(cell.id);
+			if (!liveWrap) continue;
+			const liveBar = liveWrap.querySelector('.bar') as HTMLElement | null;
+			if (!liveBar) continue;
+			const ghostWrap = snap.getGhostNode(cell.id);
+			const ghostBar = ghostWrap?.querySelector(
+				'.bar'
+			) as HTMLElement | null;
+			const oldH = ghostBar ? parseFloat(ghostBar.style.height) : NaN;
+			const newH = parseFloat(liveBar.style.height);
+			if (isNaN(oldH) || isNaN(newH)) continue;
+			items.push({ anchor: liveWrap, bar: liveBar, oldH, newH });
+		}
+		await broadcast(items, label);
+		return;
+	}
+
+	// Scalar case: ValueViz renders a single bar inside .viz.
+	const liveBar = findLiveScalarBar(snap.liveViz);
+	const ghostBar = findLiveScalarBar(snap.ghost);
+	if (!liveBar || !ghostBar) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const oldH = parseFloat(ghostBar.style.height);
+	const newH = parseFloat(liveBar.style.height);
+	if (isNaN(oldH) || isNaN(newH)) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+
+	const vizRect = snap.liveViz.getBoundingClientRect();
+	const barRect = liveBar.getBoundingClientRect();
+	const badgeLeftPx = barRect.left + barRect.width / 2 - vizRect.left;
+	const badgeTopPx = barRect.top - vizRect.top - 30;
+
+	snap.revealLive();
+	snap.ghost.remove();
+
+	await broadcast(
+		[
+			{
+				anchor: snap.liveViz,
+				bar: liveBar,
+				oldH,
+				newH,
+				badgeLeftPx,
+				badgeTopPx
+			}
+		],
+		label
+	);
+}
+
+async function runScan(snap: Snapshot, operator: string): Promise<void> {
+	// Same-length pre/post; ids preserved by the cell tracker.
+	snap.revealLive();
+	snap.ghost.remove();
+
+	if (snap.oldCells.length !== snap.cells.length) return;
+	const oldVals = snap.oldCells.map((c) => c.value);
+	const newVals = snap.cells.map((c) => c.value);
+	if (
+		!oldVals.every((v): v is number => typeof v === 'number') ||
+		!newVals.every((v): v is number => typeof v === 'number')
+	)
+		return;
+
+	const items: ScanItem[] = [];
+	for (let i = 0; i < snap.cells.length; i++) {
+		const cell = snap.cells[i];
+		const wrap = snap.getLiveNode(cell.id);
+		if (!wrap) continue;
+		const bar = wrap.querySelector('.bar') as HTMLElement | null;
+		const num = bar?.querySelector('.num') as HTMLElement | null;
+		if (!bar) continue;
+		items.push({
+			wrap,
+			bar,
+			num,
+			oldValue: oldVals[i],
+			newValue: newVals[i]
+		});
+	}
+
+	const visualMax = Math.max(
+		...oldVals.map(Math.abs),
+		...newVals.map(Math.abs),
+		4
+	);
+	const valToH = (v: number) =>
+		Math.min(Math.max(v, 0), visualMax) * (60 / visualMax) + 18;
+
+	await scan(items, operator, valToH);
+}
+
+async function runFold(snap: Snapshot, operator: string): Promise<void> {
+	if (snap.oldCells.length < 2) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const values = snap.oldCells.map((c) => c.value);
+	if (!values.every((v): v is number => typeof v === 'number')) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+
+	// Collect ghost wraps in order.
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
+	}
+
+	// visualMax: max abs across all intermediates.
+	let acc = values[0];
+	const intermediates: number[] = [acc];
+	const op: Record<string, (a: number, b: number) => number> = {
+		'+': (a, b) => a + b,
+		'-': (a, b) => a - b,
+		'×': (a, b) => a * b,
+		'÷': (a, b) => a / b,
+		'⌈': (a, b) => Math.max(a, b),
+		'⌊': (a, b) => Math.min(a, b)
+	};
+	for (let i = 1; i < values.length; i++) {
+		acc = op[operator](acc, values[i]);
+		intermediates.push(acc);
+	}
+	const visualMax = Math.max(
+		...intermediates.map(Math.abs),
+		...values.map(Math.abs),
+		4
+	);
+
+	// scalarCenterX: where the post-commit scalar bar will be centered.
+	const liveBar = findLiveScalarBar(snap.liveViz);
+	const vizRect = snap.liveViz.getBoundingClientRect();
+	const scalarCenterX = liveBar
+		? liveBar.getBoundingClientRect().left +
+			liveBar.getBoundingClientRect().width / 2
+		: vizRect.left + vizRect.width / 2;
+
+	await fold({ ghostWraps, values, operator, visualMax, scalarCenterX });
+
+	snap.revealLive();
+	snap.ghost.remove();
+}
+
+async function runFilter(
+	snap: Snapshot,
+	operator: string,
+	n: number
+): Promise<void> {
+	const pred = PREDICATE_FN[operator];
+	if (!pred || snap.oldCells.length === 0) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const verdicts = snap.oldCells.map((c) =>
+		typeof c.value === 'number' ? pred(c.value as number, n) : false
+	);
+
+	const items: FilterItem[] = [];
+	for (let i = 0; i < snap.oldCells.length; i++) {
+		const oldCell = snap.oldCells[i];
+		const ghostWrap = snap.getGhostNode(oldCell.id);
+		if (!ghostWrap) continue;
+		const passes = verdicts[i];
+		const oldRect = snap.oldRects.get(oldCell.id);
+		// Live wrap is the one with the same id (preserved by cell
+		// tracker for passers).
+		const liveWrap = passes ? snap.getLiveNode(oldCell.id) : null;
+		const newRect = liveWrap?.getBoundingClientRect();
+		items.push({
+			wrap: ghostWrap,
+			passes,
+			oldRect,
+			newRect
+		});
+	}
+
+	await filter(items, `${operator}${n}`);
+	snap.revealLive();
+	snap.ghost.remove();
+}
+
+async function runJoin(
+	snap: Snapshot,
+	direction: 'append' | 'prepend' | 'self'
+): Promise<void> {
+	snap.revealLive();
+	snap.ghost.remove();
+	if (snap.cells.length <= snap.oldCells.length) return;
+
+	const addedCount = snap.cells.length - snap.oldCells.length;
+	const isPrepend = direction === 'prepend';
+	const newRange = isPrepend
+		? { from: 0, to: addedCount }
+		: { from: snap.oldCells.length, to: snap.cells.length };
+	const slideDirection: 'left' | 'right' = isPrepend ? 'left' : 'right';
+
+	const existing: JoinExisting[] = [];
+	const added: JoinNew[] = [];
+
+	// Existing cells: ids preserved at the start (append/self) or end
+	// (prepend) of the post-commit cells array.
+	for (let i = 0; i < snap.oldCells.length; i++) {
+		const oldCell = snap.oldCells[i];
+		const liveWrap = snap.getLiveNode(oldCell.id);
+		const oldRect = snap.oldRects.get(oldCell.id);
+		if (!liveWrap || !oldRect) continue;
+		existing.push({
+			wrap: liveWrap,
+			oldRect,
+			newRect: liveWrap.getBoundingClientRect()
+		});
+	}
+
+	let cascadeIdx = 0;
+	for (let i = newRange.from; i < newRange.to; i++) {
+		const cell = snap.cells[i];
+		const wrap = snap.getLiveNode(cell.id);
+		if (!wrap) {
+			cascadeIdx++;
+			continue;
+		}
+		added.push({ wrap, cascadeIndex: cascadeIdx });
+		cascadeIdx++;
+	}
+
+	await join(existing, added, slideDirection);
+}
+
+async function runTake(snap: Snapshot, n: number): Promise<void> {
+	if (snap.oldCells.length < n) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const kept: TakeKept[] = [];
+	const dropped: TakeDropped[] = [];
+
+	for (let i = 0; i < n; i++) {
+		const oldCell = snap.oldCells[i];
+		const liveWrap = snap.getLiveNode(oldCell.id);
+		const oldRect = snap.oldRects.get(oldCell.id);
+		if (!liveWrap || !oldRect) continue;
+		kept.push({
+			wrap: liveWrap,
+			oldRect,
+			newRect: liveWrap.getBoundingClientRect()
+		});
+	}
+	for (let i = n; i < snap.oldCells.length; i++) {
+		const oldCell = snap.oldCells[i];
+		const ghostWrap = snap.getGhostNode(oldCell.id);
+		if (!ghostWrap) continue;
+		dropped.push({ wrap: ghostWrap });
+	}
+
+	// Reveal live so the FLIP animates real wraps; ghost stays for the
+	// dropped wraps until take() finishes.
+	snap.revealLive();
+
+	await take(kept, dropped);
+
+	snap.ghost.remove();
+}
+
+async function runDrop(snap: Snapshot, n: number): Promise<void> {
+	if (snap.oldCells.length < n) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const dropped: DropDropped[] = [];
+	const survivors: DropSurvivor[] = [];
+
+	for (let i = 0; i < n; i++) {
+		const oldCell = snap.oldCells[i];
+		const ghostWrap = snap.getGhostNode(oldCell.id);
+		if (!ghostWrap) continue;
+		dropped.push({ wrap: ghostWrap });
+	}
+	for (let i = n; i < snap.oldCells.length; i++) {
+		const oldCell = snap.oldCells[i];
+		const liveWrap = snap.getLiveNode(oldCell.id);
+		const oldRect = snap.oldRects.get(oldCell.id);
+		if (!liveWrap || !oldRect) continue;
+		survivors.push({
+			wrap: liveWrap,
+			oldRect,
+			newRect: liveWrap.getBoundingClientRect()
+		});
+	}
+
+	snap.revealLive();
+	await drop(dropped, survivors);
+	snap.ghost.remove();
+}
+
+async function runPick(snap: Snapshot, index: number): Promise<void> {
+	if (
+		snap.oldCells.length === 0 ||
+		index < 0 ||
+		index >= snap.oldCells.length
+	) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
+	}
+
+	const liveBar = findLiveScalarBar(snap.liveViz);
+	const vizRect = snap.liveViz.getBoundingClientRect();
+	const scalarCenterX = liveBar
+		? liveBar.getBoundingClientRect().left +
+			liveBar.getBoundingClientRect().width / 2
+		: vizRect.left + vizRect.width / 2;
+
+	await pick({ ghostWraps, keptIndex: index, scalarCenterX });
+	snap.revealLive();
+	snap.ghost.remove();
+}
+
+async function runLength(snap: Snapshot): Promise<void> {
+	if (snap.oldCells.length === 0) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
+	}
+
+	// Reveal live early so the scalar bar exists and we can fade it in.
+	snap.revealLive();
+	const liveScalarBar = findLiveScalarBar(snap.liveViz);
+
+	await length({ ghostWraps, liveScalarBar });
+
+	snap.ghost.remove();
+}
+
+async function runReshape(
+	snap: Snapshot,
+	rows: number,
+	cols: number
+): Promise<void> {
+	if (snap.oldCells.length !== rows * cols) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
+	}
+
+	// Read target rects from the live grid (briefly reveal viz to
+	// measure, since it's hidden behind ghost).
+	snap.revealLive();
+	const liveGridChildren = findLiveGridChildren(snap.liveViz);
+	const targetRects = liveGridChildren.map((el) => el.getBoundingClientRect());
+	if (targetRects.length !== rows * cols) {
+		snap.ghost.remove();
+		return;
+	}
+
+	const items: ReshapeItem[] = ghostWraps.map((ghostWrap, i) => ({
+		ghostWrap,
+		targetRect: targetRects[i]
+	}));
+
+	// Re-hide live during the animation; ghost is what the user sees.
+	snap.liveViz.style.visibility = 'hidden';
+	await reshape(items);
+	snap.liveViz.style.visibility = '';
+
+	snap.ghost.remove();
+}
+
+async function runTranspose(snap: Snapshot): Promise<void> {
+	const ghostCells = findGhostBars(snap.ghost);
+	if (ghostCells.length === 0) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+
+	// Read pre-grid shape from the ghost grid's grid-template-columns.
+	const ghostGrid = snap.ghost.querySelector(':scope > .grid') as HTMLElement | null;
+	if (!ghostGrid) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const colsMatch = ghostGrid.style.gridTemplateColumns.match(/repeat\((\d+),/);
+	if (!colsMatch) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const cols = parseInt(colsMatch[1], 10);
+	const total = ghostCells.length;
+	if (total % cols !== 0) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const rows = total / cols;
+
+	// Read target rects from live grid.
+	snap.revealLive();
+	const liveCells = findLiveGridChildren(snap.liveViz);
+	const targetRects = liveCells.map((el) => el.getBoundingClientRect());
+	if (targetRects.length !== total) {
+		snap.ghost.remove();
+		return;
+	}
+
+	const items: TransposeItem[] = ghostCells.map((ghostCell, i) => {
+		const r = Math.floor(i / cols);
+		const c = i % cols;
+		const newFlat = c * rows + r;
+		return {
+			ghostCell,
+			targetRect: targetRects[newFlat],
+			staggerKey: Math.abs(r - c)
+		};
+	});
+
+	snap.liveViz.style.visibility = 'hidden';
+	await transpose(items);
+	snap.liveViz.style.visibility = '';
+	snap.ghost.remove();
+}
+
+async function runDeshape(snap: Snapshot): Promise<void> {
+	const ghostCells = findGhostBars(snap.ghost);
+	if (ghostCells.length === 0) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+
+	// Post-commit is a 1D row.
+	snap.revealLive();
+	const targetRects: DOMRect[] = [];
+	for (const cell of snap.cells) {
+		const liveWrap = snap.getLiveNode(cell.id);
+		if (!liveWrap) {
+			snap.ghost.remove();
+			return;
+		}
+		targetRects.push(liveWrap.getBoundingClientRect());
+	}
+	if (targetRects.length !== ghostCells.length) {
+		snap.ghost.remove();
+		return;
+	}
+
+	const items: DeshapeItem[] = ghostCells.map((ghostCell, i) => ({
+		ghostCell,
+		targetRect: targetRects[i]
+	}));
+
+	snap.liveViz.style.visibility = 'hidden';
+	await deshape(items);
+	snap.liveViz.style.visibility = '';
+	snap.ghost.remove();
+}
+
+async function runTables(
+	snap: Snapshot,
+	operator: string
+): Promise<void> {
+	if (snap.oldCells.length < 2) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+	const xs = snap.oldCells.map((c) => c.value);
+	if (!xs.every((v): v is number => typeof v === 'number')) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
+	}
+
+	// Reveal live to get the post-commit grid; tables() animation
+	// re-hides during animation as needed.
+	snap.revealLive();
+	const liveGrid = snap.liveViz.querySelector(
+		':scope > .grid'
+	) as HTMLElement | null;
+	if (!liveGrid) {
+		snap.ghost.remove();
+		return;
+	}
+
+	snap.liveViz.style.visibility = 'hidden';
+	await tables({ ghostWraps, xs, operator, liveGrid });
+	snap.liveViz.style.visibility = '';
+	snap.ghost.remove();
+}
+
+async function runWindows(snap: Snapshot, n: number): Promise<void> {
+	if (snap.oldCells.length < n) {
+		snap.revealLive();
+		snap.ghost.remove();
+		return;
+	}
+
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
+	}
+	const xs = snap.oldCells.map((c) => c.value);
+
+	snap.revealLive();
+	const liveGrid = snap.liveViz.querySelector(
+		':scope > .grid'
+	) as HTMLElement | null;
+	if (!liveGrid) {
+		snap.ghost.remove();
+		return;
+	}
+
+	snap.liveViz.style.visibility = 'hidden';
+	await windows({ ghostWraps, xs, N: n, liveGrid });
+	snap.liveViz.style.visibility = '';
+	snap.ghost.remove();
+}
+
+// ──────────────────────────── dispatch ──────────────────────────
 
 const TAKE_RE = /^(\d+)⊸↑$/;
 const DROP_RE = /^(\d+)⊸↓$/;
-// op⟜N: +1, -2, ×3, ÷4, =3, <5, >2, ⋆2 — operation bound to a constant
-// on the right.
 const BCAST_DYAD_RE = /^([+\-×÷=<>⋆])⟜(\d+)$/;
-// N⊸|: 2|, 3|, 10| — modulus with the divisor bound on the left.
 const BCAST_MOD_RE = /^(\d+)⊸\|$/;
-// N⊸⋆ / N⊸√: 2⋆, 3⋆ (powers of N) and 3√ (cube root). Same broadcast
-// shape as N⊸|, just a different op glyph.
 const BCAST_LEFT_POW_RE = /^(\d+)⊸([⋆√])$/;
-// √: monadic square root applied element-wise to a row.
-const BCAST_SQRT_RE = /^√$/;
-// op˜: +˜ (double), ×˜ (square) — self-application.
 const BCAST_SELF_RE = /^([+\-×])˜$/;
-// F´: +´, ×´, ⌈´, ⌊´ — fold a row into a scalar.
 const FOLD_RE = /^([+\-×÷⌈⌊])´$/;
-// F`: +`, ×`, ⌈`, ⌊` — scan: running fold, same-length result.
 const SCAN_RE = /^([+\-×÷⌈⌊])`$/;
-// (P⊸/): keep-where filter, e.g. (<⟜5)⊸/, (=⟜1)⊸/.
 const FILTER_RE = /^\(([=<>])⟜(\d+)\)⊸\/$/;
-// R‿C⊸⥊: reshape a flat row into an R×C grid.
 const RESHAPE_RE = /^(\d+)‿(\d+)⊸⥊$/;
-// N⊸⊑: pick the Nth element (0-indexed in BQN).
 const PICK_RE = /^(\d+)⊸⊑$/;
-// F⌜˜: self-table — pair every element of x with every other element
-// under F. Uses the table modifier `⌜` and the swap modifier `˜`.
 const TABLE_SELF_RE = /^([+\-×÷⌈⌊=<>])⌜˜$/;
-// N⊸↕: sliding length-N windows over a row.
 const WINDOWS_RE = /^(\d+)⊸↕$/;
 
-export function getAnimation(expr: string): AnimationFn | null {
-	const direct = exact[expr];
-	if (direct) return direct;
+export async function dispatchAnimation(
+	expr: string,
+	snap: Snapshot
+): Promise<void> {
+	// Direct matches.
+	if (expr === '⌽') return runReverse(snap);
+	if (expr === '∧' || expr === '∨') return runSort(snap);
+	if (expr === '↕') return runRange(snap);
+	if (expr === '⊑') return runPick(snap, 0);
+	if (expr === '≠') return runLength(snap);
+	if (expr === '⍉') return runTranspose(snap);
+	if (expr === '⥊') return runDeshape(snap);
+	if (expr === '∾˜') return runJoin(snap, 'self');
+	if (expr === '√') return runBroadcast(snap, '√');
 
-	const takeMatch = TAKE_RE.exec(expr);
-	if (takeMatch) return take(parseInt(takeMatch[1], 10));
+	// Regex matches — order matters: check ⋆⟜N before BCAST_DYAD if we
+	// ever route them differently. Currently both go through broadcast.
+	let m: RegExpExecArray | null;
 
-	const dropMatch = DROP_RE.exec(expr);
-	if (dropMatch) return drop(parseInt(dropMatch[1], 10));
+	if ((m = BCAST_DYAD_RE.exec(expr))) return runBroadcast(snap, `${m[1]}${m[2]}`);
+	if ((m = BCAST_MOD_RE.exec(expr))) return runBroadcast(snap, `${m[1]}|`);
+	if ((m = BCAST_LEFT_POW_RE.exec(expr)))
+		return runBroadcast(snap, `${m[1]}${m[2]}`);
+	if ((m = BCAST_SELF_RE.exec(expr))) return runBroadcast(snap, `${m[1]}˜`);
+	if ((m = FOLD_RE.exec(expr))) return runFold(snap, m[1]);
+	if ((m = SCAN_RE.exec(expr))) return runScan(snap, m[1]);
+	if ((m = FILTER_RE.exec(expr)))
+		return runFilter(snap, m[1], parseInt(m[2], 10));
+	if ((m = RESHAPE_RE.exec(expr)))
+		return runReshape(snap, parseInt(m[1], 10), parseInt(m[2], 10));
+	if ((m = TAKE_RE.exec(expr))) return runTake(snap, parseInt(m[1], 10));
+	if ((m = DROP_RE.exec(expr))) return runDrop(snap, parseInt(m[1], 10));
+	if ((m = PICK_RE.exec(expr))) return runPick(snap, parseInt(m[1], 10));
+	if ((m = TABLE_SELF_RE.exec(expr))) return runTables(snap, m[1]);
+	if ((m = WINDOWS_RE.exec(expr))) return runWindows(snap, parseInt(m[1], 10));
 
-	const dyadMatch = BCAST_DYAD_RE.exec(expr);
-	if (dyadMatch) return broadcast(`${dyadMatch[1]}${dyadMatch[2]}`);
+	if (expr.startsWith('∾⟜')) return runJoin(snap, 'append');
+	if (expr.endsWith('⊸∾')) return runJoin(snap, 'prepend');
 
-	const modMatch = BCAST_MOD_RE.exec(expr);
-	if (modMatch) return broadcast(`${modMatch[1]}|`);
+	// No animation registered — clean up the controller's overlay.
+	snap.revealLive();
+	snap.ghost.remove();
+}
 
-	const leftPowMatch = BCAST_LEFT_POW_RE.exec(expr);
-	if (leftPowMatch) return broadcast(`${leftPowMatch[1]}${leftPowMatch[2]}`);
-
-	if (BCAST_SQRT_RE.test(expr)) return broadcast('√');
-
-	const selfMatch = BCAST_SELF_RE.exec(expr);
-	if (selfMatch) return broadcast(`${selfMatch[1]}˜`);
-
-	const foldMatch = FOLD_RE.exec(expr);
-	if (foldMatch) return fold(foldMatch[1]);
-
-	const scanMatch = SCAN_RE.exec(expr);
-	if (scanMatch) return scan(scanMatch[1]);
-
-	const filterMatch = FILTER_RE.exec(expr);
-	if (filterMatch) return filter(filterMatch[1], parseInt(filterMatch[2], 10));
-
-	const reshapeMatch = RESHAPE_RE.exec(expr);
-	if (reshapeMatch)
-		return reshape(parseInt(reshapeMatch[1], 10), parseInt(reshapeMatch[2], 10));
-
-	const pickMatch = PICK_RE.exec(expr);
-	if (pickMatch) return pick(parseInt(pickMatch[1], 10));
-
-	const tableMatch = TABLE_SELF_RE.exec(expr);
-	if (tableMatch) return tables(tableMatch[1]);
-
-	const winsMatch = WINDOWS_RE.exec(expr);
-	if (winsMatch) return windows(parseInt(winsMatch[1], 10));
-
-	// Join: ∾⟜<value> appends, <value>⊸∾ prepends. Match by start /
-	// end so any value (number, list, string) is captured uniformly.
-	if (expr.startsWith('∾⟜')) return join('append');
-	if (expr.endsWith('⊸∾')) return join('prepend');
-
-	return null;
+/** True iff the expr has any animation registered. The controller in
+ *  +page.svelte uses this to decide whether to set up the ghost +
+ *  hide-live machinery. If not, it just commits and returns. */
+export function hasAnimation(expr: string): boolean {
+	if (
+		expr === '⌽' ||
+		expr === '∧' ||
+		expr === '∨' ||
+		expr === '↕' ||
+		expr === '⊑' ||
+		expr === '≠' ||
+		expr === '⍉' ||
+		expr === '⥊' ||
+		expr === '∾˜' ||
+		expr === '√'
+	)
+		return true;
+	if (BCAST_DYAD_RE.test(expr)) return true;
+	if (BCAST_MOD_RE.test(expr)) return true;
+	if (BCAST_LEFT_POW_RE.test(expr)) return true;
+	if (BCAST_SELF_RE.test(expr)) return true;
+	if (FOLD_RE.test(expr)) return true;
+	if (SCAN_RE.test(expr)) return true;
+	if (FILTER_RE.test(expr)) return true;
+	if (RESHAPE_RE.test(expr)) return true;
+	if (TAKE_RE.test(expr)) return true;
+	if (DROP_RE.test(expr)) return true;
+	if (PICK_RE.test(expr)) return true;
+	if (TABLE_SELF_RE.test(expr)) return true;
+	if (WINDOWS_RE.test(expr)) return true;
+	if (expr.startsWith('∾⟜')) return true;
+	if (expr.endsWith('⊸∾')) return true;
+	return false;
 }
