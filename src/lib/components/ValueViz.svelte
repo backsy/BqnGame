@@ -137,6 +137,10 @@
 	.grid {
 		display: grid;
 		gap: 0.25rem;
+		/* Bars stand on a baseline — same as the .row flex-end. Without
+		   this they'd top-align in their grid cells and read as 'flipped'
+		   compared to 1D rows. */
+		align-items: end;
 	}
 	.dots {
 		align-self: center;
