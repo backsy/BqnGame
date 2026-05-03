@@ -116,7 +116,13 @@ const R = {
 	rowmin: same('⌊´˘'),
 	mod2: r('2|', '2⊸|'),
 	mod3: r('3|', '3⊸|'),
-	mod10: r('10|', '10⊸|')
+	mod10: r('10|', '10⊸|'),
+	pow2: r('⋆2', '⋆⟜2'),
+	pow3: r('⋆3', '⋆⟜3'),
+	pow4: r('⋆4', '⋆⟜4'),
+	exp2: r('2⋆', '2⊸⋆'),
+	sqrt: same('√'),
+	croot: r('3√', '3⊸√')
 };
 
 export const levels: Level[] = [
@@ -620,5 +626,33 @@ export const levels: Level[] = [
 		start: '1‿2‿3‿4‿5‿6',
 		target: '24',
 		runes: [R.mod3, R.sumf, R.mul2]
+	},
+
+	// ============================================================
+	// Block 17 — Powers & roots: a⋆b raises a to the b-th power; ⋆x
+	// is e^x. a√b is the a-th root of b; √x is the square root.
+	// ⋆⟜2 is "square via power" — a more general spelling of ×˜ —
+	// and 2⊸⋆ is the doubling sequence: ↕5 paired with 2⊸⋆ produces
+	// 1‿2‿4‿8‿16, the powers of two.
+	// ============================================================
+	{ id: 161, start: '3', target: '9', runes: [R.pow2, R.mul2] },
+	{ id: 162, start: '2', target: '8', runes: [R.pow3, R.mul2] },
+	{ id: 163, start: '2', target: '16', runes: [R.pow4, R.square] },
+	{ id: 164, start: '4', target: '2', runes: [R.sqrt, R.div2] },
+	{
+		id: 165,
+		start: '1‿4‿9‿16',
+		target: '10',
+		runes: [R.sqrt, R.sumf, R.rev]
+	},
+	{ id: 166, start: '8', target: '2', runes: [R.croot, R.div2, R.sub2] },
+	{ id: 167, start: '3', target: '8', runes: [R.exp2, R.mul2, R.add2] },
+	{ id: 168, start: '5', target: '32', runes: [R.exp2, R.mul2, R.square] },
+	{ id: 169, start: '4', target: '1‿2‿4‿8', runes: [R.range, R.exp2] },
+	{
+		id: 170,
+		start: '5',
+		target: '1‿4‿9‿16‿25',
+		runes: [R.range, R.add1, R.pow2]
 	}
 ];
