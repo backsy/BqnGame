@@ -29,11 +29,15 @@ export function reshape(rows: number, cols: number): AnimationFn {
 			return;
 		}
 
+		// Use getBoundingClientRect so heights include the bar's padding-
+		// top (.bar has padding-top: 0.2rem). Without that, rowMaxes /
+		// gridH would be a few px short and the post-commit grid lands
+		// slightly below where the animation ends.
 		const heights = wraps.map((w) => {
 			const b = w?.querySelector('.bar') as HTMLElement | null;
-			if (b && b.style.height) {
-				const h = parseFloat(b.style.height);
-				if (!isNaN(h)) return h;
+			if (b) {
+				const h = b.getBoundingClientRect().height;
+				if (h > 0) return h;
 			}
 			return 60;
 		});

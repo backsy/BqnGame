@@ -71,7 +71,9 @@
 	// For 2D targets, reserve enough vertical space in each cell to hold
 	// the full grid even before reshape commits. This is what gives the
 	// reshape animation room to fan symmetrically around the cell center
-	// instead of clipping the lower rows.
+	// instead of clipping the lower rows. PAD_Y accounts for the .bar's
+	// padding-top so the reserved space matches the actual rendered box.
+	const PAD_Y = 3.2;
 	const targetCellHeight = $derived.by(() => {
 		const tv = targetValue;
 		if (!Array.isArray(tv)) return null;
@@ -81,14 +83,15 @@
 		const flat = tv as unknown[];
 		let total = 0;
 		for (let i = 0; i < r; i++) {
-			let rowMax = 18;
+			let rowMax = 18 + PAD_Y;
 			for (let j = 0; j < c; j++) {
 				const v = flat[i * c + j];
 				if (typeof v === 'number') {
-					const h = Math.min(Math.max(v, 0), vizMax) * (60 / vizMax) + 18;
+					const h =
+						Math.min(Math.max(v, 0), vizMax) * (60 / vizMax) + 18 + PAD_Y;
 					if (h > rowMax) rowMax = h;
 				} else {
-					rowMax = Math.max(rowMax, 30);
+					rowMax = Math.max(rowMax, 32);
 				}
 			}
 			total += rowMax;
