@@ -188,6 +188,42 @@
 				return;
 			}
 
+			// ∾⟜list / ∾˜: append. Old cells preserved at the start,
+			// new cells appended.
+			if (
+				justTapped &&
+				cur.length > cells.length &&
+				(justTapped === '∾˜' || justTapped.startsWith('∾⟜'))
+			) {
+				const preserved = cells.map((c, i) => ({ id: c.id, value: cur[i] }));
+				const newOnes: Cell[] = [];
+				for (let i = cells.length; i < cur.length; i++) {
+					newOnes.push({ id: nextCellId++, value: cur[i] });
+				}
+				cells = [...preserved, ...newOnes];
+				return;
+			}
+
+			// list⊸∾: prepend. New cells at the start, old cells preserved
+			// at the end.
+			if (
+				justTapped &&
+				cur.length > cells.length &&
+				justTapped.endsWith('⊸∾')
+			) {
+				const newCount = cur.length - cells.length;
+				const newOnes: Cell[] = [];
+				for (let i = 0; i < newCount; i++) {
+					newOnes.push({ id: nextCellId++, value: cur[i] });
+				}
+				const preserved = cells.map((c, i) => ({
+					id: c.id,
+					value: cur[newCount + i]
+				}));
+				cells = [...newOnes, ...preserved];
+				return;
+			}
+
 			// (P⊸/) filter: preserve ids of cells whose value passes the
 			// predicate, in the same order. Falls through if shapes
 			// don't line up (e.g. non-number cells).

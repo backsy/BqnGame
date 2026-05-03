@@ -15,6 +15,7 @@ import { scan } from './scan';
 import { filter } from './filter';
 import { reshape } from './reshape';
 import { pick } from './pick';
+import { join } from './join';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -23,7 +24,8 @@ const exact: Record<string, AnimationFn> = {
 	'↕': range,
 	'∧': sort,
 	'∨': sort,
-	'⊑': pick(0)
+	'⊑': pick(0),
+	'∾˜': join('self')
 };
 
 const TAKE_RE = /^(\d+)⊸↑$/;
@@ -80,6 +82,11 @@ export function getAnimation(expr: string): AnimationFn | null {
 
 	const pickMatch = PICK_RE.exec(expr);
 	if (pickMatch) return pick(parseInt(pickMatch[1], 10));
+
+	// Join: ∾⟜<value> appends, <value>⊸∾ prepends. Match by start /
+	// end so any value (number, list, string) is captured uniformly.
+	if (expr.startsWith('∾⟜')) return join('append');
+	if (expr.endsWith('⊸∾')) return join('prepend');
 
 	return null;
 }
