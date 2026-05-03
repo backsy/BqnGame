@@ -21,7 +21,6 @@ import { transpose } from './transpose';
 import { deshape } from './deshape';
 import { tables } from './tables';
 import { windows } from './windows';
-import { power } from './power';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -39,11 +38,9 @@ const exact: Record<string, AnimationFn> = {
 
 const TAKE_RE = /^(\d+)⊸↑$/;
 const DROP_RE = /^(\d+)⊸↓$/;
-// op⟜N: +1, -2, ×3, ÷4, =3, <5, >2 — operation bound to a constant
-// on the right. Note: ⋆⟜N is matched separately (POW_RIGHT_RE below)
-// so power gets its own multi-step animation, not the single-pulse
-// broadcast.
-const BCAST_DYAD_RE = /^([+\-×÷=<>])⟜(\d+)$/;
+// op⟜N: +1, -2, ×3, ÷4, =3, <5, >2, ⋆2 — operation bound to a constant
+// on the right.
+const BCAST_DYAD_RE = /^([+\-×÷=<>⋆])⟜(\d+)$/;
 // N⊸|: 2|, 3|, 10| — modulus with the divisor bound on the left.
 const BCAST_MOD_RE = /^(\d+)⊸\|$/;
 // N⊸⋆ / N⊸√: 2⋆, 3⋆ (powers of N) and 3√ (cube root). Same broadcast
@@ -51,10 +48,6 @@ const BCAST_MOD_RE = /^(\d+)⊸\|$/;
 const BCAST_LEFT_POW_RE = /^(\d+)⊸([⋆√])$/;
 // √: monadic square root applied element-wise to a row.
 const BCAST_SQRT_RE = /^√$/;
-// ⋆⟜N: square / cube / fourth power — get the dedicated power
-// animation (N-1 multiplier-falls per bar) instead of a one-shot
-// broadcast pulse.
-const POW_RIGHT_RE = /^⋆⟜(\d+)$/;
 // op˜: +˜ (double), ×˜ (square) — self-application.
 const BCAST_SELF_RE = /^([+\-×])˜$/;
 // F´: +´, ×´, ⌈´, ⌊´ — fold a row into a scalar.
@@ -82,10 +75,6 @@ export function getAnimation(expr: string): AnimationFn | null {
 
 	const dropMatch = DROP_RE.exec(expr);
 	if (dropMatch) return drop(parseInt(dropMatch[1], 10));
-
-	// ⋆⟜N before BCAST_DYAD so power gets its dedicated animation.
-	const powRightMatch = POW_RIGHT_RE.exec(expr);
-	if (powRightMatch) return power(parseInt(powRightMatch[1], 10));
 
 	const dyadMatch = BCAST_DYAD_RE.exec(expr);
 	if (dyadMatch) return broadcast(`${dyadMatch[1]}${dyadMatch[2]}`);
