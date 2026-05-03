@@ -48,6 +48,26 @@
 
 	const isLastLevel = $derived(levelIndex === levels.length - 1);
 
+	// Target's expected row count drives the puzzle's vertical position.
+	// 1 row (scalar / 1D row) → puzzle sits in the upper third (default).
+	// More rows (2D matrices) → puzzle anchored higher up so the goal +
+	// now cells fit without pushing the actions row off-screen.
+	const targetRows = $derived.by(() => {
+		const tv = targetValue;
+		if (!Array.isArray(tv)) return 1;
+		const sh = (tv as { sh?: number[] }).sh ?? [(tv as unknown[]).length];
+		if (sh.length <= 1) return 1;
+		if (sh.length === 2) return sh[0];
+		return 1;
+	});
+
+	const puzzlePaddingTop = $derived.by(() => {
+		if (targetRows <= 1) return '18vh';
+		if (targetRows === 2) return '10vh';
+		if (targetRows === 3) return '6vh';
+		return '3vh';
+	});
+
 	// Cell tracking with stable ids, so animations can identify which
 	// DOM element corresponds to which logical value across reorders.
 	let cells = $state<Cell[]>([]);
@@ -282,7 +302,7 @@
 		</span>
 	</header>
 
-	<section class="middle">
+	<section class="middle" style="--puzzle-pt: {puzzlePaddingTop}">
 		<div class="board">
 			<div class="cell goal">
 				<div class="viz ghost" class:filled={solved}>
@@ -396,12 +416,12 @@
 		flex-direction: column;
 		align-items: center;
 		overflow: auto;
-		/* Top offset bumps the puzzle down to roughly the visual
-		   position the original 1fr-centered layout used; .middle is
-		   then content-sized and won't shrink when the bottom row
-		   grows on solve. The flexible auto-margin on .actions absorbs
-		   that delta. */
-		padding: 18vh 1rem 0.5rem;
+		/* Top offset is set per level via --puzzle-pt based on the
+		   target's expected row count: tall targets (matrices) pin
+		   the puzzle higher up so it fits without overflowing into
+		   the actions row; short targets keep the upper-third feel.
+		   The auto-margin on .actions absorbs the leftover space. */
+		padding: var(--puzzle-pt, 18vh) 1rem 0.5rem;
 		min-height: 0;
 		flex: 0 0 auto;
 	}
