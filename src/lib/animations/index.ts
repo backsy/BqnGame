@@ -13,6 +13,7 @@ import { broadcast } from './broadcast';
 import { fold } from './fold';
 import { scan } from './scan';
 import { filter } from './filter';
+import { reshape } from './reshape';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -38,6 +39,8 @@ const FOLD_RE = /^([+\-×÷⌈⌊])´$/;
 const SCAN_RE = /^([+\-×÷⌈⌊])`$/;
 // (P⊸/): keep-where filter, e.g. (<⟜5)⊸/, (=⟜1)⊸/.
 const FILTER_RE = /^\(([=<>])⟜(\d+)\)⊸\/$/;
+// R‿C⊸⥊: reshape a flat row into an R×C grid.
+const RESHAPE_RE = /^(\d+)‿(\d+)⊸⥊$/;
 
 export function getAnimation(expr: string): AnimationFn | null {
 	const direct = exact[expr];
@@ -66,6 +69,10 @@ export function getAnimation(expr: string): AnimationFn | null {
 
 	const filterMatch = FILTER_RE.exec(expr);
 	if (filterMatch) return filter(filterMatch[1], parseInt(filterMatch[2], 10));
+
+	const reshapeMatch = RESHAPE_RE.exec(expr);
+	if (reshapeMatch)
+		return reshape(parseInt(reshapeMatch[1], 10), parseInt(reshapeMatch[2], 10));
 
 	return null;
 }
