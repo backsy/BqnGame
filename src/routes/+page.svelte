@@ -433,14 +433,14 @@
 			type="button"
 			class="ha bqn"
 			onclick={undo}
-			disabled={history.length === 0}
+			disabled={history.length === 0 || animating}
 			aria-label="undo"
 		>↶</button>
 		<button
 			type="button"
 			class="ha bqn"
 			onclick={reset}
-			disabled={history.length === 0}
+			disabled={history.length === 0 || animating}
 			aria-label="reset attempt"
 		>↺</button>
 		{#if history.length > 0}
