@@ -165,14 +165,16 @@
 				return;
 			}
 
-			// Element-wise broadcasts (+N, -N, ×N, ÷N, =N, <N, >N, N|,
-			// +˜, ×˜): preserve ids, just refresh values per slot.
+			// Element-wise broadcasts (+N, -N, ×N, ÷N, =N, <N, >N, ⋆N,
+			// N|, N⋆, N√, √, +˜, ×˜): preserve ids, just refresh
+			// values per slot.
 			if (
 				justTapped &&
 				cells.length === cur.length &&
-				(/^[+\-×÷=<>]⟜\d+$/.test(justTapped) ||
-					/^\d+⊸\|$/.test(justTapped) ||
-					/^[+\-×]˜$/.test(justTapped))
+				(/^[+\-×÷=<>⋆]⟜\d+$/.test(justTapped) ||
+					/^\d+⊸[|⋆√]$/.test(justTapped) ||
+					/^[+\-×]˜$/.test(justTapped) ||
+					justTapped === '√')
 			) {
 				cells = cells.map((c, i) => ({ id: c.id, value: cur[i] }));
 				return;
