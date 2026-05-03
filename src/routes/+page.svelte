@@ -309,34 +309,6 @@
 					<ValueViz value={targetValue} max={vizMax} />
 				</div>
 			</div>
-			{#if solved}
-				<div
-					class="celebration"
-					in:scale={{ duration: 480, start: 0.2, opacity: 0, easing: backOut }}
-					aria-hidden="true"
-				>
-					<div class="stamp">
-						<svg viewBox="0 0 56 56" class="stamp-svg">
-							<circle
-								cx="28"
-								cy="28"
-								r="25"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							/>
-							<path
-								d="M16 29 L24 37 L40 19"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="3.2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-						</svg>
-					</div>
-				</div>
-			{/if}
 			<div class="cell now" class:winning={solved}>
 				<div class="viz">
 					{#if cells.length > 0}
@@ -372,11 +344,28 @@
 	<div class="bottom-shell">
 	{#if solved}
 		<section class="solved">
+			<div
+				class="solved-stamp"
+				in:scale={{ duration: 380, start: 0.3, opacity: 0, easing: backOut }}
+				aria-hidden="true"
+			>
+				<svg viewBox="0 0 56 56" class="stamp-svg">
+					<circle cx="28" cy="28" r="25" fill="none" stroke="currentColor" stroke-width="2" />
+					<path
+						d="M16 29 L24 37 L40 19"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="3.4"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
+			</div>
 			<button
 				type="button"
 				class="rune cta-rune bqn"
 				onclick={isLastLevel ? resetProgress : nextLevel}
-				in:fly={{ y: 14, duration: 320, delay: 200, easing: cubicOut }}
+				in:fly={{ y: 14, duration: 320, delay: 160, easing: cubicOut }}
 				aria-label={isLastLevel ? 'start over' : 'next level'}
 			>{isLastLevel ? '↻' : '→'}</button>
 		</section>
@@ -674,45 +663,36 @@
 		}
 	}
 
-	/* Celebration overlay: 0-height block placed between goal and now
-	   in the gap. The stamp is centered on its line and overflows
-	   visibly above and below into both cells' areas. Doesn't push
-	   any layout because its own height is 0. */
-	.celebration {
-		position: relative;
-		height: 0;
-		width: 100%;
+	.solved {
 		display: flex;
-		align-items: center;
+		gap: 0.5rem;
 		justify-content: center;
-		pointer-events: none;
-		z-index: 5;
+		align-items: center;
+		flex-wrap: wrap;
 	}
-	.stamp {
+	/* Stamp sized to match a rune button's height so the bottom-shell
+	   footprint stays the same between play and solved states. */
+	.solved-stamp {
 		flex: 0 0 auto;
-		width: 68px;
-		height: 68px;
+		width: 2.6rem;
+		height: 2.6rem;
 		color: var(--accent);
-		filter: drop-shadow(0 0 14px var(--accent-soft));
+		filter: drop-shadow(0 0 12px var(--accent-soft));
 	}
 	.stamp-svg {
 		width: 100%;
 		height: 100%;
 		display: block;
 	}
-
-	.solved {
-		display: flex;
-		gap: 0.4rem;
-		justify-content: center;
-		flex-wrap: wrap;
-	}
-	/* Sized exactly like a rune button so the bottom-shell footprint
-	   doesn't change between play and solved. */
+	/* Bright accent border + outer glow draws the eye to the next-level
+	   button so the player knows what to tap. */
 	.cta-rune {
-		border-color: #2a6a2a;
+		border-color: var(--accent);
 		background: var(--accent-deep);
 		color: #d7f0d7;
+		box-shadow:
+			0 0 0 1px rgba(95, 204, 95, 0.18),
+			0 0 16px -4px rgba(95, 204, 95, 0.55);
 	}
 	.cta-rune:active {
 		background: #225722;
