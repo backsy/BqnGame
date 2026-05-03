@@ -240,6 +240,27 @@ export function fold(operator: string): AnimationFn {
 		}
 
 		await delay(220);
+
+		// The accumulator sits where bar 0 was — at the row's left edge,
+		// since the row is centered in .viz and we never moved bar 0.
+		// ValueViz will render the post-commit scalar at .viz center, so
+		// slide bar 0 to the viz center before commit for a pixel-clean
+		// handoff (same trick as pick.ts).
+		const viz = row.parentElement;
+		if (viz) {
+			const vizRect = viz.getBoundingClientRect();
+			const accRect = acc0Wrap.getBoundingClientRect();
+			const dx =
+				vizRect.left + vizRect.width / 2 - (accRect.left + accRect.width / 2);
+			if (Math.abs(dx) > 0.5) {
+				await animate(
+					acc0Wrap,
+					{ x: dx },
+					{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }
+				).finished;
+			}
+		}
+
 		await commit();
 
 		for (const b of opBadges) {
