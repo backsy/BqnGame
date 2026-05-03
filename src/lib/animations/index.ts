@@ -14,6 +14,7 @@ import { fold } from './fold';
 import { scan } from './scan';
 import { filter } from './filter';
 import { reshape } from './reshape';
+import { pick } from './pick';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -21,7 +22,8 @@ const exact: Record<string, AnimationFn> = {
 	'⌽': reverse,
 	'↕': range,
 	'∧': sort,
-	'∨': sort
+	'∨': sort,
+	'⊑': pick(0)
 };
 
 const TAKE_RE = /^(\d+)⊸↑$/;
@@ -41,6 +43,8 @@ const SCAN_RE = /^([+\-×÷⌈⌊])`$/;
 const FILTER_RE = /^\(([=<>])⟜(\d+)\)⊸\/$/;
 // R‿C⊸⥊: reshape a flat row into an R×C grid.
 const RESHAPE_RE = /^(\d+)‿(\d+)⊸⥊$/;
+// N⊸⊑: pick the Nth element (0-indexed in BQN).
+const PICK_RE = /^(\d+)⊸⊑$/;
 
 export function getAnimation(expr: string): AnimationFn | null {
 	const direct = exact[expr];
@@ -73,6 +77,9 @@ export function getAnimation(expr: string): AnimationFn | null {
 	const reshapeMatch = RESHAPE_RE.exec(expr);
 	if (reshapeMatch)
 		return reshape(parseInt(reshapeMatch[1], 10), parseInt(reshapeMatch[2], 10));
+
+	const pickMatch = PICK_RE.exec(expr);
+	if (pickMatch) return pick(parseInt(pickMatch[1], 10));
 
 	return null;
 }
