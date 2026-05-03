@@ -12,6 +12,7 @@ import { sort } from './sort';
 import { broadcast } from './broadcast';
 import { fold } from './fold';
 import { scan } from './scan';
+import { filter } from './filter';
 
 export type { AnimationCtx, AnimationFn, Cell } from './types';
 
@@ -35,6 +36,8 @@ const BCAST_SELF_RE = /^([+\-×])˜$/;
 const FOLD_RE = /^([+\-×÷⌈⌊])´$/;
 // F`: +`, ×`, ⌈`, ⌊` — scan: running fold, same-length result.
 const SCAN_RE = /^([+\-×÷⌈⌊])`$/;
+// (P⊸/): keep-where filter, e.g. (<⟜5)⊸/, (=⟜1)⊸/.
+const FILTER_RE = /^\(([=<>])⟜(\d+)\)⊸\/$/;
 
 export function getAnimation(expr: string): AnimationFn | null {
 	const direct = exact[expr];
@@ -60,6 +63,9 @@ export function getAnimation(expr: string): AnimationFn | null {
 
 	const scanMatch = SCAN_RE.exec(expr);
 	if (scanMatch) return scan(scanMatch[1]);
+
+	const filterMatch = FILTER_RE.exec(expr);
+	if (filterMatch) return filter(filterMatch[1], parseInt(filterMatch[2], 10));
 
 	return null;
 }

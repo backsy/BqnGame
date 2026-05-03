@@ -156,6 +156,28 @@
 				return;
 			}
 
+			// (P⊸/) filter: preserve ids of cells whose value passes the
+			// predicate, in the same order. Falls through if shapes
+			// don't line up (e.g. non-number cells).
+			const filterMatch = justTapped?.match(/^\(([=<>])⟜(\d+)\)⊸\/$/);
+			if (filterMatch) {
+				const opStr = filterMatch[1];
+				const nVal = parseInt(filterMatch[2], 10);
+				const fpred =
+					opStr === '<'
+						? (a: number) => a < nVal
+						: opStr === '>'
+							? (a: number) => a > nVal
+							: (a: number) => a === nVal;
+				const surviving = cells.filter(
+					(c) => typeof c.value === 'number' && fpred(c.value)
+				);
+				if (cur.length === surviving.length) {
+					cells = surviving.map((c, i) => ({ id: c.id, value: cur[i] }));
+					return;
+				}
+			}
+
 			// N⊸↑: preserve ids of the first N cells, drop the rest. The
 			// take animation needs the dropped cells' DOM during its drop
 			// phase, so it commits AFTER measuring; by the time this
