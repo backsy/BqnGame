@@ -15,17 +15,29 @@ export type PickInput = {
 	ghostWraps: HTMLElement[];
 	/** Index of the kept wrap. */
 	keptIndex: number;
-	/** Viewport-x of the post-commit scalar bar's center. */
+	/** Where the post-commit scalar bar is centered in viewport coords.
+	 *  The kept ghost ends up exactly here so the ghost→live handoff
+	 *  has no jump: scalar in ValueViz is centered in .viz on BOTH
+	 *  axes, while the source row was bottom-aligned in .viz. The Y
+	 *  delta between the two can be tens of pixels for tall bars. */
 	scalarCenterX: number;
+	scalarCenterY: number;
 };
 
-export async function pick({ ghostWraps, keptIndex, scalarCenterX }: PickInput): Promise<void> {
+export async function pick({
+	ghostWraps,
+	keptIndex,
+	scalarCenterX,
+	scalarCenterY
+}: PickInput): Promise<void> {
 	if (ghostWraps.length === 0 || keptIndex < 0 || keptIndex >= ghostWraps.length) return;
 
 	const keptWrap = ghostWraps[keptIndex];
 	const keptRect = keptWrap.getBoundingClientRect();
 	const keptCenterX = keptRect.left + keptRect.width / 2;
+	const keptCenterY = keptRect.top + keptRect.height / 2;
 	const dx = scalarCenterX - keptCenterX;
+	const dy = scalarCenterY - keptCenterY;
 
 	// Phase 1: pulse the kept ghost.
 	await animate(
@@ -43,7 +55,7 @@ export async function pick({ ghostWraps, keptIndex, scalarCenterX }: PickInput):
 			tasks.push(
 				animate(
 					w,
-					{ x: dx, scale: 1 },
+					{ x: dx, y: dy, scale: 1 },
 					{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }
 				).finished
 			);

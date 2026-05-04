@@ -272,15 +272,25 @@ async function runFold(snap: Snapshot, operator: string): Promise<void> {
 		4
 	);
 
-	// scalarCenterX: where the post-commit scalar bar will be centered.
+	// Where the post-commit scalar bar will be centered.
 	const liveBar = findLiveScalarBar(snap.liveViz);
 	const vizRect = snap.liveViz.getBoundingClientRect();
-	const scalarCenterX = liveBar
-		? liveBar.getBoundingClientRect().left +
-			liveBar.getBoundingClientRect().width / 2
+	const liveBarRect = liveBar?.getBoundingClientRect();
+	const scalarCenterX = liveBarRect
+		? liveBarRect.left + liveBarRect.width / 2
 		: vizRect.left + vizRect.width / 2;
+	const scalarCenterY = liveBarRect
+		? liveBarRect.top + liveBarRect.height / 2
+		: vizRect.top + vizRect.height / 2;
 
-	await fold({ ghostWraps, values, operator, visualMax, scalarCenterX });
+	await fold({
+		ghostWraps,
+		values,
+		operator,
+		visualMax,
+		scalarCenterX,
+		scalarCenterY
+	});
 
 	snap.revealLive();
 	snap.ghost.remove();
@@ -464,12 +474,20 @@ async function runPick(snap: Snapshot, index: number): Promise<void> {
 
 	const liveBar = findLiveScalarBar(snap.liveViz);
 	const vizRect = snap.liveViz.getBoundingClientRect();
-	const scalarCenterX = liveBar
-		? liveBar.getBoundingClientRect().left +
-			liveBar.getBoundingClientRect().width / 2
+	const liveBarRect = liveBar?.getBoundingClientRect();
+	const scalarCenterX = liveBarRect
+		? liveBarRect.left + liveBarRect.width / 2
 		: vizRect.left + vizRect.width / 2;
+	const scalarCenterY = liveBarRect
+		? liveBarRect.top + liveBarRect.height / 2
+		: vizRect.top + vizRect.height / 2;
 
-	await pick({ ghostWraps, keptIndex: index, scalarCenterX });
+	await pick({
+		ghostWraps,
+		keptIndex: index,
+		scalarCenterX,
+		scalarCenterY
+	});
 	snap.revealLive();
 	snap.ghost.remove();
 }

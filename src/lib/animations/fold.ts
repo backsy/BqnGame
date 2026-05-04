@@ -31,8 +31,11 @@ export type FoldInput = {
 	operator: string;
 	/** Visualisation scale: max abs value across all intermediates. */
 	visualMax: number;
-	/** Viewport-x where the post-commit scalar bar will be centered. */
+	/** Viewport coords of the post-commit scalar bar's center. The
+	 *  accumulator slides to here so the ghost→live handoff is
+	 *  pixel-clean on both axes. */
 	scalarCenterX: number;
+	scalarCenterY: number;
 };
 
 const OP_FN: Record<string, (a: number, b: number) => number> = {
@@ -49,7 +52,8 @@ export async function fold({
 	values,
 	operator,
 	visualMax,
-	scalarCenterX
+	scalarCenterX,
+	scalarCenterY
 }: FoldInput): Promise<void> {
 	const op = OP_FN[operator];
 	if (!op || ghostWraps.length < 2 || values.length !== ghostWraps.length) return;
@@ -204,18 +208,17 @@ export async function fold({
 
 	await delay(220);
 
-	// Slide the accumulator (acc0Wrap) to .viz center where the post-
-	// commit scalar will appear.
+	// Slide the accumulator (acc0Wrap) to where the post-commit scalar
+	// will be centered — both axes. The source row was bottom-aligned
+	// in .viz; the post-commit scalar is centered in .viz, so we need
+	// the dy too or we'd hand off with a vertical jump.
 	const accRect = acc0Wrap.getBoundingClientRect();
 	const dx = scalarCenterX - (accRect.left + accRect.width / 2);
-	if (Math.abs(dx) > 0.5) {
-		// We must add the new dx on top of the wrap's existing transform,
-		// but Motion's animate works with absolute targets relative to
-		// transform: 0. Since acc0Wrap's wrapDelta[0] is 0 (we didn't move
-		// it during the collapse), it has no x-offset; just translate by dx.
+	const dy = scalarCenterY - (accRect.top + accRect.height / 2);
+	if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
 		await animate(
 			acc0Wrap,
-			{ x: dx },
+			{ x: dx, y: dy },
 			{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }
 		).finished;
 	}
