@@ -17,8 +17,8 @@ import { scan, type ScanItem } from './scan';
 import { fold } from './fold';
 import { filter, type FilterItem } from './filter';
 import { join, type JoinExisting, type JoinNew } from './join';
-import { take, type TakeKept, type TakeDropped } from './take';
-import { drop, type DropDropped, type DropSurvivor } from './drop';
+import { take } from './take';
+import { drop } from './drop';
 import { pick } from './pick';
 import { length } from './length';
 import { reshape, type ReshapeItem } from './reshape';
@@ -388,33 +388,45 @@ async function runTake(snap: Snapshot, n: number): Promise<void> {
 		snap.ghost.remove();
 		return;
 	}
-	const kept: TakeKept[] = [];
-	const dropped: TakeDropped[] = [];
 
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
+	}
+
+	// keptOldRects: pre-commit (pre-lift) ghost positions.
+	const keptOldRects: DOMRect[] = [];
 	for (let i = 0; i < n; i++) {
-		const oldCell = snap.oldCells[i];
-		const liveWrap = snap.getLiveNode(oldCell.id);
-		const oldRect = snap.oldRects.get(oldCell.id);
-		if (!liveWrap || !oldRect) continue;
-		kept.push({
-			wrap: liveWrap,
-			oldRect,
-			newRect: liveWrap.getBoundingClientRect()
-		});
-	}
-	for (let i = n; i < snap.oldCells.length; i++) {
-		const oldCell = snap.oldCells[i];
-		const ghostWrap = snap.getGhostNode(oldCell.id);
-		if (!ghostWrap) continue;
-		dropped.push({ wrap: ghostWrap });
+		const r = snap.oldRects.get(snap.oldCells[i].id);
+		if (!r) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		keptOldRects.push(r);
 	}
 
-	// Reveal live so the FLIP animates real wraps; ghost stays for the
-	// dropped wraps until take() finishes.
+	// keptTargetRects: post-commit (live) positions for the kept wraps.
+	const keptTargetRects: DOMRect[] = [];
+	for (let i = 0; i < n; i++) {
+		const live = snap.getLiveNode(snap.oldCells[i].id);
+		if (!live) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		keptTargetRects.push(live.getBoundingClientRect());
+	}
+
+	await take({ ghostWraps, n, keptOldRects, keptTargetRects });
+
 	snap.revealLive();
-
-	await take(kept, dropped);
-
 	snap.ghost.remove();
 }
 
@@ -424,29 +436,43 @@ async function runDrop(snap: Snapshot, n: number): Promise<void> {
 		snap.ghost.remove();
 		return;
 	}
-	const dropped: DropDropped[] = [];
-	const survivors: DropSurvivor[] = [];
 
-	for (let i = 0; i < n; i++) {
-		const oldCell = snap.oldCells[i];
-		const ghostWrap = snap.getGhostNode(oldCell.id);
-		if (!ghostWrap) continue;
-		dropped.push({ wrap: ghostWrap });
+	const ghostWraps: HTMLElement[] = [];
+	for (const cell of snap.oldCells) {
+		const w = snap.getGhostNode(cell.id);
+		if (!w) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		ghostWraps.push(w);
 	}
+
+	const survivorOldRects: DOMRect[] = [];
 	for (let i = n; i < snap.oldCells.length; i++) {
-		const oldCell = snap.oldCells[i];
-		const liveWrap = snap.getLiveNode(oldCell.id);
-		const oldRect = snap.oldRects.get(oldCell.id);
-		if (!liveWrap || !oldRect) continue;
-		survivors.push({
-			wrap: liveWrap,
-			oldRect,
-			newRect: liveWrap.getBoundingClientRect()
-		});
+		const r = snap.oldRects.get(snap.oldCells[i].id);
+		if (!r) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		survivorOldRects.push(r);
 	}
+
+	const survivorTargetRects: DOMRect[] = [];
+	for (let i = n; i < snap.oldCells.length; i++) {
+		const live = snap.getLiveNode(snap.oldCells[i].id);
+		if (!live) {
+			snap.revealLive();
+			snap.ghost.remove();
+			return;
+		}
+		survivorTargetRects.push(live.getBoundingClientRect());
+	}
+
+	await drop({ ghostWraps, n, survivorOldRects, survivorTargetRects });
 
 	snap.revealLive();
-	await drop(dropped, survivors);
 	snap.ghost.remove();
 }
 
