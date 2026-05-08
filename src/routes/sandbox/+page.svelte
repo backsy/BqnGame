@@ -210,7 +210,24 @@
 	async function run() {
 		if (!client || !editor || running) return;
 		running = true;
-		const source = editor.value();
+		const source = editor.value().trim();
+
+		// Dedupe consecutive identical runs. If the user taps run on the
+		// same expression as the last entry (e.g. they're re-checking, or
+		// the editor still holds the source from a tweak-and-re-run loop
+		// where they didn't actually change anything), don't append a
+		// duplicate — just scroll to the existing entry.
+		if (
+			source &&
+			entries.length > 0 &&
+			entries[entries.length - 1].expr === source
+		) {
+			running = false;
+			await tick();
+			scrollTranscriptToEnd();
+			return;
+		}
+
 		const response = await client.eval(source);
 
 		const entry: Entry =
