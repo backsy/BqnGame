@@ -9,9 +9,8 @@
 		dispatchAnimation,
 		hasAnimation,
 		type Cell,
-		type CellId
+		type Snapshot
 	} from '$lib/animations';
-	import { withSnapshot } from '$lib/animations/withSnapshot';
 	import { levels } from '$lib/learn/levels';
 	import { evalRaw, valueMatches } from '$lib/bqn/eval';
 
@@ -116,14 +115,16 @@
 
 	// Cell tracking with stable ids, so animations can identify which
 	// DOM element corresponds to which logical value across reorders.
-	// Cell addressability uses data-cell-id attributes on .wrap elements;
-	// no Map callback mechanism is needed.
 	let cells = $state<Cell[]>([]);
 	let nextCellId = 1;
 	let lastHistoryLen = 0;
 	let lastLevelIndex = -1;
+	const cellNodes = new Map<number, HTMLElement>();
 
-	function mkId(): CellId { return nextCellId++ as CellId; }
+	function setNode(id: number, node: HTMLElement | null) {
+		if (node) cellNodes.set(id, node);
+		else cellNodes.delete(id);
+	}
 
 	function isSimpleRow(v: unknown): v is (number | string)[] {
 		if (!Array.isArray(v)) return false;
@@ -211,7 +212,7 @@
 				const preserved = cells.map((c, i) => ({ id: c.id, value: cur[i] }));
 				const newOnes: Cell[] = [];
 				for (let i = cells.length; i < cur.length; i++) {
-					newOnes.push({ id: mkId(), value: cur[i] });
+					newOnes.push({ id: nextCellId++, value: cur[i] });
 				}
 				cells = [...preserved, ...newOnes];
 				return;
@@ -227,7 +228,7 @@
 				const newCount = cur.length - cells.length;
 				const newOnes: Cell[] = [];
 				for (let i = 0; i < newCount; i++) {
-					newOnes.push({ id: mkId(), value: cur[i] });
+					newOnes.push({ id: nextCellId++, value: cur[i] });
 				}
 				const preserved = cells.map((c, i) => ({
 					id: c.id,
@@ -286,7 +287,7 @@
 				}
 			}
 
-			cells = cur.map((value) => ({ id: mkId(), value }));
+			cells = cur.map((value) => ({ id: nextCellId++, value }));
 		});
 	});
 
@@ -300,37 +301,86 @@
 			return;
 		}
 
-		const vizRoot = document.querySelector('.cell.now .viz') as HTMLElement | null;
-		if (!vizRoot) {
+		// Snapshot pre-commit state (cells + per-id rects).
+		const oldCells = cells;
+		const oldRects = new Map<number, DOMRect>();
+		for (const cell of oldCells) {
+			const node = cellNodes.get(cell.id);
+			if (node) oldRects.set(cell.id, node.getBoundingClientRect());
+		}
+
+		// Clone .cell.now .viz as a ghost overlay parked at viewport
+		// coords on top of the original. The ghost is what the user
+		// sees during the animation while the live viz is hidden
+		// underneath. Animations transform the ghost (cross-DOM cases)
+		// or reveal the live viz with FLIP transforms (same-DOM cases).
+		const viz = document.querySelector('.cell.now .viz') as HTMLElement | null;
+		if (!viz) {
 			history = [...history, expr];
 			return;
 		}
+		const vizRect = viz.getBoundingClientRect();
+		const ghost = viz.cloneNode(true) as HTMLElement;
+		Object.assign(ghost.style, {
+			position: 'fixed',
+			left: `${vizRect.left}px`,
+			top: `${vizRect.top}px`,
+			width: `${vizRect.width}px`,
+			height: `${vizRect.height}px`,
+			margin: '0',
+			zIndex: '20',
+			pointerEvents: 'none'
+		});
+		document.body.appendChild(ghost);
 
-		const oldCells = cells;
+		// Map old cell ids → ghost wraps (rank-1 source values only).
+		const ghostNodesByOldId = new Map<number, HTMLElement>();
+		const ghostRow = ghost.querySelector(':scope > .row');
+		if (ghostRow) {
+			const ghostWraps = Array.from(ghostRow.children).filter(
+				(e): e is HTMLElement =>
+					e instanceof HTMLElement && e.classList.contains('wrap')
+			);
+			for (let i = 0; i < oldCells.length && i < ghostWraps.length; i++) {
+				ghostNodesByOldId.set(oldCells[i].id, ghostWraps[i]);
+			}
+		}
+
+		// Hide the live viz behind the ghost.
+		const prevVisibility = viz.style.visibility;
+		viz.style.visibility = 'hidden';
+		let liveRevealed = false;
+		const revealLive = () => {
+			if (liveRevealed) return;
+			liveRevealed = true;
+			viz.style.visibility = prevVisibility;
+		};
+
+		// SYNCHRONOUS COMMIT. Animation runs against already-committed
+		// state — it can't change history, can't delay state, can't
+		// touch anything other than DOM under its cleanup responsibility.
+		history = [...history, expr];
+		await tick();
 
 		animating = true;
 		try {
-			await withSnapshot(
-				{
-					vizRoot,
-					oldCells,
-					// commit mutates history then awaits tick so DOM settles
-					// before withSnapshot reads newCells().
-					commit: async () => {
-						history = [...history, expr];
-						await tick();
-					},
-					// Called by withSnapshot after commit resolves.
-					newCells: () => cells
-				},
-				async (snap) => {
-					await dispatchAnimation(expr, snap);
-				}
-			);
+			const snap: Snapshot = {
+				oldCells,
+				cells,
+				oldRects,
+				getLiveNode: (id) => cellNodes.get(id) ?? null,
+				ghost,
+				getGhostNode: (id) => ghostNodesByOldId.get(id) ?? null,
+				liveViz: viz,
+				revealLive
+			};
+			await dispatchAnimation(expr, snap);
 		} catch (err) {
 			console.error('animation failed', err);
 		} finally {
 			animating = false;
+			revealLive();
+			if (ghost.parentNode) ghost.remove();
 		}
 	}
 
@@ -428,7 +478,7 @@
 			<div class="cell now" class:winning={visibleSolved}>
 				<div class="viz">
 					{#if cells.length > 0}
-						<AnimatedRow {cells} max={vizMax} />
+						<AnimatedRow {cells} max={vizMax} {setNode} />
 					{:else}
 						<ValueViz value={currentValue} max={vizMax} />
 					{/if}

@@ -1,19 +1,13 @@
 ---
-id: TASK-2
+id: DRAFT-2
 title: 'withSnapshot: framework-free TS bracket around the state→visual handoff'
-status: Done
+status: Draft
 assignee: []
 created_date: '2026-05-10 11:15'
-updated_date: '2026-05-10 13:02'
+updated_date: '2026-05-10 12:51'
 labels:
   - architecture
 dependencies: []
-modified_files:
-  - src/lib/animations/types.ts
-  - src/lib/animations/withSnapshot.ts
-  - src/lib/animations/index.ts
-  - src/lib/components/AnimatedRow.svelte
-  - src/routes/+page.svelte
 ---
 
 ## Description
@@ -119,49 +113,12 @@ Internal implementation flows `Prepared → Committed → Snapshot`; the public 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 withSnapshot lives as plain TS under src/lib/animations/; no Svelte imports
-- [x] #2 Phase types (Prepared, Committed, Snapshot) are distinct; animation body sees only Snapshot
-- [x] #3 Route's applyRune delegates DOM choreography to withSnapshot; only owns the commit closure and post-commit cell construction
-- [x] #4 cellNodes Map + setNode callbacks are removed; cell addressability is via data-cell-id attributes
-- [x] #5 Existing animations behave identically in the game (visual regressions check on every animated rune)
-- [x] #6 withSnapshot is callable from a non-Svelte context (test or TASK-1 composes it)
-- [x] #7 ADR-004 invariant holds: withSnapshot never mutates state directly
-- [x] #8 ADR-005 invariant holds: illegal states (e.g. mid-phase access from animation) are not type-representable
+- [ ] #1 withSnapshot lives as plain TS under src/lib/animations/; no Svelte imports
+- [ ] #2 Phase types (Prepared, Committed, Snapshot) are distinct; animation body sees only Snapshot
+- [ ] #3 Route's applyRune delegates DOM choreography to withSnapshot; only owns the commit closure and post-commit cell construction
+- [ ] #4 cellNodes Map + setNode callbacks are removed; cell addressability is via data-cell-id attributes
+- [ ] #5 Existing animations behave identically in the game (visual regressions check on every animated rune)
+- [ ] #6 withSnapshot is callable from a non-Svelte context (test or TASK-1 composes it)
+- [ ] #7 ADR-004 invariant holds: withSnapshot never mutates state directly
+- [ ] #8 ADR-005 invariant holds: illegal states (e.g. mid-phase access from animation) are not type-representable
 <!-- AC:END -->
-
-## Final Summary
-
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-## What changed
-
-**src/lib/animations/types.ts** — complete rewrite:
-- Added `CellId` branded type (`number & { readonly __brand: 'CellId' }`).
-- `Cell.id` changed from `number` to `CellId`; all animation call sites (`cell.id` to `getLiveNode`/`getGhostNode`/`oldRects.get`) are automatically correct.
-- Added `Prepared`, `Committed` phase types (internal to withSnapshot; not exported from index.ts).
-- `Snapshot` updated to use `CellId`, readonly fields, `reveal` + `revealLive` alias (backward compat with dispatchAnimation callers).
-- Added `SnapshotSpec` with `commit: () => void | Promise<void>` and `newCells: () => ReadonlyArray<Cell>` thunk.
-
-**src/lib/animations/withSnapshot.ts** — new file, 0 Svelte imports:
-- `prepare()`: queries `[data-cell-id]` inside vizRoot for oldRects and ghostNodes, clones ghost overlay, hides live viz.
-- Calls `await Promise.resolve(doCommit())` — allows async commit closures (Svelte callers include `await tick()` in the closure).
-- `assemble()`: builds Snapshot with lazy `getLiveNode`/`getGhostNode` DOM queries.
-- `try/finally` ensures `reveal()` + `ghost.remove()` run even on body exception.
-
-**src/lib/animations/index.ts** — adds `CellId` to the re-export.
-
-**src/lib/components/AnimatedRow.svelte** — removed `setNode` prop, `track` action, and related callback plumbing. Each `.wrap` now renders `data-cell-id="{cell.id}"`.
-
-**src/routes/+page.svelte**:
-- Removed `cellNodes` Map, `setNode` function.
-- Added `mkId(): CellId` helper to stamp fresh cell IDs with the brand.
-- Replaced `nextCellId++` with `mkId()` at all cell-creation sites.
-- `applyRune` rewritten: captures `oldCells` + `vizRoot`, calls `withSnapshot({ vizRoot, oldCells, commit: async () => { history = [...history, expr]; await tick(); }, newCells: () => cells }, async (snap) => { await dispatchAnimation(expr, snap); })`. Cleanup (animating flag) in `finally`.
-- Template: `<AnimatedRow {cells} max={vizMax} />` (setNode prop removed).
-
-## Checks run
-- `pnpm check`: 0 errors, 0 warnings (188 files).
-- `pnpm build`: succeeded, static build output written to `build/`.
-
-## Visual regression review pending
-Agent cannot open a browser. The human must verify all animated runes (⌽, ∧, ∨, ↕, +N, scan, fold, filter, ∾, ↑N, ↓N, ⊑N, ≠, ⥊, ∘, ⍉) play correctly in the game after this refactor. Key risk: the ghost is now built by querying `[data-cell-id]` instead of iterating `.row > .wrap` children by index — any .wrap without `data-cell-id` (e.g. inside the goal viz clone) would silently produce empty ghostNodes, which is correct and harmless (animations fall back to revealLive in that case).
-<!-- SECTION:FINAL_SUMMARY:END -->

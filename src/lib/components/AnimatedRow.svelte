@@ -1,9 +1,9 @@
 <!--
   Renders a rank-1 list as a row of cells (bars for numbers, square
   tiles for chars). Cell identity is owned by the parent — each cell
-  carries a stable id that survives operations like ⌽. The id is
-  rendered as data-cell-id on each .wrap element so withSnapshot can
-  query live DOM positions without a Map callback mechanism.
+  carries a stable id that survives operations like ⌽ — and the parent
+  also keeps a Map of DOM refs so a per-glyph animation function can
+  measure and animate cells directly via Motion.
 -->
 
 <script lang="ts">
@@ -12,13 +12,26 @@
 	interface Props {
 		cells: Cell[];
 		max?: number;
+		// Called when each cell mounts (with element) and unmounts (with
+		// null). Lets the parent build a {id → element} map without
+		// needing the cells to live in a record.
+		setNode?: (id: number, node: HTMLElement | null) => void;
 	}
-	let { cells, max = 12 }: Props = $props();
+	let { cells, max = 12, setNode }: Props = $props();
+
+	function track(node: HTMLElement, id: number) {
+		setNode?.(id, node);
+		return {
+			destroy() {
+				setNode?.(id, null);
+			}
+		};
+	}
 </script>
 
 <div class="row">
 	{#each cells as cell (cell.id)}
-		<div class="wrap" data-cell-id="{cell.id}">
+		<div class="wrap" use:track={cell.id}>
 			{#if typeof cell.value === 'number'}
 				<div
 					class="bar"
