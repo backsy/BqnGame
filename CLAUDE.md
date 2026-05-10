@@ -46,6 +46,16 @@ When running commands in this repo as an agent:
 base path is configured in `svelte.config.js` and must match the repo name
 exactly (case-sensitive).
 
+## Task tracking
+
+Tasks are managed by [Backlog.md](https://github.com/MrLesk/Backlog.md). The
+binary comes from the flake dev shell and the MCP server is wired up in
+`.mcp.json` (so Claude Code exposes `task_create`, `task_list`, `task_edit`,
+`document_create`, … as tools). Before you create, edit, or close a task,
+read [`docs/runbooks/backlog.md`](docs/runbooks/backlog.md) — it has the
+phase discipline, the AC/DoD rules, and the full command/tool reference.
+Never edit files under `backlog/` by hand.
+
 ## Invariants (read before making changes)
 
 1. **Static build only.** The adapter is `@sveltejs/adapter-static`. Do not
@@ -101,5 +111,7 @@ exactly (case-sensitive).
   worker protocol, built-vs-planned.
 - [`docs/bqn-reference.md`](docs/bqn-reference.md) — primitive table sourced
   from upstream. Consult before writing BQN.
+- [`docs/runbooks/backlog.md`](docs/runbooks/backlog.md) — Backlog.md task
+  workflow, CLI/MCP reference. Read before touching tasks.
 - [`docs/decisions/`](docs/decisions/) — ADRs for locked-in choices
   (Svelte, wasm-in-browser, GitHub Pages).
