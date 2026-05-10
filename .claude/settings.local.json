@@ -1,14 +1,10 @@
 {
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  },
   "permissions": {
     "allow": [
       "mcp__sequential-thinking__sequentialthinking"
     ]
-  },
-  "enabledMcpjsonServers": [
-    "backlog"
-  ],
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true
-  },
-  "enableAllProjectMcpServers": true
+  }
 }

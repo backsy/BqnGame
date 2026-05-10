@@ -6,6 +6,7 @@ title: >-
 status: Draft
 assignee: []
 created_date: '2026-05-10 11:15'
+updated_date: '2026-05-10 14:37'
 labels:
   - architecture
 dependencies: []
@@ -14,27 +15,15 @@ dependencies: []
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-## Friction
+## Status: superseded by animation-language design
 
-src/lib/animations/index.ts (~853 LoC) holds two parallel structures that walk the same set of regex patterns: dispatchAnimation() runs a long if-chain matching expressions to runX functions, and hasAnimation() repeats roughly the same checks so the route can decide whether to set up ghost+hide-live machinery before evaluation. Adding a new animatable rune touches three spots in this file (regex constant, dispatch arm, predicate entry).
+This draft proposed merging `hasAnimation` and `dispatchAnimation` in `src/lib/animations/index.ts` into a single registry walked by both consumers.
 
-The seam between 'is this animatable?' and 'animate it' is a false seam — there is one body of knowledge but two callers walking it. Deletion test: hasAnimation() earns its keep (route needs the predicate), but the duplicate implementation does not.
+The animation-language design (`docs/design/animation-language.md`) supersedes this. Both predicates collapse into the new engine's exhaustive `animate(op)` switch, where every Operation kind has a registered animation by construction — there is no "is this animatable?" question to answer separately.
 
-## Direction (sketch, not commitment)
+## Recommendation
 
-One registry of {match, run} adapters; both consumers walk it. Each registry entry becomes the real seam — adding a primitive is one entry, not three.
+Archive this draft after phase 1 of the animation-language migration lands (DRAFT-2). The old dispatcher dies in phase 4 (cut-over), at which point the entire mechanism this draft addressed is gone.
 
-## Architecture work needed before this is implementable
-
-- Shape of a registry entry: plain regex vs richer matcher; how match groups feed runX
-- Whether registry is array-of-objects, Map, or generated table
-- Ordering rules for ambiguous matches (longest-match? declaration order?)
-- Whether per-animation modules expose run directly or stay behind index.ts wrappers (interacts with draft on state extraction)
-
-## Definition of done (outcome-shaped)
-
-- hasAnimation and dispatchAnimation share a single source of truth for what is animatable
-- Adding a new animatable rune is one new registry entry, not edits in three places of index.ts
-- Existing animated runes behave identically in the game (no visual regressions on tap)
-- Sandbox REPL behaviour for non-animated expressions is unchanged
+No standalone work to do here.
 <!-- SECTION:DESCRIPTION:END -->

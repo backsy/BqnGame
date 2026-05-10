@@ -309,6 +309,73 @@ requests. The main thread owns the `Operation` union; classifier maps
   we'll need; the actual list will grow as the parser encounters real BQN.
   Each new variant is one switch arm + one animation entry.
 
+## Migration strategy
+
+The new engine ships in parallel with the existing one. Existing animations
+(the per-glyph choreographies in `src/lib/animations/*.ts`) are kept and
+ported one-by-one. At every point the game still works.
+
+### Phase 1 — Scaffold (no game integration)
+
+- `src/lib/animations/v2/` (or similar) holds the new types: `Operation`,
+  `Step`, `Trajectory`, `Stage`, `AnimateStep`.
+- `Trajectory` smart constructors (`trajectoryFrom`, `append`) are pure
+  data; no DOM.
+- The exhaustive `animate(op)` switch is wired with every known kind, all
+  pointing at `blackBox` initially. Build fails if a kind is added without
+  a switch arm.
+- Game route untouched. New engine exists, unused.
+
+### Phase 2 — Player + Stage + blackBox
+
+- Player loop consumes a `Trajectory` + `Stage` end-to-end.
+- `Stage` interface defined; Svelte-backed implementation provided.
+- `blackBox` animation implemented (inputs → labelled F → outputs).
+- A small harness (test page or sandbox surface) runs a hard-coded
+  Trajectory through the Player using only blackBox. Proves the engine
+  works in isolation.
+- Game route still untouched.
+
+### Phase 3 — Migrate animations one at a time
+
+For each existing animation in `src/lib/animations/*.ts`:
+- Add an entry in the new engine's `animate(op)` switch for the matching
+  kind, ported from the old choreography.
+- The route's `applyRune` switches on which engine to use per
+  Operation kind: matched → new engine; unmatched → old engine. (One
+  conditional, removed at end of migration.)
+- Visual review in browser before moving on.
+- Pick simple, low-coupling animations first (`reverse`, `sort`,
+  `transpose`, `deshape`). Save the dependency-heavy ones (`fold`,
+  `tables`, `windows`) for last.
+
+### Phase 4 — Cut over
+
+- All animations migrated; remove the per-kind conditional in the route.
+- Delete old engine (`hasAnimation`, `dispatchAnimation`, the `runX`
+  wrappers in `index.ts`).
+- The route's 130-line `$effect` of per-rune ID-preservation special cases
+  collapses to a pure `cells = currentValue`. Bug class (first-rotate-after-
+  range) gone by construction.
+
+### Phase 5 — Playground
+
+- Worker exposes stepwise eval (`trace` request).
+- Main-thread AST→Operation classifier.
+- Playground UI calls `play(trajectoryFromTrace(traceSteps), stage)`.
+
+### Phase 6 — Coverage growth
+
+- Hand-design choreographies for kinds still on `blackBox` as desired.
+  Each is one switch-arm change; no architectural ripple.
+
+### Reversibility
+
+Phases 1–2 land entirely without touching the game. Phase 3 is the only
+phase that risks regression, and it's per-animation: any single migration
+can be reverted independently. The conditional in the route is the kill
+switch.
+
 ## Out of scope (this document)
 
 - Specific choreography of every hand-tuned animation (lives in the
