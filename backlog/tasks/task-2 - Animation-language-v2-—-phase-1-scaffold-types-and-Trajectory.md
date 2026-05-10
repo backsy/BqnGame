@@ -1,7 +1,7 @@
 ---
-id: DRAFT-2
+id: TASK-2
 title: 'Animation language v2 — phase 1: scaffold types and Trajectory'
-status: Draft
+status: To Do
 assignee: []
 created_date: '2026-05-10 11:15'
 updated_date: '2026-05-10 15:14'
