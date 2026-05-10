@@ -86,7 +86,7 @@ type FnExpr =
   | { kind: 'reverse' } | { kind: 'rotate' }
   | { kind: 'reshape' } | { kind: 'deshape' }
   | { kind: 'transpose' }
-  | { kind: 'length' } | { kind: 'shape' } | { kind: 'rank' }
+  | { kind: 'length' } | { kind: 'shape' } | { kind: 'rank-of' }   // ≠ ≢ =
   | { kind: 'take' }   | { kind: 'drop' }
   | { kind: 'select' } | { kind: 'pick' }
   | { kind: 'first' }  | { kind: 'last' }
@@ -100,7 +100,6 @@ type FnExpr =
   | { kind: 'unique' } | { kind: 'mark-firsts' }
   | { kind: 'find' } | { kind: 'member' }
   | { kind: 'left-id' } | { kind: 'right-id' }                  // ⊣ ⊢
-  | { kind: 'fmt' } | { kind: 'fmt-num' }                       // •Fmt, •Repr-style if used
 
   // ── 1-modifier applications (operand is a FnExpr) ─────────────────────
   | { kind: 'fold';      over: FnExpr }                         // F´
