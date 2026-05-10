@@ -6,6 +6,7 @@ title: >-
 status: Draft
 assignee: []
 created_date: '2026-05-10 11:37'
+updated_date: '2026-05-10 12:36'
 labels:
   - architecture
 dependencies: []
@@ -14,31 +15,28 @@ dependencies: []
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-## Friction
+## Status: largely subsumed by DRAFT-2
 
-src/lib/components/ValueViz.svelte and AnimatedRow.svelte own the rendered DOM structure for BQN values: nesting under .wrap, leaf cells as .bar (numeric) or .char (textual). The animations layer (snapshot assembly in src/routes/+page.svelte, plus per-animation modules) measures and clones nodes under those classes.
+The original friction here was implicit DOM contract between value renderers (ValueViz / AnimatedRow) and the animations layer — animation code reading DOM under .wrap / .bar / .char without a typed contract or shared selector module.
 
-But the DOM contract is implicit — there's no shared selector module, no type encoding 'this is the wrap of a row', no constant for the .bar / .char class names. If a ValueViz refactor renamed .bar to .cell-content, snapshot assembly would break silently. Knowledge of the cell DOM shape lives in CSS class strings repeated across files.
+DRAFT-2's grilling settled that **cell addressability moves to `data-cell-id` attributes** rendered by the value renderers. This gives the explicit, framework-agnostic contract this draft was asking for. Once DRAFT-2 lands, that piece is done.
 
-## Honest assessment
+## Remaining scope (if any)
 
-This is the weakest of the architecture candidates. Real friction is more 'implicit contract' than 'shallow module', and depending on how DRAFT-2 (snapshot assembly extraction) lands, this might be subsumed entirely. With only two value-renderer adapters today (ValueViz, AnimatedRow) plus one consumer (snapshot assembly), the deepening case is borderline — easily premature abstraction.
+The third pass flagged a related but separate friction: **ModifierDiagram.svelte** holds hard-coded SVG geometry per modifier, with no declaration in primitives.ts of which modifiers have diagrams. That is its own implicit-contract issue, not the same one DRAFT-2 fixes.
 
-Capturing it so it isn't forgotten, but expect it to be either (a) closed as redundant after DRAFT-2, or (b) left open as 'document the contract in a comment' rather than a code-level fix.
+Two ways to handle:
 
-## Direction (one of)
+1. **Close this draft as subsumed.** Open a fresh narrow draft if/when ModifierDiagram's coupling actually bites (third diagram needing addition, or a glyph silently falling back to empty diagram).
+2. **Re-scope this draft to ModifierDiagram only.** Update primitives.ts to declare `hasDiagram: bool` (or similar); ModifierDiagram becomes a registry indexed by glyph; GlyphPalette renders the diagram conditionally without knowing Diagram's internals.
 
-- Tiny cellDom.ts module: selector constants and cellNodeAt(rowEl, id) helper. Concentrates the DOM contract.
-- OR a comment near the value-renderer class definitions explaining what the animation layer expects. Cheap, no real seam, no test surface — but matches the actual two-adapter-today shape.
-- OR close as subsumed once DRAFT-2 makes the snapshot module the sole consumer of the DOM contract.
+## Recommendation
 
-## Architecture work needed before this is implementable
-
-- Wait for DRAFT-2 to land — it might leave nothing to do here
-- If still relevant, decide between code-level concentration vs documented contract
+Option 1 (close as subsumed) once DRAFT-2 lands. The ModifierDiagram concern is small, isolated, and doesn't need to be queued up; it can be a one-paragraph follow-up draft when something forces the issue. With only 7 hand-tuned diagrams that change rarely, the deepening case is genuinely weak.
 
 ## Definition of done (outcome-shaped)
 
-- One of the three resolutions above, recorded clearly
-- Either a single-module DOM contract exists, or the contract is documented near the renderers, or this draft is explicitly closed as redundant
+After DRAFT-2 lands:
+- Verify cell addressability via data-cell-id is actually clean across all value-renderer call sites
+- Either close this draft as subsumed, or re-scope to ModifierDiagram only with a fresh sketch
 <!-- SECTION:DESCRIPTION:END -->

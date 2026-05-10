@@ -6,6 +6,7 @@ title: >-
 status: Draft
 assignee: []
 created_date: '2026-05-10 11:35'
+updated_date: '2026-05-10 12:35'
 labels:
   - architecture
 dependencies: []
@@ -14,33 +15,38 @@ dependencies: []
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-## Friction
+## Friction (original framing — partially superseded)
 
-src/routes/+page.svelte (898 LoC) and src/routes/sandbox/+page.svelte (825 LoC) are two routes of similar size that both stand up: a CodeMirror Editor instance, a GlyphPalette, a BqnClient with run path, and palette-to-editor glyph dispatch. They diverge after that — the game owns level/history/animation; sandbox owns transcript/dedupe — but the editor lifecycle and worker plumbing exist in both files.
+src/routes/+page.svelte (898 LoC) and src/routes/sandbox/+page.svelte (825 LoC) both stand up an Editor + GlyphPalette + BqnClient + glyph dispatch. The shared editor lifecycle and worker plumbing exist twice; bugs in palette → editor insertion get fixed in two places.
 
-Today, fixing a bug in palette → editor insertion means fixing it twice. Editor + palette + run flow has no test surface because it only exists wedged inside two giant Svelte files.
+## Reframed after DRAFT-2 grilling
 
-## Direction (sketch, not commitment)
+The original draft assumed a Svelte Playground component. DRAFT-2 settled that the controller (the framework-free TS module that orchestrates state→visual handoff) is the real shared seam — game and sandbox both compose around it, plus their own UI shells.
 
-A 'Playground' module (component or controller) owns the editor instance, glyph insertion, worker client, and a 'run this expression' entry point. Game and sandbox compose around it, configuring the parts that genuinely differ (level state vs transcript, animated commit vs plain commit, distinct output panes).
+That changes what 'Playground' means here:
 
-Real seam, two adapters: game and sandbox.
+- **Possibility A: there's no Playground component to extract.** Game and sandbox each compose Editor + GlyphPalette + BqnClient + controller themselves. The 'duplication' is mostly Svelte boilerplate around shared modules; once those modules (controller, BqnClient) are tight, the boilerplate is small enough to live in each route. No abstraction needed.
+
+- **Possibility B: extract a thin TS controller wrapper.** A 'Playground' becomes a TS module that wires Editor's imperative API + GlyphPalette's insert callback + BqnClient + the animation controller into one 'run this expression' entry point. Game and sandbox each render their own UI but call this entry. Still framework-free at the seam.
+
+- **Possibility C: extract a Svelte component.** The original framing. Likely the wrong call now — it couples the seam to Svelte, contrary to ADR-004's spirit.
+
+## Still real friction (regardless of resolution)
+
+- Glyph insertion at the cursor: today's logic exists twice. Wherever it lives, it should live once.
+- BqnClient lifecycle: today created twice. Should be one instance per playground, owned by whoever holds the editor.
+- Run path: tap a rune (game) vs press Run (sandbox) end up calling the same worker eval. Different triggers, same machinery.
 
 ## Architecture work needed before this is implementable
 
-- Whether Playground is a Svelte component (slot-based composition) or a controller object (caller renders, Playground manages state)
-- What the 'run' entry point's contract looks like — does it return raw worker output, or commit somewhere?
-- How animation orchestration interacts with the Playground (game wants to animate before commit; sandbox wants plain commit)
-- Whether DRAFT-2 (snapshot assembly extraction) lands first, since the route is being decluttered there too
-
-## Sequencing
-
-This and DRAFT-2 both shrink the route. Worth deciding which lands first — likely DRAFT-2, so the snapshot module is a stable dependency the Playground can compose with.
+- DRAFT-2 lands first (controller exists)
+- Decide between possibilities A / B / C above
+- If B, the 'run an expression' entry point's contract: does it own the worker, or take it as input?
+- How animation dispatch differs between game and sandbox (game animates, sandbox just shows the result) — option B's entry point would need an `animate?: boolean` or similar
 
 ## Definition of done (outcome-shaped)
 
-- Editor + palette + worker setup lives in one place, not two
-- Game and sandbox routes are both noticeably smaller, with their distinct concerns clearly visible
-- The shared editor flow is testable without standing up the full game
-- Existing behaviour preserved on both routes (palette insertion, run, glyph rendering)
+- Editor + glyph dispatch + worker run path is not duplicated between game and sandbox
+- Whichever shape (A, B, C) is picked, the seam is framework-free or as close as the framework allows
+- Existing behaviour preserved on both routes
 <!-- SECTION:DESCRIPTION:END -->
