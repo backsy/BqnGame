@@ -7,7 +7,7 @@
 // never see history, never call commit, never know what a "cell" is.
 
 import type { Cell, Snapshot } from './types';
-export type { Cell, Snapshot } from './types';
+export type { Cell, CellId, Snapshot } from './types';
 
 import { reverse, type ReverseItem } from './reverse';
 import { sort, type SortItem } from './sort';

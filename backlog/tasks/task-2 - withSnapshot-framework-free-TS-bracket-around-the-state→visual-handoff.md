@@ -1,10 +1,10 @@
 ---
-id: DRAFT-2
+id: TASK-2
 title: 'withSnapshot: framework-free TS bracket around the state→visual handoff'
-status: Draft
+status: In Progress
 assignee: []
 created_date: '2026-05-10 11:15'
-updated_date: '2026-05-10 12:51'
+updated_date: '2026-05-10 12:53'
 labels:
   - architecture
 dependencies: []
