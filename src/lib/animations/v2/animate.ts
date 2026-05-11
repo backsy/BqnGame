@@ -1,0 +1,228 @@
+import type { FnExpr } from './fn-expr.js';
+import type { Step } from './step.js';
+import type { AnimateStep } from './stage.js';
+import { assertNever } from './value.js';
+
+// ── blackBox ──────────────────────────────────────────────────────────────
+// Universal animation for kinds not yet hand-designed.
+// Visualises a function as a labeled box with inputs flowing in and outputs
+// flowing out. Every unspecialised arm returns this — real animation, not a skip.
+const blackBox: AnimateStep = (_step, _beforeRoot, _afterRoot) => Promise.resolve();
+
+// ── assignAnimation / accessAnimation ────────────────────────────────────
+const assignAnimation: AnimateStep = (_step, _beforeRoot, _afterRoot) => Promise.resolve();
+const accessAnimation: AnimateStep = (_step, _beforeRoot, _afterRoot) => Promise.resolve();
+
+// ── animateMonadic ────────────────────────────────────────────────────────
+// Exhaustive over every FnExpr['kind']. Build fails if a kind is added to
+// FnExpr without a corresponding arm here (Rule F).
+export function animateMonadic(fn: FnExpr): AnimateStep {
+	switch (fn.kind) {
+		// Arithmetic
+		case 'add':                    return blackBox;
+		case 'sub':                    return blackBox;
+		case 'mul':                    return blackBox;
+		case 'div':                    return blackBox;
+		case 'pow':                    return blackBox;
+		case 'root':                   return blackBox;
+		case 'mod':                    return blackBox;
+		case 'min':                    return blackBox;
+		case 'max':                    return blackBox;
+		case 'floor':                  return blackBox;
+		case 'ceil':                   return blackBox;
+		case 'abs':                    return blackBox;
+		case 'neg':                    return blackBox;
+		// Comparison
+		case 'eq':                     return blackBox;
+		case 'ne':                     return blackBox;
+		case 'lt':                     return blackBox;
+		case 'le':                     return blackBox;
+		case 'gt':                     return blackBox;
+		case 'ge':                     return blackBox;
+		case 'match':                  return blackBox;
+		case 'not-match':              return blackBox;
+		// Logical
+		case 'and':                    return blackBox;
+		case 'or':                     return blackBox;
+		case 'not':                    return blackBox;
+		case 'span':                   return blackBox;
+		// Shape / structural
+		case 'reverse':                return blackBox;
+		case 'rotate':                 return blackBox;
+		case 'reshape':                return blackBox;
+		case 'deshape':                return blackBox;
+		case 'transpose':              return blackBox;
+		case 'length':                 return blackBox;
+		case 'shape':                  return blackBox;
+		case 'rank-of':                return blackBox; // ≢ base primitive — NOT the rank 2-modifier
+		case 'take':                   return blackBox;
+		case 'drop':                   return blackBox;
+		case 'select':                 return blackBox;
+		case 'pick':                   return blackBox;
+		case 'first':                  return blackBox;
+		case 'last':                   return blackBox;
+		case 'enclose':                return blackBox;
+		case 'merge':                  return blackBox;
+		case 'join-to':                return blackBox;
+		case 'pair':                   return blackBox;
+		case 'solo':                   return blackBox;
+		case 'range':                  return blackBox;
+		case 'sort-up':                return blackBox;
+		case 'sort-down':              return blackBox;
+		case 'grade-up':               return blackBox;
+		case 'grade-down':             return blackBox;
+		case 'group':                  return blackBox;
+		case 'index-of':               return blackBox;
+		case 'progressive-index-of':   return blackBox;
+		case 'unique':                 return blackBox;
+		case 'mark-firsts':            return blackBox;
+		case 'find':                   return blackBox;
+		case 'member':                 return blackBox;
+		case 'left-id':                return blackBox;
+		case 'right-id':               return blackBox;
+		// 1-modifier applications
+		case 'fold':                   return blackBox;
+		case 'fold-from':              return blackBox;
+		case 'scan':                   return blackBox;
+		case 'each':                   return blackBox;
+		case 'cells':                  return blackBox;
+		case 'table':                  return blackBox;
+		case 'self':                   return blackBox;
+		case 'const':                  return blackBox;
+		// 2-modifier applications
+		case 'compose':                return blackBox;
+		case 'over':                   return blackBox;
+		case 'bind-left':              return blackBox;
+		case 'bind-right':             return blackBox;
+		case 'before':                 return blackBox;
+		case 'after':                  return blackBox;
+		case 'under':                  return blackBox;
+		case 'choose':                 return blackBox;
+		case 'rank':                   return blackBox; // F⎉K — 2-modifier
+		case 'depth':                  return blackBox;
+		case 'repeat':                 return blackBox;
+		case 'valences':               return blackBox;
+		case 'catch':                  return blackBox;
+		// Trains
+		case 'atop':                   return blackBox;
+		case 'fork':                   return blackBox;
+		// Lambdas
+		case 'lambda':                 return blackBox;
+		// Resolved names
+		case 'opaque':                 return blackBox;
+		default:                       return assertNever(fn);
+	}
+}
+
+// ── animateDyadic ─────────────────────────────────────────────────────────
+// Same exhaustiveness requirement as animateMonadic (Rule F).
+export function animateDyadic(fn: FnExpr): AnimateStep {
+	switch (fn.kind) {
+		// Arithmetic
+		case 'add':                    return blackBox;
+		case 'sub':                    return blackBox;
+		case 'mul':                    return blackBox;
+		case 'div':                    return blackBox;
+		case 'pow':                    return blackBox;
+		case 'root':                   return blackBox;
+		case 'mod':                    return blackBox;
+		case 'min':                    return blackBox;
+		case 'max':                    return blackBox;
+		case 'floor':                  return blackBox;
+		case 'ceil':                   return blackBox;
+		case 'abs':                    return blackBox;
+		case 'neg':                    return blackBox;
+		// Comparison
+		case 'eq':                     return blackBox;
+		case 'ne':                     return blackBox;
+		case 'lt':                     return blackBox;
+		case 'le':                     return blackBox;
+		case 'gt':                     return blackBox;
+		case 'ge':                     return blackBox;
+		case 'match':                  return blackBox;
+		case 'not-match':              return blackBox;
+		// Logical
+		case 'and':                    return blackBox;
+		case 'or':                     return blackBox;
+		case 'not':                    return blackBox;
+		case 'span':                   return blackBox;
+		// Shape / structural
+		case 'reverse':                return blackBox;
+		case 'rotate':                 return blackBox;
+		case 'reshape':                return blackBox;
+		case 'deshape':                return blackBox;
+		case 'transpose':              return blackBox;
+		case 'length':                 return blackBox;
+		case 'shape':                  return blackBox;
+		case 'rank-of':                return blackBox;
+		case 'take':                   return blackBox;
+		case 'drop':                   return blackBox;
+		case 'select':                 return blackBox;
+		case 'pick':                   return blackBox;
+		case 'first':                  return blackBox;
+		case 'last':                   return blackBox;
+		case 'enclose':                return blackBox;
+		case 'merge':                  return blackBox;
+		case 'join-to':                return blackBox;
+		case 'pair':                   return blackBox;
+		case 'solo':                   return blackBox;
+		case 'range':                  return blackBox;
+		case 'sort-up':                return blackBox;
+		case 'sort-down':              return blackBox;
+		case 'grade-up':               return blackBox;
+		case 'grade-down':             return blackBox;
+		case 'group':                  return blackBox;
+		case 'index-of':               return blackBox;
+		case 'progressive-index-of':   return blackBox;
+		case 'unique':                 return blackBox;
+		case 'mark-firsts':            return blackBox;
+		case 'find':                   return blackBox;
+		case 'member':                 return blackBox;
+		case 'left-id':                return blackBox;
+		case 'right-id':               return blackBox;
+		// 1-modifier applications
+		case 'fold':                   return blackBox;
+		case 'fold-from':              return blackBox;
+		case 'scan':                   return blackBox;
+		case 'each':                   return blackBox;
+		case 'cells':                  return blackBox;
+		case 'table':                  return blackBox;
+		case 'self':                   return blackBox;
+		case 'const':                  return blackBox;
+		// 2-modifier applications
+		case 'compose':                return blackBox;
+		case 'over':                   return blackBox;
+		case 'bind-left':              return blackBox;
+		case 'bind-right':             return blackBox;
+		case 'before':                 return blackBox;
+		case 'after':                  return blackBox;
+		case 'under':                  return blackBox;
+		case 'choose':                 return blackBox;
+		case 'rank':                   return blackBox;
+		case 'depth':                  return blackBox;
+		case 'repeat':                 return blackBox;
+		case 'valences':               return blackBox;
+		case 'catch':                  return blackBox;
+		// Trains
+		case 'atop':                   return blackBox;
+		case 'fork':                   return blackBox;
+		// Lambdas
+		case 'lambda':                 return blackBox;
+		// Resolved names
+		case 'opaque':                 return blackBox;
+		default:                       return assertNever(fn);
+	}
+}
+
+// ── animateStep ───────────────────────────────────────────────────────────
+// Outer dispatch by Step kind. Returns the AnimateStep for this step.
+// Exhaustive with assertNever default (Rule F).
+export function animateStep(step: Step): AnimateStep {
+	switch (step.kind) {
+		case 'monadic':  return animateMonadic(step.fn);
+		case 'dyadic':   return animateDyadic(step.fn);
+		case 'assign':   return assignAnimation;
+		case 'access':   return accessAnimation;
+		default:         return assertNever(step);
+	}
+}

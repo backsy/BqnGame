@@ -304,6 +304,42 @@ The viewer infers what the operation does from input → output, even when
 we haven't designed a richer choreography. This is real animation — not a
 fallback to "skip animating."
 
+### Motion vocabulary discipline
+
+The animation registry above has one bespoke `AnimateStep` per `FnExpr`
+kind — but the *motions* those animations use are a much smaller
+vocabulary. "Up = keep, down = discard" applies to `take`, `drop`,
+`filter`. Lateral slide-preserving-identity applies to `rotate`,
+`reverse`, `sort`, `transpose`. Pair-merging applies to `fold` and (with
+a trail) `scan`. The five families named in
+`docs/design/animator-for-array-languages.md` (vertical, merging,
+distributing, lateral, sizing) are not types — they are a *vocabulary
+maintained in shared code*.
+
+Discipline:
+
+- When two operations share a motion meaning, they share the motion
+  code. Not "two implementations that happen to look similar" — one
+  helper, multiple callers.
+- The motion vocabulary lives under `src/lib/animations/v2/motions/`
+  (created when the first migration in phase 3 needs it). Each motion is
+  a small pure-ish helper named after what it *does*, not what calls it
+  (`slideUpAndAway`, not `takeKept`).
+- Adding a motion is a deliberate act, not a side effect of writing an
+  animation. When a new operation seems to need a new motion, the first
+  question is "do existing motions compose to cover this?" — not "what's
+  the new helper called?"
+- A short registry (a comment block, a list in a doc, an exported `const
+  motions = [...]`) catalogs the motions in use. The list grows slowly.
+  If it ever has thirty entries, something has gone wrong.
+
+The principle is captured here so phase 3 (porting animations) doesn't
+default to bespoke-per-operation by accident. Bespoke per operation is
+how the *old* engine is structured. The new engine's value comes from
+the motion vocabulary being a small, reusable, named thing — the same
+vocabulary that the keyboard groupings and the puzzle progression also
+key on.
+
 ### Why `opaque` uses blackbox
 
 When a BQN expression contains a user-defined name (e.g. `f ← +´` then
