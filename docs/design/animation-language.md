@@ -508,12 +508,25 @@ For each existing animation in `src/lib/animations/*.ts`:
 
 ### Phase 4 — Cut over
 
-- All animations migrated; remove the per-kind conditional in the route.
-- Delete old engine (`hasAnimation`, `dispatchAnimation`, the `runX`
-  wrappers in `index.ts`).
-- The route's 130-line `$effect` of per-rune ID-preservation special cases
-  collapses to a pure `cells = currentValue`. Bug class (first-rotate-after-
-  range) gone by construction.
+- All animations migrated; the per-kind conditional in the route always
+  falls into the v2 branch.
+- **Old engine is orphaned, not deleted.** `src/lib/animations/index.ts`,
+  `src/lib/animations/types.ts`, the per-animation modules under
+  `src/lib/animations/*.ts`, and the route's pre-v2 wiring
+  (`cellNodes` Map, `setNode` callback, the special-case `$effect`,
+  AnimatedRow's id-tracking) all stay in place — uninvoked on the v2 code
+  path, unchanged. Cleanup is a separate, optional, later pass — not part
+  of the migration.
+- Once the v2 path is the only live path, the bug class
+  (first-rotate-after-range, and the broader category of cell-id
+  reconciliation drift) is gone by construction. Not because the old
+  code is deleted — because nothing calls into it.
+
+Migration policy in this project: **write new, migrate to new, orphan
+old.** The old implementation is a reference artefact and a safety net
+for "what did we used to do?" questions, not a deletion target. Removal
+is a separate decision made when nothing has touched the old code for
+long enough that the human is confident it's not load-bearing.
 
 ### Phase 5 — Playground
 
