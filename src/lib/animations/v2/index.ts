@@ -11,3 +11,6 @@ export { trajectoryFrom, append } from './trajectory.js';
 export type { Stage, AnimateStep } from './stage.js';
 
 export { animateMonadic, animateDyadic, animateStep } from './animate.js';
+
+export { play, resultOf } from './player.js';
+export { fnExprLabel } from './fn-label.js';

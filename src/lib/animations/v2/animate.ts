@@ -2,16 +2,11 @@ import type { FnExpr } from './fn-expr.js';
 import type { Step } from './step.js';
 import type { AnimateStep } from './stage.js';
 import { assertNever } from './value.js';
-
-// ── blackBox ──────────────────────────────────────────────────────────────
-// Universal animation for kinds not yet hand-designed.
-// Visualises a function as a labeled box with inputs flowing in and outputs
-// flowing out. Every unspecialised arm returns this — real animation, not a skip.
-const blackBox: AnimateStep = (_step, _beforeRoot, _afterRoot) => Promise.resolve();
+import { blackBox } from './motions/black-box.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
-const assignAnimation: AnimateStep = (_step, _beforeRoot, _afterRoot) => Promise.resolve();
-const accessAnimation: AnimateStep = (_step, _beforeRoot, _afterRoot) => Promise.resolve();
+const assignAnimation: AnimateStep = blackBox;
+const accessAnimation: AnimateStep = blackBox;
 
 // ── animateMonadic ────────────────────────────────────────────────────────
 // Exhaustive over every FnExpr['kind']. Build fails if a kind is added to
