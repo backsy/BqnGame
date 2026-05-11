@@ -1,10 +1,10 @@
 ---
 id: TASK-2
 title: 'Animation language v2 — phase 1: scaffold types and Trajectory'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-10 11:15'
-updated_date: '2026-05-10 15:51'
+updated_date: '2026-05-11 05:10'
 labels:
   - architecture
 dependencies: []
@@ -150,15 +150,39 @@ Don't modify `src/lib/animations/index.ts`, `src/lib/animations/types.ts`, or an
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 BqnValue covers all 5 variants per spec (number, char, fn, array with shape, namespace)
-- [ ] #2 FnExpr is comprehensive over BQN per spec; no fmt/fmt-num; rank-of is the base primitive, rank is the 2-modifier; LambdaBody opaque
-- [ ] #3 Step has all 4 variants per spec (monadic, dyadic, assign, access)
-- [ ] #4 StepInput is structurally narrower than Step per Rule D — monadic StepInput has no x; access StepInput has no target
-- [ ] #5 Trajectory is opaque per Rule G — unique-symbol brand, declare const, structural literal impossible
-- [ ] #6 trajectoryFrom and append enforce chaining per Rule C, including assign-as-passthrough (assign does NOT advance the chain anchor)
-- [ ] #7 valuesEqual is total per Rule E; no variant returns false unconditionally; fn uses reference equality on def, namespace uses reference equality on entries, array is recursive structural
-- [ ] #8 All three exhaustive switches (animateMonadic, animateDyadic, animateStep) have assertNever defaults per Rule F
-- [ ] #9 No DOM/Svelte/old-engine/route/component imports per Rule I
-- [ ] #10 Old engine, route, and components untouched per Rule J
-- [ ] #11 pnpm check passes
+- [x] #1 BqnValue covers all 5 variants per spec (number, char, fn, array with shape, namespace)
+- [x] #2 FnExpr is comprehensive over BQN per spec; no fmt/fmt-num; rank-of is the base primitive, rank is the 2-modifier; LambdaBody opaque
+- [x] #3 Step has all 4 variants per spec (monadic, dyadic, assign, access)
+- [x] #4 StepInput is structurally narrower than Step per Rule D — monadic StepInput has no x; access StepInput has no target
+- [x] #5 Trajectory is opaque per Rule G — unique-symbol brand, declare const, structural literal impossible
+- [x] #6 trajectoryFrom and append enforce chaining per Rule C, including assign-as-passthrough (assign does NOT advance the chain anchor)
+- [x] #7 valuesEqual is total per Rule E; no variant returns false unconditionally; fn uses reference equality on def, namespace uses reference equality on entries, array is recursive structural
+- [x] #8 All three exhaustive switches (animateMonadic, animateDyadic, animateStep) have assertNever defaults per Rule F
+- [x] #9 No DOM/Svelte/old-engine/route/component imports per Rule I
+- [x] #10 Old engine, route, and components untouched per Rule J
+- [x] #11 pnpm check passes
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Phase 1 of the animation language migration. Scaffolded src/lib/animations/v2/ with the full BQN type model (BqnValue, FnExpr, Step, Trajectory, Stage, AnimateStep) and the exhaustive animation registry. Old engine untouched; no game integration; pnpm check passes.
+
+Reviewed against the 10 non-negotiable rules in this task's spec. All pass:
+- A: rank-of (base prim) vs rank (2-mod) are distinct kinds
+- B: no fmt/fmt-num in FnExpr (system functions out of scope)
+- C: chaining semantics enforced per Step kind; assign correctly passes through anchor
+- D: StepInput structurally narrower than Step (monadic has no x; access has no target)
+- E: valuesEqual is total — fn uses ref equality on def, namespace on entries, array is recursive structural
+- F: all three switches (animateMonadic, animateDyadic, animateStep) have assertNever defaults
+- G: Trajectory opaque via unique-symbol declare-const brand
+- H: errors as values, no throws except assertNever
+- I: no DOM/Svelte/old-engine/route/component imports in v2/
+- J: old engine, route, components untouched
+
+Implementation note: Trajectory carries the chain anchor as a field rather than deriving it from outputOf(last_step). This is what makes assign-as-passthrough work correctly — once an assign step is in the trajectory, the previous value is no longer recoverable from the steps list alone.
+
+Phase 1 was previously attempted twice and reverted. The third attempt, run under stricter rules (no commits, no task edits, no summary report from the agent — the diff IS the report), passed review on the first try.
+
+Companion design doc subsection added: Motion vocabulary discipline. Phase 3 (porting animations) must build a shared motions/ vocabulary, not bespoke per-operation implementations.
+<!-- SECTION:FINAL_SUMMARY:END -->
