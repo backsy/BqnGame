@@ -1,109 +1,8 @@
 import { animate } from 'motion';
 import type { AnimateStep } from '../stage.js';
 import type { BqnValue } from '../value.js';
+import type { Step } from '../step.js';
 import { blackBox } from './black-box.js';
-
-// ── Motion vocabulary entry #2: lateral ──────────────────────────────────
-// Bars slide preserving identity: each before-cell glides from its starting
-// position to its destination in the after layout.
-//
-// FLIP technique:
-//   1. Measure before-cell rects and after-cell rects.
-//   2. For each before-cell i, animate it from its before-rect to the
-//      after-rect at permutation[i], while hiding the matching after-cell.
-//   3. On completion, hide all before-cells and reveal after-cells.
-//
-// Pure pixel math + permutation — no game-state knowledge.
-
-const DURATION_SLIDE = 0.4; // seconds
-
-export function lateralMove(
-	beforeRoot: HTMLElement,
-	afterRoot: HTMLElement,
-	permutation: ReadonlyArray<number>,
-): Promise<void> {
-	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
-	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
-
-	if (beforeCells.length === 0 || afterCells.length === 0) {
-		// Nothing to animate — fall through and let stage commit.
-		afterRoot.style.opacity = '';
-		return Promise.resolve();
-	}
-
-	// Measure positions while both roots are in the DOM.
-	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
-	const afterRects = afterCells.map(c => c.getBoundingClientRect());
-
-	// Hide after-cells: we animate before-cells to their destinations and
-	// swap visibility at the end.
-	for (const cell of afterCells) {
-		cell.style.visibility = 'hidden';
-	}
-	// afterRoot itself was prepared with opacity:0 by the stage; reveal it
-	// so its children are measurable and the container has correct size,
-	// but keep afterRoot's children hidden via visibility above.
-	afterRoot.style.opacity = '1';
-	// Keep afterRoot pointer-events-free during animation so it doesn't
-	// intercept clicks — it will be committed by stage.commit after we finish.
-	afterRoot.style.pointerEvents = 'none';
-
-	// Animate each before-cell to its destination rect.
-	const animations = beforeCells.map((cell, i) => {
-		const destIndex = permutation[i];
-		const afterRect = afterRects[destIndex];
-		const beforeRect = beforeRects[i];
-
-		const dx = afterRect.left - beforeRect.left;
-		const dy = afterRect.top - beforeRect.top;
-
-		// Bring cell to the top layer so it overlaps other cells during travel.
-		cell.style.position = 'relative';
-		cell.style.zIndex = '5';
-
-		return animate(
-			cell,
-			{ x: [0, dx], y: [0, dy] },
-			{ duration: DURATION_SLIDE, ease: [0.25, 0.1, 0.25, 1.0] }
-		).finished;
-	});
-
-	return Promise.all(animations).then(() => {
-		// Reveal after-cells; before-cells will be removed by stage.commit.
-		for (const cell of afterCells) {
-			cell.style.visibility = '';
-		}
-		afterRoot.style.pointerEvents = '';
-		// Hide before-root so the transition from animated-before to
-		// committed-after is invisible (stage.commit removes beforeRoot next).
-		beforeRoot.style.opacity = '0';
-	});
-}
-
-// ── Permutation helpers ───────────────────────────────────────────────────
-
-function reversePermutation(n: number): ReadonlyArray<number> {
-	return Array.from({ length: n }, (_, i) => n - 1 - i);
-}
-
-function sortPermutation(
-	values: ReadonlyArray<number>,
-	dir: 'asc' | 'desc',
-): ReadonlyArray<number> {
-	// Returns perm where perm[i] = destination index of element i in sorted order.
-	// Stable: equal elements keep their original relative order.
-	const indexed = values.map((v, i) => ({ v, i }));
-	indexed.sort((a, b) => {
-		const cmp = dir === 'asc' ? a.v - b.v : b.v - a.v;
-		if (cmp !== 0) return cmp;
-		return a.i - b.i; // stable
-	});
-	const perm = new Array<number>(values.length);
-	for (let dest = 0; dest < indexed.length; dest++) {
-		perm[indexed[dest].i] = dest;
-	}
-	return perm;
-}
 
 // ── Extract numeric data from a BqnValue array ────────────────────────────
 
@@ -235,19 +134,140 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 	});
 };
 
-export const sortUpMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
-	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	const nums = numericData(step.x);
-	if (nums === null) return blackBox(step, beforeRoot, afterRoot);
-	return lateralMove(beforeRoot, afterRoot, sortPermutation(nums, 'asc'));
-};
+// ── sortUp/sortDownMonadic ────────────────────────────────────────────────
+// Selection-sort visualisation: each iteration finds the next smallest
+// (for ascending) or largest (descending) value in the unsorted suffix
+// and swaps it into the next slot. The user sees the row settle one slot
+// at a time through clear pairwise swaps.
+//
+// During each swap the two cells take opposing arcs so they exchange
+// places without clipping:
+//   - The cell at the lower slot index arcs UP, the one at the higher
+//     slot index arcs DOWN.
+//   - Stationary cells (not in this swap) stay at y=0, so the arcing
+//     cells pass safely above/below them — no clip-through.
+//
+// No-op iterations (the next-best is already in place) collapse to no
+// animation — only real swaps cost time, so already-sorted rows commit
+// immediately.
 
-export const sortDownMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
+const SORT_ARC_PEAK = 36;
+const SORT_SWAP_DURATION = 0.45;
+const SORT_BETWEEN_MS = 100;
+const SORT_SAMPLES = 16;
+
+async function sortByPairwiseSwap(
+	step: Step,
+	beforeRoot: HTMLElement,
+	afterRoot: HTMLElement,
+	ascending: boolean,
+): Promise<void> {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	const nums = numericData(step.x);
-	if (nums === null) return blackBox(step, beforeRoot, afterRoot);
-	return lateralMove(beforeRoot, afterRoot, sortPermutation(nums, 'desc'));
-};
+	const values = numericData(step.x);
+	if (values === null) return blackBox(step, beforeRoot, afterRoot);
+
+	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+	if (beforeCells.length === 0 || afterCells.length === 0) {
+		afterRoot.style.opacity = '';
+		return;
+	}
+
+	const n = beforeCells.length;
+	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
+
+	// Compute the selection-sort swap sequence on a copy of the values.
+	// Each swap is [slotA, slotB] where slotA < slotB at the time of the
+	// swap. The swap order is the order the animation will play them.
+	const arr = [...values];
+	const swaps: Array<[number, number]> = [];
+	for (let i = 0; i < n - 1; i++) {
+		let bestIdx = i;
+		for (let j = i + 1; j < n; j++) {
+			const better = ascending ? arr[j] < arr[bestIdx] : arr[j] > arr[bestIdx];
+			if (better) bestIdx = j;
+		}
+		if (bestIdx !== i) {
+			swaps.push([i, bestIdx]);
+			[arr[i], arr[bestIdx]] = [arr[bestIdx], arr[i]];
+		}
+	}
+
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	for (const cell of beforeCells) cell.style.position = 'relative';
+
+	if (swaps.length === 0) {
+		// Already sorted — just hand off.
+		for (const cell of afterCells) cell.style.visibility = '';
+		afterRoot.style.pointerEvents = '';
+		beforeRoot.style.opacity = '0';
+		return;
+	}
+
+	// Track which original-index cell is currently at each slot.
+	// order[slot] = original index of cell at slot.
+	const order = beforeCells.map((_, i) => i);
+	// Accumulated x-transform per cell.
+	const currentX = beforeCells.map(() => 0);
+
+	for (let s = 0; s < swaps.length; s++) {
+		const [slotA, slotB] = swaps[s];
+		const idxA = order[slotA];
+		const idxB = order[slotB];
+		const cellA = beforeCells[idxA];
+		const cellB = beforeCells[idxB];
+
+		// Target x for each cell (relative to its original layout position).
+		const cellAOriginX = beforeRects[idxA].left + beforeRects[idxA].width / 2;
+		const cellBOriginX = beforeRects[idxB].left + beforeRects[idxB].width / 2;
+		const slotAX = beforeRects[slotA].left + beforeRects[slotA].width / 2;
+		const slotBX = beforeRects[slotB].left + beforeRects[slotB].width / 2;
+		const newXA = slotBX - cellAOriginX;
+		const newXB = slotAX - cellBOriginX;
+
+		// Build cosine-eased keyframes for each cell. Cell at the lower slot
+		// arcs UP; cell at the higher slot arcs DOWN. Opposite arcs keep
+		// them from sharing screen space mid-swap.
+		const xsA: number[] = [];
+		const ysA: number[] = [];
+		const xsB: number[] = [];
+		const ysB: number[] = [];
+		for (let k = 0; k <= SORT_SAMPLES; k++) {
+			const t = k / SORT_SAMPLES;
+			const eased = (1 - Math.cos(Math.PI * t)) / 2;
+			xsA.push(currentX[idxA] + (newXA - currentX[idxA]) * eased);
+			ysA.push(-SORT_ARC_PEAK * Math.sin(Math.PI * t));
+			xsB.push(currentX[idxB] + (newXB - currentX[idxB]) * eased);
+			ysB.push(SORT_ARC_PEAK * Math.sin(Math.PI * t));
+		}
+
+		cellA.style.zIndex = '5';
+		cellB.style.zIndex = '5';
+
+		await Promise.all([
+			animate(cellA, { x: xsA, y: ysA }, { duration: SORT_SWAP_DURATION, ease: 'linear' }).finished,
+			animate(cellB, { x: xsB, y: ysB }, { duration: SORT_SWAP_DURATION, ease: 'linear' }).finished,
+		]);
+
+		currentX[idxA] = newXA;
+		currentX[idxB] = newXB;
+		[order[slotA], order[slotB]] = [order[slotB], order[slotA]];
+
+		if (s < swaps.length - 1) await _delayMs(SORT_BETWEEN_MS);
+	}
+
+	for (const cell of afterCells) cell.style.visibility = '';
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
+}
+
+export const sortUpMonadic: AnimateStep = (step, beforeRoot, afterRoot) =>
+	sortByPairwiseSwap(step, beforeRoot, afterRoot, true);
+
+export const sortDownMonadic: AnimateStep = (step, beforeRoot, afterRoot) =>
+	sortByPairwiseSwap(step, beforeRoot, afterRoot, false);
 
 // ── rotateDyadic ──────────────────────────────────────────────────────────
 // W⌽X in BQN takes the first W elements and moves them to the back (with
