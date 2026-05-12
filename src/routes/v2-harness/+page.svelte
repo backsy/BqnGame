@@ -420,11 +420,12 @@
 
 	<!-- Stage container — tall enough for wheel-rotation reverse, where
 	     right-half bars arc UP and left-half bars arc DOWN by their distance
-	     from the row centre. The row is vertically centred so there is room
-	     both above and below for the rotation arcs. -->
+	     from the row centre. Row is centred both vertically (align-items)
+	     and horizontally (justify-content) so the wheel has equal room on
+	     all sides. -->
 	<div
 		bind:this={containerEl}
-		style="position:relative;min-height:320px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:center;justify-content:flex-start;overflow:hidden;"
+		style="position:relative;min-height:320px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:center;justify-content:center;overflow:hidden;"
 	></div>
 
 	{#if statusMsg}
