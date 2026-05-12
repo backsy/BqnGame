@@ -297,21 +297,22 @@
 			},
 			async prepare(value: BqnValue): Promise<HTMLElement> {
 				const el = renderBqnValue(value);
-				// Align the absolutely-positioned prepared row with the
-				// flex-positioned current row by accounting for container
-				// padding. Without this, prepared sits at the container's
-				// outer edge (bottom:0/left:0) while current sits inside the
-				// padding — causing every animation to drift 16px on commit.
-				const cs = getComputedStyle(containerEl);
+				// Overlay the prepared element exactly on the current element.
+				// Measure positions relative to the container so the absolute
+				// placement matches wherever flex layout put the current
+				// (centre, flex-end, whatever).
+				const currentRect = currentEl.getBoundingClientRect();
+				const containerRect = containerEl.getBoundingClientRect();
 				el.style.position = 'absolute';
-				el.style.left = cs.paddingLeft;
-				el.style.bottom = cs.paddingBottom;
+				el.style.top = `${currentRect.top - containerRect.top}px`;
+				el.style.left = `${currentRect.left - containerRect.left}px`;
 				el.style.opacity = '0';
 				containerEl.appendChild(el);
 				return el;
 			},
 			commit(prepared: HTMLElement): void {
 				prepared.style.position = '';
+				prepared.style.top = '';
 				prepared.style.left = '';
 				prepared.style.bottom = '';
 				prepared.style.opacity = '';
@@ -417,11 +418,13 @@
 		</div>
 	</section>
 
-	<!-- Stage container — tall enough to fit upward arcs (e.g. reverse's
-	     ARC_PEAK=60 above the bar row). Bars sit at flex-end. -->
+	<!-- Stage container — tall enough for wheel-rotation reverse, where
+	     right-half bars arc UP and left-half bars arc DOWN by their distance
+	     from the row centre. The row is vertically centred so there is room
+	     both above and below for the rotation arcs. -->
 	<div
 		bind:this={containerEl}
-		style="position:relative;min-height:200px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:flex-end;overflow:hidden;"
+		style="position:relative;min-height:320px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:center;justify-content:flex-start;overflow:hidden;"
 	></div>
 
 	{#if statusMsg}
