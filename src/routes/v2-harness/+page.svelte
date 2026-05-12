@@ -17,9 +17,20 @@
 			case 'reverse': {
 				if (arity === 'monadic') {
 					if (input.kind !== 'array') throw new Error('reverse: expected array');
-					return { kind: 'array', shape: input.shape, data: [...input.data].reverse() };
+					// BQN ⌽ on rank>=1 reverses along the MAJOR axis: for a
+					// matrix the rows swap, columns within each row stay.
+					// For a vector it is just element reversal.
+					const [majorDim, ...subShape] = input.shape;
+					const sliceSize = subShape.reduce((a, b) => a * b, 1);
+					const reversed: BqnValue[] = new Array(input.data.length);
+					for (let i = 0; i < majorDim; i++) {
+						const src = (majorDim - 1 - i) * sliceSize;
+						const dst = i * sliceSize;
+						for (let j = 0; j < sliceSize; j++) reversed[dst + j] = input.data[src + j];
+					}
+					return { kind: 'array', shape: input.shape, data: reversed };
 				}
-				// dyadic: W⌽X = rotate X by W
+				// dyadic: W⌽X = rotate X by W along the major axis. Vector for now.
 				if (w === undefined || w.kind !== 'number') throw new Error('rotate: expected numeric W');
 				if (input.kind !== 'array' || input.shape.length !== 1)
 					throw new Error('rotate: expected 1D array');

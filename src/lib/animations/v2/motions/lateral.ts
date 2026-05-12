@@ -152,6 +152,7 @@ const REVERSE_SAMPLES = 28;
 
 export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
 
 	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
 	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
@@ -160,57 +161,78 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		return Promise.resolve();
 	}
 
+	const rank = step.x.shape.length;
 	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
-
-	// Pivot the rotation around the bars' SHARED BASELINE (their bottom
-	// edge), not the geometric centre of the row. Bars in a row have
-	// different heights — their *centres* are at different y values — but
-	// their *bottoms* are at the same y. Pivoting around the baseline makes
-	// the translation height-independent: every bar's bottom traces a
-	// circle around (cx, baselineY) and lands back on the baseline at the
-	// mirror position, exactly where the post-commit bar will render. No
-	// handoff jump regardless of bar heights.
-	const first = beforeRects[0];
-	const last = beforeRects[beforeRects.length - 1];
-	const cx = (first.left + first.width / 2 + last.left + last.width / 2) / 2;
 
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
 
-	const tasks = beforeCells.map((cell, i) => {
-		const rect = beforeRects[i];
-		const bx = rect.left + rect.width / 2;
-		const dx = bx - cx;
+	const tasks: Promise<unknown>[] = [];
 
-		// Clockwise rotation around (cx, baseline). At angle θ the bar's
-		// bottom is at (cx + dx·cos θ, baseline + dx·sin θ). For right-side
-		// bars (dx > 0): y offset POSITIVE → they arc DOWN through the
-		// bottom of the wheel. For left-side bars (dx < 0): y offset
-		// NEGATIVE → they arc UP through the top.
-		// Translation is height-independent because we pivot the bottom,
-		// not the bar's centre.
-		const xs: number[] = [];
-		const ys: number[] = [];
-		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
-			const t = s / REVERSE_SAMPLES;
-			const theta = Math.PI * t;
-			xs.push(dx * (Math.cos(theta) - 1));
-			ys.push(dx * Math.sin(theta));
+	if (rank === 1) {
+		// 1D row: wheel rotates clockwise around vertical axis through row
+		// centre. Bars right of centre arc DOWN through the bottom of the
+		// wheel; bars left of centre arc UP through the top. Pivot is the
+		// bars' SHARED BASELINE so translation is height-independent —
+		// no handoff jump regardless of bar heights.
+		const first = beforeRects[0];
+		const last = beforeRects[beforeRects.length - 1];
+		const cx = (first.left + first.width / 2 + last.left + last.width / 2) / 2;
+
+		for (let i = 0; i < beforeCells.length; i++) {
+			const cell = beforeCells[i];
+			const rect = beforeRects[i];
+			const bx = rect.left + rect.width / 2;
+			const dx = bx - cx;
+			const xs: number[] = [];
+			const ys: number[] = [];
+			for (let s = 0; s <= REVERSE_SAMPLES; s++) {
+				const t = s / REVERSE_SAMPLES;
+				const theta = Math.PI * t;
+				xs.push(dx * (Math.cos(theta) - 1));
+				ys.push(dx * Math.sin(theta));
+			}
+			cell.style.position = 'relative';
+			cell.style.zIndex = '5';
+			tasks.push(
+				animate(cell, { x: xs, y: ys }, { duration: REVERSE_DURATION, ease: 'linear' }).finished
+			);
 		}
+	} else {
+		// Rank ≥ 2: BQN ⌽ swaps along the MAJOR axis only — for a matrix,
+		// rows swap and columns within rows stay put. Visual: wheel rotates
+		// around the HORIZONTAL axis through the grid's vertical centre.
+		// Cells in the top row arc DOWN through the right side of the wheel;
+		// cells in the bottom row arc UP through the left. Columns within
+		// each row stay in their column (x at θ=0 equals x at θ=π).
+		const cy = beforeRects.reduce(
+			(acc, r) => acc + r.top + r.height / 2,
+			0
+		) / beforeRects.length;
 
-		cell.style.position = 'relative';
-		cell.style.zIndex = '5';
-
-		// Linear easing keeps θ progression uniform across all bars — the row
-		// reads as one rigid wheel rotating at constant angular velocity
-		// rather than as individual bars with their own acceleration.
-		return animate(
-			cell,
-			{ x: xs, y: ys },
-			{ duration: REVERSE_DURATION, ease: 'linear' }
-		).finished;
-	});
+		for (let i = 0; i < beforeCells.length; i++) {
+			const cell = beforeCells[i];
+			const rect = beforeRects[i];
+			const by = rect.top + rect.height / 2;
+			const dy = by - cy;
+			const xs: number[] = [];
+			const ys: number[] = [];
+			for (let s = 0; s <= REVERSE_SAMPLES; s++) {
+				const t = s / REVERSE_SAMPLES;
+				const theta = Math.PI * t;
+				// Vertical wheel, clockwise (top→right→bottom). At θ=π:
+				// x returns to 0 (same column), y is -2·dy (mirror row).
+				xs.push(-dy * Math.sin(theta));
+				ys.push(dy * (Math.cos(theta) - 1));
+			}
+			cell.style.position = 'relative';
+			cell.style.zIndex = '5';
+			tasks.push(
+				animate(cell, { x: xs, y: ys }, { duration: REVERSE_DURATION, ease: 'linear' }).finished
+			);
+		}
+	}
 
 	return Promise.all(tasks).then(() => {
 		for (const cell of afterCells) cell.style.visibility = '';
