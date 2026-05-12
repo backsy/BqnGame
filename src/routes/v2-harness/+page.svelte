@@ -203,7 +203,9 @@
 					const [rows, cols] = value.shape;
 					const grid = document.createElement('div');
 					grid.className = 'row';
-					grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},28px);gap:4px;padding:8px;`;
+					// align-items:end so bars sit on a baseline within each row
+					// instead of stretching to the top of their grid cell.
+					grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},28px);gap:4px;padding:8px;align-items:end;`;
 					for (let r = 0; r < rows; r++) {
 						for (let c = 0; c < cols; c++) {
 							const v = value.data[r * cols + c];

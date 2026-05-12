@@ -200,31 +200,44 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 			);
 		}
 	} else {
-		// Rank ≥ 2: BQN ⌽ swaps along the MAJOR axis only — for a matrix,
-		// rows swap and columns within rows stay put. Visual: wheel rotates
+		// Rank ≥ 2: BQN ⌽ swaps along the MAJOR axis — for a matrix, rows
+		// swap and columns within rows stay put. Visual: wheel rotates
 		// around the HORIZONTAL axis through the grid's vertical centre.
-		// Cells in the top row arc DOWN through the right side of the wheel;
-		// cells in the bottom row arc UP through the left. Columns within
-		// each row stay in their column (x at θ=0 equals x at θ=π).
-		const cy = beforeRects.reduce(
-			(acc, r) => acc + r.top + r.height / 2,
-			0
-		) / beforeRects.length;
+		// Top-row cells arc DOWN through the right side of the wheel;
+		// bottom-row cells arc UP through the left.
+		//
+		// We compute the destination position from AFTER rects, not by
+		// mirroring BEFORE positions. The AFTER grid may have different row
+		// heights than BEFORE (each row auto-sizes to its tallest bar, and
+		// reverse swaps those heights along with the rows). Without
+		// destination measurement we'd land where the BEFORE-mirror was,
+		// then teleport at handoff to the actual post-commit y.
+		const majorDim = step.x.shape[0];
+		const sliceSize = step.x.shape.slice(1).reduce((a, b) => a * b, 1);
+		const afterRects = afterCells.map(c => c.getBoundingClientRect());
 
 		for (let i = 0; i < beforeCells.length; i++) {
 			const cell = beforeCells[i];
-			const rect = beforeRects[i];
-			const by = rect.top + rect.height / 2;
-			const dy = by - cy;
+			const r = Math.floor(i / sliceSize);
+			const c = i % sliceSize;
+			const destIndex = (majorDim - 1 - r) * sliceSize + c;
+			const startRect = beforeRects[i];
+			const endRect = afterRects[destIndex];
+
+			const startCy = startRect.top + startRect.height / 2;
+			const endCy = endRect.top + endRect.height / 2;
+			const dyTotal = endCy - startCy;
+			// Side bump for the wheel feel — magnitude proportional to the
+			// distance travelled, sign carries the rotation direction
+			// (clockwise: top→right→bottom). dyTotal is positive when
+			// moving down (top row), so xs is positive at midpoint = RIGHT.
 			const xs: number[] = [];
 			const ys: number[] = [];
 			for (let s = 0; s <= REVERSE_SAMPLES; s++) {
 				const t = s / REVERSE_SAMPLES;
 				const theta = Math.PI * t;
-				// Vertical wheel, clockwise (top→right→bottom). At θ=π:
-				// x returns to 0 (same column), y is -2·dy (mirror row).
-				xs.push(-dy * Math.sin(theta));
-				ys.push(dy * (Math.cos(theta) - 1));
+				xs.push((dyTotal / 2) * Math.sin(theta));
+				ys.push((dyTotal * (1 - Math.cos(theta))) / 2);
 			}
 			cell.style.position = 'relative';
 			cell.style.zIndex = '5';
