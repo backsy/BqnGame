@@ -144,16 +144,19 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 }
 
 // ── reverseMonadic ────────────────────────────────────────────────────────
-// The row rotates 180° around its centre. Each bar travels along a circular
-// arc whose radius is its distance from the centre. Bars right of centre
-// arc upward; bars left of centre arc downward. The row sweeps through a
-// half-turn as a rigid body, ending in reverse order.
+// Ported faithfully from the old engine (src/lib/animations/reverse.ts):
+// each bar arcs UPWARD over its neighbours from its old position to its
+// mirror position on the other end of the row. Cosine half-cycle keyframes
+// give a smooth single-arc trajectory with no midpoint pause. All bars rise
+// by the same ARC_PEAK above the straight-line trajectory, so they cross
+// over each other in mid-air at the same height.
 //
-// Identity preserved by animating the before-cells. On completion they fade
-// out and the after-cells (visibility:hidden during flight) take their place.
+// Constants match the old engine exactly: ARC_PEAK 60, 17 samples, 0.85s
+// duration, linear ease (the cosine IS the easing, baked into keyframes).
 
+const REVERSE_ARC_PEAK = 60;
+const REVERSE_SAMPLES = 16;
 const REVERSE_DURATION = 0.85;
-const REVERSE_SAMPLES = 24;
 
 export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -165,46 +168,30 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		return Promise.resolve();
 	}
 
+	const n = beforeCells.length;
 	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
+	const afterRects = afterCells.map(c => c.getBoundingClientRect());
 
-	// Centre of the row: midpoint of the first and last bar centres. Using
-	// rect centres (not lefts) means the rotation pivot is the geometric
-	// centre of the bar layout, so the operation looks symmetric regardless
-	// of how the row is positioned within the stage.
-	const first = beforeRects[0];
-	const last = beforeRects[beforeRects.length - 1];
-	const cx = (first.left + first.width / 2 + last.left + last.width / 2) / 2;
-	const cy = (first.top + first.height / 2 + last.top + last.height / 2) / 2;
-
-	// Hide after-cells; reveal afterRoot so its layout is realised but its
-	// cells stay invisible until the rotation completes.
+	// Hide after-cells; reveal afterRoot so its layout is realised but cells
+	// stay invisible until the arc completes.
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
 
 	const tasks = beforeCells.map((cell, i) => {
-		const rect = beforeRects[i];
-		const bx = rect.left + rect.width / 2;
-		const by = rect.top + rect.height / 2;
-		const dx = bx - cx;
-		const dy = by - cy;
+		const destIndex = n - 1 - i;
+		const dx = afterRects[destIndex].left - beforeRects[i].left;
+		const dy = afterRects[destIndex].top - beforeRects[i].top;
 
-		// 2D rotation by angle θ around (cx, cy). Counter-clockwise visually
-		// (i.e. clockwise in math coords because screen y is flipped) so that
-		// bars on the right side arc UP through the rotation.
+		// Cosine half-cycle on x: 0 → dx along (1 - cos)/2, smooth ends.
+		// Linear on y with an upward sin bump of magnitude ARC_PEAK.
 		const xs: number[] = [];
 		const ys: number[] = [];
 		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
 			const t = s / REVERSE_SAMPLES;
-			const theta = Math.PI * t;
-			const cos = Math.cos(theta);
-			const sin = Math.sin(theta);
-			const rdx = dx * cos + dy * sin;
-			const rdy = -dx * sin + dy * cos;
-			// Translate from rect centre coords to transform offset relative
-			// to the cell's natural position.
-			xs.push(cx + rdx - bx);
-			ys.push(cy + rdy - by);
+			const tEase = (1 - Math.cos(Math.PI * t)) / 2;
+			xs.push(dx * tEase);
+			ys.push(dy * t - REVERSE_ARC_PEAK * Math.sin(Math.PI * t));
 		}
 
 		cell.style.position = 'relative';
@@ -213,7 +200,7 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		return animate(
 			cell,
 			{ x: xs, y: ys },
-			{ duration: REVERSE_DURATION, ease: [0.4, 0, 0.6, 1] }
+			{ duration: REVERSE_DURATION, ease: 'linear' }
 		).finished;
 	});
 

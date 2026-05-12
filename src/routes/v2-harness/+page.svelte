@@ -384,10 +384,11 @@
 		</div>
 	</section>
 
-	<!-- Stage container -->
+	<!-- Stage container — tall enough to fit upward arcs (e.g. reverse's
+	     ARC_PEAK=60 above the bar row). Bars sit at flex-end. -->
 	<div
 		bind:this={containerEl}
-		style="position:relative;min-height:80px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:flex-end;overflow:hidden;"
+		style="position:relative;min-height:200px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:flex-end;overflow:hidden;"
 	></div>
 
 	{#if statusMsg}
