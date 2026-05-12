@@ -143,15 +143,85 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 	return nums;
 }
 
-// ── Per-operation AnimateStep exports ────────────────────────────────────
-// Each derives its permutation from Step values and calls lateralMove.
-// If the step kind is wrong (shouldn't happen given animate.ts wiring), fall
-// back to blackBox rather than throw.
+// ── reverseMonadic ────────────────────────────────────────────────────────
+// The row rotates 180° around its centre. Each bar travels along a circular
+// arc whose radius is its distance from the centre. Bars right of centre
+// arc upward; bars left of centre arc downward. The row sweeps through a
+// half-turn as a rigid body, ending in reverse order.
+//
+// Identity preserved by animating the before-cells. On completion they fade
+// out and the after-cells (visibility:hidden during flight) take their place.
+
+const REVERSE_DURATION = 0.85;
+const REVERSE_SAMPLES = 24;
 
 export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	const n = step.x.kind === 'array' ? step.x.data.length : 1;
-	return lateralMove(beforeRoot, afterRoot, reversePermutation(n));
+
+	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+	if (beforeCells.length === 0 || afterCells.length === 0) {
+		afterRoot.style.opacity = '';
+		return Promise.resolve();
+	}
+
+	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
+
+	// Centre of the row: midpoint of the first and last bar centres. Using
+	// rect centres (not lefts) means the rotation pivot is the geometric
+	// centre of the bar layout, so the operation looks symmetric regardless
+	// of how the row is positioned within the stage.
+	const first = beforeRects[0];
+	const last = beforeRects[beforeRects.length - 1];
+	const cx = (first.left + first.width / 2 + last.left + last.width / 2) / 2;
+	const cy = (first.top + first.height / 2 + last.top + last.height / 2) / 2;
+
+	// Hide after-cells; reveal afterRoot so its layout is realised but its
+	// cells stay invisible until the rotation completes.
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+
+	const tasks = beforeCells.map((cell, i) => {
+		const rect = beforeRects[i];
+		const bx = rect.left + rect.width / 2;
+		const by = rect.top + rect.height / 2;
+		const dx = bx - cx;
+		const dy = by - cy;
+
+		// 2D rotation by angle θ around (cx, cy). Counter-clockwise visually
+		// (i.e. clockwise in math coords because screen y is flipped) so that
+		// bars on the right side arc UP through the rotation.
+		const xs: number[] = [];
+		const ys: number[] = [];
+		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
+			const t = s / REVERSE_SAMPLES;
+			const theta = Math.PI * t;
+			const cos = Math.cos(theta);
+			const sin = Math.sin(theta);
+			const rdx = dx * cos + dy * sin;
+			const rdy = -dx * sin + dy * cos;
+			// Translate from rect centre coords to transform offset relative
+			// to the cell's natural position.
+			xs.push(cx + rdx - bx);
+			ys.push(cy + rdy - by);
+		}
+
+		cell.style.position = 'relative';
+		cell.style.zIndex = '5';
+
+		return animate(
+			cell,
+			{ x: xs, y: ys },
+			{ duration: REVERSE_DURATION, ease: [0.4, 0, 0.6, 1] }
+		).finished;
+	});
+
+	return Promise.all(tasks).then(() => {
+		for (const cell of afterCells) cell.style.visibility = '';
+		afterRoot.style.pointerEvents = '';
+		beforeRoot.style.opacity = '0';
+	});
 };
 
 export const sortUpMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
