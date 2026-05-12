@@ -573,24 +573,29 @@ export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 };
 
 // ── transposeMonadic ──────────────────────────────────────────────────────
-// Two-phase animation with a strict no-overlap invariant: at every instant
-// during the animation, every cell occupies a unique screen position and no
-// path crosses through another cell.
+// Three-phase animation with a strict no-overlap invariant: at every
+// instant every cell occupies a unique screen position and no path
+// crosses through another cell.
 //
-// Phase 1 — Build the new shape in a staging area. The staging area sits
-// to the LEFT of the original matrix's centred position (offset by
-// TRANSPOSE_STAGING_OFFSET_X px). Cells leave their origin one at a time,
-// in row-major order of the BEFORE matrix, and arrive at their AFTER
-// position INSIDE the staging area. Because only one cell is in motion
-// at a time and the staging area starts empty, paths never collide and
-// cells never share a screen point.
+// Phase 0 — Right-shift: the entire BEFORE matrix slides RIGHT as a rigid
+// block by (afterWidth + gap) / 2 pixels, clearing the left half of the
+// container for the staging area. This shift is dynamic — based on the
+// actual matrix widths — so on narrow mobile screens BEFORE doesn't go
+// off-screen and STAGING fits on-screen too.
 //
-// Phase 2 — Once the new shape is fully assembled in staging, the entire
-// matrix slides together from the staging area back to its natural
-// centred location. All cells move in unison, by the same amount, so
-// they preserve their relative positions and again don't overlap.
+// Phase 1 — Build the new shape in the cleared staging area to the LEFT
+// of the shifted BEFORE. Cells leave their origin one at a time, in
+// row-major order, and arrive at their AFTER position inside staging.
+// Only one cell is in motion at a time, the staging area is empty, and
+// the staging area is geometrically separated from BEFORE — so paths
+// can't collide and positions can't overlap.
+//
+// Phase 2 — Slide-to-centre: the assembled new shape glides from staging
+// to its centred final position. All cells move in unison by the same
+// x-offset, preserving relative positions.
 
-const TRANSPOSE_STAGING_OFFSET_X = -160; // px to the left of centred AFTER
+const TRANSPOSE_MATRIX_GAP = 18;          // px between BEFORE and STAGING side-by-side
+const TRANSPOSE_PHASE0_DURATION = 0.32;   // seconds for the right-shift pre-roll
 const TRANSPOSE_PER_CELL_DURATION = 0.35; // seconds per Phase-1 cell move
 const TRANSPOSE_INTER_CELL_MS = 80;       // pause between Phase-1 cell moves
 const TRANSPOSE_PHASE2_HOLD_MS = 220;     // pause after Phase 1 before Phase 2
@@ -614,10 +619,7 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 	const afterRects = afterCells.map(c => c.getBoundingClientRect());
 
 	// After-cells stay hidden for the entire animation. The before-cells
-	// ARE the visible matrix throughout — they travel to staging, form the
-	// new shape there, and slide back to the centre. Only at the very end
-	// do we swap visibility, when the before-cells are already at the
-	// natural after positions.
+	// ARE the visible matrix throughout.
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
@@ -626,8 +628,19 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 		cell.style.zIndex = '5';
 	}
 
-	// Compute per-cell final and staging translations (relative to each
-	// cell's natural origin).
+	// Phase 0/1/2 layout offsets, computed dynamically from the actual
+	// rendered widths so the entire animation stays on-screen on phones.
+	// BEFORE shifts RIGHT by half the AFTER-width (+ gap) so the centre-
+	// left region is freed. STAGING sits to the LEFT of centre by half
+	// the BEFORE-width (+ gap). The two regions abut with TRANSPOSE_MATRIX
+	// _GAP between them; everything stays inside the centred container.
+	const beforeWidth = beforeRoot.getBoundingClientRect().width;
+	const afterWidth = afterRoot.getBoundingClientRect().width;
+	const shiftBeforeX = (afterWidth + TRANSPOSE_MATRIX_GAP) / 2;
+	const stagingOffsetX = -(beforeWidth + TRANSPOSE_MATRIX_GAP) / 2;
+
+	// Compute per-cell final translations (relative to each cell's natural
+	// origin). Staging position is the same plus stagingOffsetX in x.
 	const finalTranslate: { dx: number; dy: number }[] = [];
 	for (let i = 0; i < beforeCells.length; i++) {
 		const r = Math.floor(i / C);
@@ -642,11 +655,23 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 		finalTranslate.push({ dx: fx - sx, dy: fy - sy });
 	}
 
-	// ── Phase 1: sequential move to staging area ─────────────────────────
+	// ── Phase 0: BEFORE matrix shifts right as one rigid block ──────────
+	// Animate every cell in parallel by the same dx, so the entire grid
+	// translates together (no relative motion within the matrix).
+	const phase0 = beforeCells.map(cell =>
+		animate(
+			cell,
+			{ x: shiftBeforeX, y: 0 },
+			{ duration: scaled(TRANSPOSE_PHASE0_DURATION), ease: [0.4, 0, 0.6, 1] }
+		).finished
+	);
+	await Promise.all(phase0);
+
+	// ── Phase 1: sequential per-cell move from shifted BEFORE to staging ─
 	for (let i = 0; i < beforeCells.length; i++) {
 		const cell = beforeCells[i];
 		const f = finalTranslate[i];
-		const stagingDx = f.dx + TRANSPOSE_STAGING_OFFSET_X;
+		const stagingDx = f.dx + stagingOffsetX;
 		const stagingDy = f.dy;
 
 		await animate(
@@ -658,14 +683,10 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 		if (i < beforeCells.length - 1) await _delayMs(scaledMs(TRANSPOSE_INTER_CELL_MS));
 	}
 
-	// Brief hold so the user sees the assembled new shape in the staging
-	// area before it slides back to centre.
+	// Brief hold so the user sees the assembled new shape before it slides.
 	await _delayMs(scaledMs(TRANSPOSE_PHASE2_HOLD_MS));
 
-	// ── Phase 2: whole new matrix slides from staging to centre ──────────
-	// All cells animate the same offset (back to their natural after-
-	// position) in parallel, so the entire new shape moves as one rigid
-	// block. No cells cross each other; they just translate together.
+	// ── Phase 2: assembled new matrix slides right to its centred final ──
 	const phase2 = beforeCells.map((cell, i) => {
 		const f = finalTranslate[i];
 		return animate(
