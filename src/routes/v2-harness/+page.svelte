@@ -270,9 +270,15 @@
 			},
 			async prepare(value: BqnValue): Promise<HTMLElement> {
 				const el = renderBqnValue(value);
+				// Align the absolutely-positioned prepared row with the
+				// flex-positioned current row by accounting for container
+				// padding. Without this, prepared sits at the container's
+				// outer edge (bottom:0/left:0) while current sits inside the
+				// padding — causing every animation to drift 16px on commit.
+				const cs = getComputedStyle(containerEl);
 				el.style.position = 'absolute';
-				el.style.left = '0';
-				el.style.bottom = '0';
+				el.style.left = cs.paddingLeft;
+				el.style.bottom = cs.paddingBottom;
 				el.style.opacity = '0';
 				containerEl.appendChild(el);
 				return el;
