@@ -105,25 +105,6 @@ function sortPermutation(
 	return perm;
 }
 
-function transposePermutation(
-	beforeShape: ReadonlyArray<number>,
-): ReadonlyArray<number> {
-	// 2D transpose: element at row r, col c (before) goes to row c, col r (after).
-	// Flat index before: r * cols + c.  Flat index after: c * rows + r.
-	if (beforeShape.length !== 2) {
-		// Non-2D: identity permutation (no meaningful visual slide).
-		return Array.from({ length: beforeShape.reduce((a, b) => a * b, 1) }, (_, i) => i);
-	}
-	const [rows, cols] = beforeShape;
-	const perm = new Array<number>(rows * cols);
-	for (let r = 0; r < rows; r++) {
-		for (let c = 0; c < cols; c++) {
-			perm[r * cols + c] = c * rows + r;
-		}
-	}
-	return perm;
-}
-
 // ── Extract numeric data from a BqnValue array ────────────────────────────
 
 function numericData(v: BqnValue): ReadonlyArray<number> | null {
@@ -416,9 +397,97 @@ export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 	beforeRoot.style.opacity = '0';
 };
 
+// ── transposeMonadic ──────────────────────────────────────────────────────
+// ⍉ on a 2D matrix swaps rows and columns. Cells trade places across the
+// matrix diagonal. Pairs like (r,c) ↔ (c,r) follow the SAME straight-line
+// path between them, so naive translation makes them collide mid-motion.
+// Fix: each cell takes a PERPENDICULAR ARC around the straight line.
+// Because of how the perpendicular is computed (rotate the movement vector
+// 90° CCW), the two cells in a swap pair arc to OPPOSITE sides of the line.
+// They orbit each other instead of clipping through.
+
+const TRANSPOSE_DURATION = 0.95;
+const TRANSPOSE_SAMPLES = 28;
+const TRANSPOSE_ARC_FACTOR = 0.35; // arc peak / journey length
+
 export const transposeMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
-	return lateralMove(beforeRoot, afterRoot, transposePermutation(step.x.shape));
+	if (step.x.kind !== 'array' || step.x.shape.length !== 2) {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
+
+	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+	if (beforeCells.length === 0 || afterCells.length === 0) {
+		afterRoot.style.opacity = '';
+		return Promise.resolve();
+	}
+
+	const [R, C] = step.x.shape;
+	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
+	const afterRects = afterCells.map(c => c.getBoundingClientRect());
+
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+
+	const tasks = beforeCells.map((cell, i) => {
+		const r = Math.floor(i / C);
+		const c = i % C;
+		// BEFORE cell at (r, c) → AFTER cell at (c, r). AFTER has shape
+		// [C, R], so its flat index for (c, r) is c * R + r.
+		const destIndex = c * R + r;
+		const startRect = beforeRects[i];
+		const endRect = afterRects[destIndex];
+
+		const sx = startRect.left + startRect.width / 2;
+		const sy = startRect.top + startRect.height / 2;
+		const ex = endRect.left + endRect.width / 2;
+		const ey = endRect.top + endRect.height / 2;
+
+		const dx = ex - sx;
+		const dy = ey - sy;
+		const dist = Math.sqrt(dx * dx + dy * dy);
+
+		if (dist < 0.5) {
+			// Cell doesn't move (e.g. on the matrix diagonal for square).
+			return Promise.resolve();
+		}
+
+		// Unit vector perpendicular to the straight-line trajectory,
+		// rotated 90° CCW from (dx, dy). For a swap pair where one cell's
+		// (dx, dy) is the other's negation, this gives opposite-sign
+		// perpendiculars → the two cells orbit on opposite sides.
+		const perpX = -dy / dist;
+		const perpY = dx / dist;
+		const arcMag = dist * TRANSPOSE_ARC_FACTOR;
+
+		const xs: number[] = [];
+		const ys: number[] = [];
+		for (let s = 0; s <= TRANSPOSE_SAMPLES; s++) {
+			const t = s / TRANSPOSE_SAMPLES;
+			// Cosine half-cycle for the straight-line progress: 0 → 1 with
+			// smooth ends; sin half-cycle for the perpendicular bump:
+			// 0 → arcMag → 0 with peak at the midpoint.
+			const progress = (1 - Math.cos(Math.PI * t)) / 2;
+			const arc = Math.sin(Math.PI * t) * arcMag;
+			xs.push(dx * progress + perpX * arc);
+			ys.push(dy * progress + perpY * arc);
+		}
+
+		cell.style.position = 'relative';
+		cell.style.zIndex = '5';
+		return animate(
+			cell,
+			{ x: xs, y: ys },
+			{ duration: TRANSPOSE_DURATION, ease: 'linear' }
+		).finished;
+	});
+
+	return Promise.all(tasks).then(() => {
+		for (const cell of afterCells) cell.style.visibility = '';
+		afterRoot.style.pointerEvents = '';
+		beforeRoot.style.opacity = '0';
+	});
 };
 
