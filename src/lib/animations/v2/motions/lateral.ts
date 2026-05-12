@@ -183,19 +183,20 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		const bx = rect.left + rect.width / 2;
 		const dx = bx - cx;
 
-		// At angle θ around (cx, baseline), the bar's bottom moves to:
-		//   (cx + dx·cos θ,  baseline − dx·sin θ)
-		// (Right-side bars get a NEGATIVE y offset — they arc UP through the
-		// top of the wheel; left-side bars arc DOWN through the bottom.)
-		// Because the bar's own height is constant, the translation we apply
-		// to the cell is purely a function of dx and θ — height drops out.
+		// Clockwise rotation around (cx, baseline). At angle θ the bar's
+		// bottom is at (cx + dx·cos θ, baseline + dx·sin θ). For right-side
+		// bars (dx > 0): y offset POSITIVE → they arc DOWN through the
+		// bottom of the wheel. For left-side bars (dx < 0): y offset
+		// NEGATIVE → they arc UP through the top.
+		// Translation is height-independent because we pivot the bottom,
+		// not the bar's centre.
 		const xs: number[] = [];
 		const ys: number[] = [];
 		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
 			const t = s / REVERSE_SAMPLES;
 			const theta = Math.PI * t;
 			xs.push(dx * (Math.cos(theta) - 1));
-			ys.push(-dx * Math.sin(theta));
+			ys.push(dx * Math.sin(theta));
 		}
 
 		cell.style.position = 'relative';
