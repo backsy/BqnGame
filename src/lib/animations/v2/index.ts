@@ -12,5 +12,7 @@ export type { Stage, AnimateStep } from './stage.js';
 
 export { animateMonadic, animateDyadic, animateStep } from './animate.js';
 
+export { getAnimationSpeed, setAnimationSpeed } from './speed.js';
+
 export { play, resultOf } from './player.js';
 export { fnExprLabel } from './fn-label.js';

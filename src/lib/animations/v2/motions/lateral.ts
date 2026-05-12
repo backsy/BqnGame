@@ -3,6 +3,9 @@ import type { AnimateStep } from '../stage.js';
 import type { BqnValue } from '../value.js';
 import type { Step } from '../step.js';
 import { blackBox } from './black-box.js';
+import { scaled, scaledMs } from '../speed.js';
+
+const _delayMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 // ── Extract numeric data from a BqnValue array ────────────────────────────
 
@@ -76,7 +79,7 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 			cell.style.position = 'relative';
 			cell.style.zIndex = '5';
 			tasks.push(
-				animate(cell, { x: xs, y: ys }, { duration: REVERSE_DURATION, ease: 'linear' }).finished
+				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
 			);
 		}
 	} else {
@@ -122,7 +125,7 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 			cell.style.position = 'relative';
 			cell.style.zIndex = '5';
 			tasks.push(
-				animate(cell, { x: xs, y: ys }, { duration: REVERSE_DURATION, ease: 'linear' }).finished
+				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
 			);
 		}
 	}
@@ -135,25 +138,32 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 };
 
 // ── sortUp/sortDownMonadic ────────────────────────────────────────────────
-// Insertion-sort visualisation: each iteration takes the next unsorted
-// element and slides it leftward through the sorted prefix by ADJACENT
-// swaps until it finds its place. Every swap moves cells exactly one
-// slot — no big jumps, every move is small and traceable.
+// Insertion-sort visualisation. Each ITERATION takes ONE unsorted element
+// and slides it leftward through the sorted prefix via ADJACENT swaps until
+// it finds its place. The animation makes the iteration boundaries clear:
+// brief pauses BETWEEN swaps within an iteration, longer pauses BETWEEN
+// iterations. The result reads as "deal with one element, place it, then
+// move to the next."
 //
-// During each adjacent swap the two cells take opposing arcs:
-//   - The cell at the lower slot index arcs UP.
-//   - The cell at the higher slot index arcs DOWN.
-// They exchange places without sharing screen space mid-swap.
-// Stationary cells stay at y=0 so the arcing cells pass safely above
-// and below them.
+// Two paths:
+//   - rank 1: swap individual cells horizontally.
+//   - rank 2: rows are the major-axis cells in BQN. Insertion-sort the
+//     rows (lex comparison), swap pairs of adjacent rows vertically.
 //
-// Total swap count equals the number of inversions in the input. For
-// already-sorted inputs that's zero — commit immediately.
+// During each adjacent swap the two participants take opposing arcs so
+// they exchange places without sharing screen space mid-swap.
 
-const SORT_ARC_PEAK = 32;
-const SORT_SWAP_DURATION = 0.28;
-const SORT_BETWEEN_MS = 50;
+const SORT_SWAP_DURATION = 0.42;        // seconds per single adjacent swap
+const SORT_INTRA_ITER_MS = 60;          // pause between swaps within one iteration
+const SORT_INTER_ITER_MS = 260;         // pause between iterations
+const SORT_ARC_PEAK = 36;
 const SORT_SAMPLES = 14;
+
+function alreadySorted<T>(
+	swaps: ReadonlyArray<Array<T>>,
+): boolean {
+	return swaps.every(it => it.length === 0);
+}
 
 async function sortByPairwiseSwap(
 	step: Step,
@@ -162,6 +172,24 @@ async function sortByPairwiseSwap(
 	ascending: boolean,
 ): Promise<void> {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
+
+	if (step.x.shape.length === 1) {
+		return sort1DByCellSwap(step, beforeRoot, afterRoot, ascending);
+	}
+	if (step.x.shape.length === 2) {
+		return sort2DByRowSwap(step, beforeRoot, afterRoot, ascending);
+	}
+	return blackBox(step, beforeRoot, afterRoot);
+}
+
+async function sort1DByCellSwap(
+	step: Step,
+	beforeRoot: HTMLElement,
+	afterRoot: HTMLElement,
+	ascending: boolean,
+): Promise<void> {
+	if (step.kind !== 'monadic') return;
 	const values = numericData(step.x);
 	if (values === null) return blackBox(step, beforeRoot, afterRoot);
 
@@ -175,20 +203,21 @@ async function sortByPairwiseSwap(
 	const n = beforeCells.length;
 	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
 
-	// Compute the insertion-sort ADJACENT swap sequence on a copy of the
-	// values. Each swap is [slot, slot+1] — cells exchange with their
-	// immediate neighbour, never jumping over intermediate slots.
+	// Group swaps by iteration: swapsByIter[i] = the adjacent swaps
+	// performed while placing element i.
 	const arr = [...values];
-	const swaps: Array<[number, number]> = [];
+	const swapsByIter: Array<Array<[number, number]>> = [];
 	for (let i = 1; i < n; i++) {
+		const itSwaps: Array<[number, number]> = [];
 		let j = i;
 		while (j > 0) {
 			const outOfOrder = ascending ? arr[j] < arr[j - 1] : arr[j] > arr[j - 1];
 			if (!outOfOrder) break;
-			swaps.push([j - 1, j]);
+			itSwaps.push([j - 1, j]);
 			[arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
 			j--;
 		}
+		swapsByIter.push(itSwaps);
 	}
 
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
@@ -196,64 +225,194 @@ async function sortByPairwiseSwap(
 	afterRoot.style.pointerEvents = 'none';
 	for (const cell of beforeCells) cell.style.position = 'relative';
 
-	if (swaps.length === 0) {
-		// Already sorted — just hand off.
+	if (alreadySorted(swapsByIter)) {
 		for (const cell of afterCells) cell.style.visibility = '';
 		afterRoot.style.pointerEvents = '';
 		beforeRoot.style.opacity = '0';
 		return;
 	}
 
-	// Track which original-index cell is currently at each slot.
-	// order[slot] = original index of cell at slot.
 	const order = beforeCells.map((_, i) => i);
-	// Accumulated x-transform per cell.
 	const currentX = beforeCells.map(() => 0);
 
-	for (let s = 0; s < swaps.length; s++) {
-		const [slotA, slotB] = swaps[s];
-		const idxA = order[slotA];
-		const idxB = order[slotB];
-		const cellA = beforeCells[idxA];
-		const cellB = beforeCells[idxB];
+	for (let iter = 0; iter < swapsByIter.length; iter++) {
+		const itSwaps = swapsByIter[iter];
+		for (let s = 0; s < itSwaps.length; s++) {
+			const [slotA, slotB] = itSwaps[s];
+			const idxA = order[slotA];
+			const idxB = order[slotB];
+			const cellA = beforeCells[idxA];
+			const cellB = beforeCells[idxB];
 
-		// Target x for each cell (relative to its original layout position).
-		const cellAOriginX = beforeRects[idxA].left + beforeRects[idxA].width / 2;
-		const cellBOriginX = beforeRects[idxB].left + beforeRects[idxB].width / 2;
-		const slotAX = beforeRects[slotA].left + beforeRects[slotA].width / 2;
-		const slotBX = beforeRects[slotB].left + beforeRects[slotB].width / 2;
-		const newXA = slotBX - cellAOriginX;
-		const newXB = slotAX - cellBOriginX;
+			const cellAOriginX = beforeRects[idxA].left + beforeRects[idxA].width / 2;
+			const cellBOriginX = beforeRects[idxB].left + beforeRects[idxB].width / 2;
+			const slotAX = beforeRects[slotA].left + beforeRects[slotA].width / 2;
+			const slotBX = beforeRects[slotB].left + beforeRects[slotB].width / 2;
+			const newXA = slotBX - cellAOriginX;
+			const newXB = slotAX - cellBOriginX;
 
-		// Build cosine-eased keyframes for each cell. Cell at the lower slot
-		// arcs UP; cell at the higher slot arcs DOWN. Opposite arcs keep
-		// them from sharing screen space mid-swap.
-		const xsA: number[] = [];
-		const ysA: number[] = [];
-		const xsB: number[] = [];
-		const ysB: number[] = [];
-		for (let k = 0; k <= SORT_SAMPLES; k++) {
-			const t = k / SORT_SAMPLES;
-			const eased = (1 - Math.cos(Math.PI * t)) / 2;
-			xsA.push(currentX[idxA] + (newXA - currentX[idxA]) * eased);
-			ysA.push(-SORT_ARC_PEAK * Math.sin(Math.PI * t));
-			xsB.push(currentX[idxB] + (newXB - currentX[idxB]) * eased);
-			ysB.push(SORT_ARC_PEAK * Math.sin(Math.PI * t));
+			const xsA: number[] = [];
+			const ysA: number[] = [];
+			const xsB: number[] = [];
+			const ysB: number[] = [];
+			for (let k = 0; k <= SORT_SAMPLES; k++) {
+				const t = k / SORT_SAMPLES;
+				const eased = (1 - Math.cos(Math.PI * t)) / 2;
+				xsA.push(currentX[idxA] + (newXA - currentX[idxA]) * eased);
+				ysA.push(-SORT_ARC_PEAK * Math.sin(Math.PI * t));
+				xsB.push(currentX[idxB] + (newXB - currentX[idxB]) * eased);
+				ysB.push(SORT_ARC_PEAK * Math.sin(Math.PI * t));
+			}
+
+			cellA.style.zIndex = '5';
+			cellB.style.zIndex = '5';
+
+			await Promise.all([
+				animate(cellA, { x: xsA, y: ysA }, { duration: scaled(SORT_SWAP_DURATION), ease: 'linear' }).finished,
+				animate(cellB, { x: xsB, y: ysB }, { duration: scaled(SORT_SWAP_DURATION), ease: 'linear' }).finished,
+			]);
+
+			currentX[idxA] = newXA;
+			currentX[idxB] = newXB;
+			[order[slotA], order[slotB]] = [order[slotB], order[slotA]];
+
+			if (s < itSwaps.length - 1) await _delayMs(scaledMs(SORT_INTRA_ITER_MS));
 		}
+		if (iter < swapsByIter.length - 1) await _delayMs(scaledMs(SORT_INTER_ITER_MS));
+	}
 
-		cellA.style.zIndex = '5';
-		cellB.style.zIndex = '5';
+	for (const cell of afterCells) cell.style.visibility = '';
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
+}
 
-		await Promise.all([
-			animate(cellA, { x: xsA, y: ysA }, { duration: SORT_SWAP_DURATION, ease: 'linear' }).finished,
-			animate(cellB, { x: xsB, y: ysB }, { duration: SORT_SWAP_DURATION, ease: 'linear' }).finished,
-		]);
+async function sort2DByRowSwap(
+	step: Step,
+	beforeRoot: HTMLElement,
+	afterRoot: HTMLElement,
+	ascending: boolean,
+): Promise<void> {
+	if (step.kind !== 'monadic') return;
+	if (step.x.kind !== 'array' || step.x.shape.length !== 2) {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
 
-		currentX[idxA] = newXA;
-		currentX[idxB] = newXB;
-		[order[slotA], order[slotB]] = [order[slotB], order[slotA]];
+	const [R, C] = step.x.shape;
+	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+	if (beforeCells.length === 0 || afterCells.length === 0) {
+		afterRoot.style.opacity = '';
+		return;
+	}
 
-		if (s < swaps.length - 1) await _delayMs(SORT_BETWEEN_MS);
+	// Extract row values for lex comparison.
+	const rowValues: number[][] = [];
+	for (let r = 0; r < R; r++) {
+		const row: number[] = [];
+		for (let c = 0; c < C; c++) {
+			const v = step.x.data[r * C + c];
+			if (v.kind !== 'number') return blackBox(step, beforeRoot, afterRoot);
+			row.push(v.value);
+		}
+		rowValues.push(row);
+	}
+
+	const cmpRows = (a: ReadonlyArray<number>, b: ReadonlyArray<number>): number => {
+		for (let i = 0; i < a.length; i++) {
+			if (a[i] !== b[i]) return a[i] - b[i];
+		}
+		return 0;
+	};
+
+	// Insertion sort the rows, grouping adjacent-row swaps by iteration.
+	const arr = rowValues.map(r => [...r]);
+	const swapsByIter: Array<Array<[number, number]>> = [];
+	for (let i = 1; i < R; i++) {
+		const itSwaps: Array<[number, number]> = [];
+		let j = i;
+		while (j > 0) {
+			const cmp = cmpRows(arr[j], arr[j - 1]);
+			const outOfOrder = ascending ? cmp < 0 : cmp > 0;
+			if (!outOfOrder) break;
+			itSwaps.push([j - 1, j]);
+			[arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
+			j--;
+		}
+		swapsByIter.push(itSwaps);
+	}
+
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	for (const cell of beforeCells) cell.style.position = 'relative';
+
+	if (alreadySorted(swapsByIter)) {
+		for (const cell of afterCells) cell.style.visibility = '';
+		afterRoot.style.pointerEvents = '';
+		beforeRoot.style.opacity = '0';
+		return;
+	}
+
+	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
+
+	// rowOrder[slot_row] = original row index of cells currently at that slot.
+	const rowOrder = Array.from({ length: R }, (_, i) => i);
+	const currentY = beforeCells.map(() => 0);
+
+	for (let iter = 0; iter < swapsByIter.length; iter++) {
+		const itSwaps = swapsByIter[iter];
+		for (let s = 0; s < itSwaps.length; s++) {
+			const [slotA, slotB] = itSwaps[s];  // slotA = slotB - 1, adjacent
+			const origRowA = rowOrder[slotA];
+			const origRowB = rowOrder[slotB];
+
+			// All cells in original row A move down to slot row B's y;
+			// all cells in original row B move up to slot row A's y.
+			// Cells in row A arc RIGHT during transit; cells in row B arc
+			// LEFT — opposite x bumps keep them from sharing screen space.
+			const tasks: Promise<unknown>[] = [];
+			for (let c = 0; c < C; c++) {
+				const cellAIdx = origRowA * C + c;
+				const cellBIdx = origRowB * C + c;
+				const cellA = beforeCells[cellAIdx];
+				const cellB = beforeCells[cellBIdx];
+
+				const cellAOriginY = beforeRects[cellAIdx].top + beforeRects[cellAIdx].height / 2;
+				const cellBOriginY = beforeRects[cellBIdx].top + beforeRects[cellBIdx].height / 2;
+				const targetAY = beforeRects[slotB * C + c].top + beforeRects[slotB * C + c].height / 2;
+				const targetBY = beforeRects[slotA * C + c].top + beforeRects[slotA * C + c].height / 2;
+				const newYA = targetAY - cellAOriginY;
+				const newYB = targetBY - cellBOriginY;
+
+				const xsA: number[] = [];
+				const ysA: number[] = [];
+				const xsB: number[] = [];
+				const ysB: number[] = [];
+				for (let k = 0; k <= SORT_SAMPLES; k++) {
+					const t = k / SORT_SAMPLES;
+					const eased = (1 - Math.cos(Math.PI * t)) / 2;
+					xsA.push(SORT_ARC_PEAK * Math.sin(Math.PI * t));
+					ysA.push(currentY[cellAIdx] + (newYA - currentY[cellAIdx]) * eased);
+					xsB.push(-SORT_ARC_PEAK * Math.sin(Math.PI * t));
+					ysB.push(currentY[cellBIdx] + (newYB - currentY[cellBIdx]) * eased);
+				}
+
+				cellA.style.zIndex = '5';
+				cellB.style.zIndex = '5';
+
+				tasks.push(animate(cellA, { x: xsA, y: ysA }, { duration: scaled(SORT_SWAP_DURATION), ease: 'linear' }).finished);
+				tasks.push(animate(cellB, { x: xsB, y: ysB }, { duration: scaled(SORT_SWAP_DURATION), ease: 'linear' }).finished);
+
+				currentY[cellAIdx] = newYA;
+				currentY[cellBIdx] = newYB;
+			}
+
+			await Promise.all(tasks);
+			[rowOrder[slotA], rowOrder[slotB]] = [rowOrder[slotB], rowOrder[slotA]];
+
+			if (s < itSwaps.length - 1) await _delayMs(scaledMs(SORT_INTRA_ITER_MS));
+		}
+		if (iter < swapsByIter.length - 1) await _delayMs(scaledMs(SORT_INTER_ITER_MS));
 	}
 
 	for (const cell of afterCells) cell.style.visibility = '';
@@ -283,8 +442,6 @@ const ROTATE_ARC_SAMPLES = 16;
 const ROTATE_BETWEEN_MS = 100;         // pause between iterations
 const ROTATE_COUNTER_SIZE = 36;        // px
 const ROTATE_COUNTER_OFFSET = 50;      // px above the row
-
-const _delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'dyadic') return blackBox(step, beforeRoot, afterRoot);
@@ -382,7 +539,7 @@ export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 					animate(
 						bar,
 						{ x: xs, y: ys },
-						{ duration: ROTATE_ITER_DURATION, ease: 'linear' }
+						{ duration: scaled(ROTATE_ITER_DURATION), ease: 'linear' }
 					).finished
 				);
 			} else {
@@ -391,17 +548,17 @@ export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 					animate(
 						bar,
 						{ x: endX, y: 0 },
-						{ duration: ROTATE_ITER_DURATION, ease: [0.4, 0, 0.6, 1] }
+						{ duration: scaled(ROTATE_ITER_DURATION), ease: [0.4, 0, 0.6, 1] }
 					).finished
 				);
 			}
 		}
 
 		await Promise.all(tasks);
-		if (j < k) await _delay(ROTATE_BETWEEN_MS);
+		if (j < k) await _delayMs(scaledMs(ROTATE_BETWEEN_MS));
 	}
 
-	await _delay(180);
+	await _delayMs(scaledMs(180));
 
 	await animate(
 		counter,
@@ -438,8 +595,6 @@ const TRANSPOSE_PER_CELL_DURATION = 0.35; // seconds per Phase-1 cell move
 const TRANSPOSE_INTER_CELL_MS = 80;       // pause between Phase-1 cell moves
 const TRANSPOSE_PHASE2_HOLD_MS = 220;     // pause after Phase 1 before Phase 2
 const TRANSPOSE_PHASE2_DURATION = 0.55;   // seconds for the slide-to-centre
-
-const _delayMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -497,15 +652,15 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 		await animate(
 			cell,
 			{ x: stagingDx, y: stagingDy },
-			{ duration: TRANSPOSE_PER_CELL_DURATION, ease: [0.4, 0, 0.6, 1] }
+			{ duration: scaled(TRANSPOSE_PER_CELL_DURATION), ease: [0.4, 0, 0.6, 1] }
 		).finished;
 
-		if (i < beforeCells.length - 1) await _delayMs(TRANSPOSE_INTER_CELL_MS);
+		if (i < beforeCells.length - 1) await _delayMs(scaledMs(TRANSPOSE_INTER_CELL_MS));
 	}
 
 	// Brief hold so the user sees the assembled new shape in the staging
 	// area before it slides back to centre.
-	await _delayMs(TRANSPOSE_PHASE2_HOLD_MS);
+	await _delayMs(scaledMs(TRANSPOSE_PHASE2_HOLD_MS));
 
 	// ── Phase 2: whole new matrix slides from staging to centre ──────────
 	// All cells animate the same offset (back to their natural after-
@@ -516,7 +671,7 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 		return animate(
 			cell,
 			{ x: f.dx, y: f.dy },
-			{ duration: TRANSPOSE_PHASE2_DURATION, ease: [0.4, 0, 0.6, 1] }
+			{ duration: scaled(TRANSPOSE_PHASE2_DURATION), ease: [0.4, 0, 0.6, 1] }
 		).finished;
 	});
 	await Promise.all(phase2);

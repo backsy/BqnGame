@@ -1,11 +1,46 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { play, trajectoryFrom, fnExprLabel, assertNever } from '$lib/animations/v2/index.js';
+	import { play, trajectoryFrom, fnExprLabel, assertNever, setAnimationSpeed, getAnimationSpeed } from '$lib/animations/v2/index.js';
 	import type { Stage, BqnValue, Trajectory, TrajectoryError, FnExpr } from '$lib/animations/v2/index.js';
 
 	// ── Small in-harness evaluator ───────────────────────────────────────────
 	// NOT in v2/. Handles only the operations the harness wires up.
 	// Throws for unsupported combinations; the harness won't call those.
+
+	// BQN-correct sort: sorts the MAJOR-axis cells. For a vector, that's
+	// the individual elements; for a matrix, the rows (compared lex).
+	function sortMajorAxis(arr: BqnValue, ascending: boolean): BqnValue {
+		if (arr.kind !== 'array') return arr;
+		if (arr.shape.length === 1) {
+			const indexed = arr.data.map((v, i) => ({ v, i }));
+			indexed.sort((a, b) => {
+				if (a.v.kind === 'number' && b.v.kind === 'number') {
+					return ascending ? a.v.value - b.v.value : b.v.value - a.v.value;
+				}
+				return 0;
+			});
+			return { kind: 'array', shape: arr.shape, data: indexed.map(x => x.v) };
+		}
+		const [majorDim, ...subShape] = arr.shape;
+		const sliceSize = subShape.reduce((a, b) => a * b, 1);
+		const slices: BqnValue[][] = [];
+		for (let i = 0; i < majorDim; i++) {
+			slices.push(arr.data.slice(i * sliceSize, (i + 1) * sliceSize));
+		}
+		slices.sort((a, b) => {
+			for (let i = 0; i < sliceSize; i++) {
+				const aItem = a[i];
+				const bItem = b[i];
+				const av = aItem.kind === 'number' ? aItem.value : 0;
+				const bv = bItem.kind === 'number' ? bItem.value : 0;
+				if (av !== bv) return ascending ? av - bv : bv - av;
+			}
+			return 0;
+		});
+		const result: BqnValue[] = [];
+		for (const slice of slices) result.push(...slice);
+		return { kind: 'array', shape: arr.shape, data: result };
+	}
 
 	function evalStep(
 		input: BqnValue,
@@ -56,22 +91,12 @@
 			case 'sort-up': {
 				if (arity !== 'monadic') throw new Error('sort-up: monadic only');
 				if (input.kind !== 'array') throw new Error('sort-up: expected array');
-				const indexed = input.data.map((v, i) => ({ v, i }));
-				indexed.sort((a, b) => {
-					if (a.v.kind === 'number' && b.v.kind === 'number') return a.v.value - b.v.value;
-					return 0;
-				});
-				return { kind: 'array', shape: input.shape, data: indexed.map(x => x.v) };
+				return sortMajorAxis(input, true);
 			}
 			case 'sort-down': {
 				if (arity !== 'monadic') throw new Error('sort-down: monadic only');
 				if (input.kind !== 'array') throw new Error('sort-down: expected array');
-				const indexed = input.data.map((v, i) => ({ v, i }));
-				indexed.sort((a, b) => {
-					if (a.v.kind === 'number' && b.v.kind === 'number') return b.v.value - a.v.value;
-					return 0;
-				});
-				return { kind: 'array', shape: input.shape, data: indexed.map(x => x.v) };
+				return sortMajorAxis(input, false);
 			}
 			case 'transpose': {
 				if (arity !== 'monadic') throw new Error('transpose: monadic only');
@@ -349,6 +374,14 @@
 	let selectedStarterIdx = 0;
 	let currentValue: BqnValue = STARTERS[0].value;
 	let statusMsg = '';
+	let speed = getAnimationSpeed();
+
+	const SPEED_CHOICES: number[] = [0.5, 1, 2];
+
+	function setSpeed(s: number): void {
+		speed = s;
+		setAnimationSpeed(s);
+	}
 
 	function mountStarter(idx: number): void {
 		selectedStarterIdx = idx;
@@ -484,14 +517,29 @@
 		</div>
 	</section>
 
-	<!-- Reset -->
-	<button
-		on:click={handleReset}
-		disabled={playing}
-		style="padding:0.4rem 1.2rem;background:#333;color:#e0e0ff;border:1px solid #555;border-radius:6px;font-size:0.9rem;cursor:pointer;"
-	>
-		Reset
-	</button>
+	<!-- Speed + reset row -->
+	<div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+		<button
+			on:click={handleReset}
+			disabled={playing}
+			style="padding:0.4rem 1.2rem;background:#333;color:#e0e0ff;border:1px solid #555;border-radius:6px;font-size:0.9rem;cursor:pointer;"
+		>
+			Reset
+		</button>
+
+		<div style="display:flex;align-items:center;gap:6px;">
+			<span style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.05em;">Speed</span>
+			{#each SPEED_CHOICES as s}
+				<button
+					on:click={() => setSpeed(s)}
+					disabled={playing}
+					style="padding:0.25rem 0.55rem;font-size:0.8rem;background:{speed === s ? '#7c6af7' : '#1a1a2e'};color:#e0e0ff;border:1px solid {speed === s ? '#7c6af7' : '#333'};border-radius:5px;cursor:pointer;"
+				>
+					{s}x
+				</button>
+			{/each}
+		</div>
+	</div>
 
 	{#if playing}
 		<span style="margin-left:0.8rem;font-size:0.85rem;color:#7c6af7;">animating…</span>
