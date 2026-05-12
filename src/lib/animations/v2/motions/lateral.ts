@@ -398,19 +398,28 @@ export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 };
 
 // ── transposeMonadic ──────────────────────────────────────────────────────
-// ⍉ on a 2D matrix swaps rows and columns: cell at (r, c) goes to (c, r).
-// Strictly sequential animation — one cell at a time, in row-major order
-// of the BEFORE matrix. Each cell waits for the previous to finish before
-// starting its own travel. Reads as "iterating through the elements,"
-// which is closer to how transpose is conceptually performed.
+// Two-phase animation with a strict no-overlap invariant: at every instant
+// during the animation, every cell occupies a unique screen position and no
+// path crosses through another cell.
 //
-// Because only one cell is in motion at any moment, there's no chance of
-// cells clipping through each other; the trajectory is a simple cosine-
-// eased straight line.
+// Phase 1 — Build the new shape in a staging area. The staging area sits
+// to the LEFT of the original matrix's centred position (offset by
+// TRANSPOSE_STAGING_OFFSET_X px). Cells leave their origin one at a time,
+// in row-major order of the BEFORE matrix, and arrive at their AFTER
+// position INSIDE the staging area. Because only one cell is in motion
+// at a time and the staging area starts empty, paths never collide and
+// cells never share a screen point.
+//
+// Phase 2 — Once the new shape is fully assembled in staging, the entire
+// matrix slides together from the staging area back to its natural
+// centred location. All cells move in unison, by the same amount, so
+// they preserve their relative positions and again don't overlap.
 
-const TRANSPOSE_PER_CELL_DURATION = 0.35;
-const TRANSPOSE_SAMPLES = 16;
-const TRANSPOSE_INTER_CELL_MS = 60;
+const TRANSPOSE_STAGING_OFFSET_X = -160; // px to the left of centred AFTER
+const TRANSPOSE_PER_CELL_DURATION = 0.35; // seconds per Phase-1 cell move
+const TRANSPOSE_INTER_CELL_MS = 80;       // pause between Phase-1 cell moves
+const TRANSPOSE_PHASE2_HOLD_MS = 220;     // pause after Phase 1 before Phase 2
+const TRANSPOSE_PHASE2_DURATION = 0.55;   // seconds for the slide-to-centre
 
 const _delayMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -431,65 +440,72 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
 	const afterRects = afterCells.map(c => c.getBoundingClientRect());
 
+	// After-cells stay hidden for the entire animation. The before-cells
+	// ARE the visible matrix throughout — they travel to staging, form the
+	// new shape there, and slide back to the centre. Only at the very end
+	// do we swap visibility, when the before-cells are already at the
+	// natural after positions.
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
+	for (const cell of beforeCells) {
+		cell.style.position = 'relative';
+		cell.style.zIndex = '5';
+	}
 
-	for (const cell of beforeCells) cell.style.position = 'relative';
-
-	// Iterate row-major over the BEFORE matrix.
+	// Compute per-cell final and staging translations (relative to each
+	// cell's natural origin).
+	const finalTranslate: { dx: number; dy: number }[] = [];
 	for (let i = 0; i < beforeCells.length; i++) {
-		const cell = beforeCells[i];
 		const r = Math.floor(i / C);
 		const c = i % C;
-		// BEFORE cell at (r, c) → AFTER cell at (c, r). AFTER has shape
-		// [C, R], so its flat index for (c, r) is c * R + r.
 		const destIndex = c * R + r;
 		const startRect = beforeRects[i];
 		const endRect = afterRects[destIndex];
-
 		const sx = startRect.left + startRect.width / 2;
 		const sy = startRect.top + startRect.height / 2;
-		const ex = endRect.left + endRect.width / 2;
-		const ey = endRect.top + endRect.height / 2;
+		const fx = endRect.left + endRect.width / 2;
+		const fy = endRect.top + endRect.height / 2;
+		finalTranslate.push({ dx: fx - sx, dy: fy - sy });
+	}
 
-		const dx = ex - sx;
-		const dy = ey - sy;
-		const dist = Math.sqrt(dx * dx + dy * dy);
+	// ── Phase 1: sequential move to staging area ─────────────────────────
+	for (let i = 0; i < beforeCells.length; i++) {
+		const cell = beforeCells[i];
+		const f = finalTranslate[i];
+		const stagingDx = f.dx + TRANSPOSE_STAGING_OFFSET_X;
+		const stagingDy = f.dy;
 
-		// Reveal the destination cell as we land on it, so the user sees the
-		// new matrix building up element by element.
-		afterCells[destIndex].style.visibility = '';
-
-		if (dist < 0.5) {
-			// Cell barely moves (square matrix diagonal); no animation needed,
-			// but still pause briefly so the iteration rhythm holds.
-			cell.style.zIndex = '5';
-			await _delayMs(Math.round(TRANSPOSE_PER_CELL_DURATION * 1000 * 0.4));
-			continue;
-		}
-
-		const xs: number[] = [];
-		const ys: number[] = [];
-		for (let s = 0; s <= TRANSPOSE_SAMPLES; s++) {
-			const t = s / TRANSPOSE_SAMPLES;
-			const eased = (1 - Math.cos(Math.PI * t)) / 2;
-			xs.push(dx * eased);
-			ys.push(dy * eased);
-		}
-
-		cell.style.zIndex = '5';
 		await animate(
 			cell,
-			{ x: xs, y: ys },
-			{ duration: TRANSPOSE_PER_CELL_DURATION, ease: 'linear' }
+			{ x: stagingDx, y: stagingDy },
+			{ duration: TRANSPOSE_PER_CELL_DURATION, ease: [0.4, 0, 0.6, 1] }
 		).finished;
 
 		if (i < beforeCells.length - 1) await _delayMs(TRANSPOSE_INTER_CELL_MS);
 	}
 
-	// Hand off: before-cells fade away, after-cells (which were progressively
-	// revealed during the iteration) remain.
+	// Brief hold so the user sees the assembled new shape in the staging
+	// area before it slides back to centre.
+	await _delayMs(TRANSPOSE_PHASE2_HOLD_MS);
+
+	// ── Phase 2: whole new matrix slides from staging to centre ──────────
+	// All cells animate the same offset (back to their natural after-
+	// position) in parallel, so the entire new shape moves as one rigid
+	// block. No cells cross each other; they just translate together.
+	const phase2 = beforeCells.map((cell, i) => {
+		const f = finalTranslate[i];
+		return animate(
+			cell,
+			{ x: f.dx, y: f.dy },
+			{ duration: TRANSPOSE_PHASE2_DURATION, ease: [0.4, 0, 0.6, 1] }
+		).finished;
+	});
+	await Promise.all(phase2);
+
+	// Hand off. Before-cells are now at the natural after-positions; reveal
+	// the after-cells (which live at the same positions) and hide before.
+	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
 	beforeRoot.style.opacity = '0';
 };
