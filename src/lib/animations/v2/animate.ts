@@ -3,6 +3,13 @@ import type { Step } from './step.js';
 import type { AnimateStep } from './stage.js';
 import { assertNever } from './value.js';
 import { blackBox } from './motions/black-box.js';
+import {
+	reverseMonadic,
+	sortUpMonadic,
+	sortDownMonadic,
+	rotateDyadic,
+	transposeMonadic,
+} from './motions/lateral.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
 const assignAnimation: AnimateStep = blackBox;
@@ -42,11 +49,11 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'not':                    return blackBox;
 		case 'span':                   return blackBox;
 		// Shape / structural
-		case 'reverse':                return blackBox;
-		case 'rotate':                 return blackBox;
+		case 'reverse':                return reverseMonadic;
+		case 'rotate':                 return reverseMonadic; // monadic ⌽ = reverse
 		case 'reshape':                return blackBox;
 		case 'deshape':                return blackBox;
-		case 'transpose':              return blackBox;
+		case 'transpose':              return transposeMonadic;
 		case 'length':                 return blackBox;
 		case 'shape':                  return blackBox;
 		case 'rank-of':                return blackBox; // ≢ base primitive — NOT the rank 2-modifier
@@ -62,8 +69,8 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'pair':                   return blackBox;
 		case 'solo':                   return blackBox;
 		case 'range':                  return blackBox;
-		case 'sort-up':                return blackBox;
-		case 'sort-down':              return blackBox;
+		case 'sort-up':                return sortUpMonadic;
+		case 'sort-down':              return sortDownMonadic;
 		case 'grade-up':               return blackBox;
 		case 'grade-down':             return blackBox;
 		case 'group':                  return blackBox;
@@ -142,11 +149,11 @@ export function animateDyadic(fn: FnExpr): AnimateStep {
 		case 'not':                    return blackBox;
 		case 'span':                   return blackBox;
 		// Shape / structural
-		case 'reverse':                return blackBox;
-		case 'rotate':                 return blackBox;
+		case 'reverse':                return rotateDyadic; // W⌽X = rotate X by W (dyadic reverse = rotate)
+		case 'rotate':                 return rotateDyadic;
 		case 'reshape':                return blackBox;
 		case 'deshape':                return blackBox;
-		case 'transpose':              return blackBox;
+		case 'transpose':              return blackBox; // no standard dyadic transpose in our subset
 		case 'length':                 return blackBox;
 		case 'shape':                  return blackBox;
 		case 'rank-of':                return blackBox;
@@ -162,8 +169,8 @@ export function animateDyadic(fn: FnExpr): AnimateStep {
 		case 'pair':                   return blackBox;
 		case 'solo':                   return blackBox;
 		case 'range':                  return blackBox;
-		case 'sort-up':                return blackBox;
-		case 'sort-down':              return blackBox;
+		case 'sort-up':                return blackBox; // no dyadic sort-up
+		case 'sort-down':              return blackBox; // no dyadic sort-down
 		case 'grade-up':               return blackBox;
 		case 'grade-down':             return blackBox;
 		case 'group':                  return blackBox;
