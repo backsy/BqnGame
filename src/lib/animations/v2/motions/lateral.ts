@@ -398,19 +398,23 @@ export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 };
 
 // ── transposeMonadic ──────────────────────────────────────────────────────
-// ⍉ on a 2D matrix swaps rows and columns. Cells trade places across the
-// matrix diagonal. Pairs like (r,c) ↔ (c,r) follow the SAME straight-line
-// path between them, so naive translation makes them collide mid-motion.
-// Fix: each cell takes a PERPENDICULAR ARC around the straight line.
-// Because of how the perpendicular is computed (rotate the movement vector
-// 90° CCW), the two cells in a swap pair arc to OPPOSITE sides of the line.
-// They orbit each other instead of clipping through.
+// ⍉ on a 2D matrix swaps rows and columns: cell at (r, c) goes to (c, r).
+// Strictly sequential animation — one cell at a time, in row-major order
+// of the BEFORE matrix. Each cell waits for the previous to finish before
+// starting its own travel. Reads as "iterating through the elements,"
+// which is closer to how transpose is conceptually performed.
+//
+// Because only one cell is in motion at any moment, there's no chance of
+// cells clipping through each other; the trajectory is a simple cosine-
+// eased straight line.
 
-const TRANSPOSE_DURATION = 0.95;
-const TRANSPOSE_SAMPLES = 28;
-const TRANSPOSE_ARC_FACTOR = 0.35; // arc peak / journey length
+const TRANSPOSE_PER_CELL_DURATION = 0.35;
+const TRANSPOSE_SAMPLES = 16;
+const TRANSPOSE_INTER_CELL_MS = 60;
 
-export const transposeMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
+const _delayMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 	if (step.x.kind !== 'array' || step.x.shape.length !== 2) {
 		return blackBox(step, beforeRoot, afterRoot);
@@ -420,7 +424,7 @@ export const transposeMonadic: AnimateStep = (step, beforeRoot, afterRoot): Prom
 	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
 	if (beforeCells.length === 0 || afterCells.length === 0) {
 		afterRoot.style.opacity = '';
-		return Promise.resolve();
+		return;
 	}
 
 	const [R, C] = step.x.shape;
@@ -431,7 +435,11 @@ export const transposeMonadic: AnimateStep = (step, beforeRoot, afterRoot): Prom
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
 
-	const tasks = beforeCells.map((cell, i) => {
+	for (const cell of beforeCells) cell.style.position = 'relative';
+
+	// Iterate row-major over the BEFORE matrix.
+	for (let i = 0; i < beforeCells.length; i++) {
+		const cell = beforeCells[i];
 		const r = Math.floor(i / C);
 		const c = i % C;
 		// BEFORE cell at (r, c) → AFTER cell at (c, r). AFTER has shape
@@ -449,45 +457,40 @@ export const transposeMonadic: AnimateStep = (step, beforeRoot, afterRoot): Prom
 		const dy = ey - sy;
 		const dist = Math.sqrt(dx * dx + dy * dy);
 
-		if (dist < 0.5) {
-			// Cell doesn't move (e.g. on the matrix diagonal for square).
-			return Promise.resolve();
-		}
+		// Reveal the destination cell as we land on it, so the user sees the
+		// new matrix building up element by element.
+		afterCells[destIndex].style.visibility = '';
 
-		// Unit vector perpendicular to the straight-line trajectory,
-		// rotated 90° CCW from (dx, dy). For a swap pair where one cell's
-		// (dx, dy) is the other's negation, this gives opposite-sign
-		// perpendiculars → the two cells orbit on opposite sides.
-		const perpX = -dy / dist;
-		const perpY = dx / dist;
-		const arcMag = dist * TRANSPOSE_ARC_FACTOR;
+		if (dist < 0.5) {
+			// Cell barely moves (square matrix diagonal); no animation needed,
+			// but still pause briefly so the iteration rhythm holds.
+			cell.style.zIndex = '5';
+			await _delayMs(Math.round(TRANSPOSE_PER_CELL_DURATION * 1000 * 0.4));
+			continue;
+		}
 
 		const xs: number[] = [];
 		const ys: number[] = [];
 		for (let s = 0; s <= TRANSPOSE_SAMPLES; s++) {
 			const t = s / TRANSPOSE_SAMPLES;
-			// Cosine half-cycle for the straight-line progress: 0 → 1 with
-			// smooth ends; sin half-cycle for the perpendicular bump:
-			// 0 → arcMag → 0 with peak at the midpoint.
-			const progress = (1 - Math.cos(Math.PI * t)) / 2;
-			const arc = Math.sin(Math.PI * t) * arcMag;
-			xs.push(dx * progress + perpX * arc);
-			ys.push(dy * progress + perpY * arc);
+			const eased = (1 - Math.cos(Math.PI * t)) / 2;
+			xs.push(dx * eased);
+			ys.push(dy * eased);
 		}
 
-		cell.style.position = 'relative';
 		cell.style.zIndex = '5';
-		return animate(
+		await animate(
 			cell,
 			{ x: xs, y: ys },
-			{ duration: TRANSPOSE_DURATION, ease: 'linear' }
+			{ duration: TRANSPOSE_PER_CELL_DURATION, ease: 'linear' }
 		).finished;
-	});
 
-	return Promise.all(tasks).then(() => {
-		for (const cell of afterCells) cell.style.visibility = '';
-		afterRoot.style.pointerEvents = '';
-		beforeRoot.style.opacity = '0';
-	});
+		if (i < beforeCells.length - 1) await _delayMs(TRANSPOSE_INTER_CELL_MS);
+	}
+
+	// Hand off: before-cells fade away, after-cells (which were progressively
+	// revealed during the iteration) remain.
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
 };
 

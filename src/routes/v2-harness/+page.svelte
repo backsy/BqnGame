@@ -310,15 +310,19 @@
 			},
 			async prepare(value: BqnValue): Promise<HTMLElement> {
 				const el = renderBqnValue(value);
-				// Overlay the prepared element exactly on the current element.
-				// Measure positions relative to the container so the absolute
-				// placement matches wherever flex layout put the current
-				// (centre, flex-end, whatever).
-				const currentRect = currentEl.getBoundingClientRect();
-				const containerRect = containerEl.getBoundingClientRect();
+				// Position the prepared element at the container's natural
+				// centred location, NOT overlaid on currentEl. For shape-
+				// changing operations (transpose 2×3 → 3×2, reshape, etc.)
+				// the prepared has a different size than currentEl, and the
+				// post-commit flex layout will centre it differently from
+				// currentEl's position. Centring it the same way now (50%/
+				// 50%/translate(-50%,-50%)) means the cell positions
+				// measured here are the SAME positions the cells will live
+				// at after commit. No teleport on handoff.
 				el.style.position = 'absolute';
-				el.style.top = `${currentRect.top - containerRect.top}px`;
-				el.style.left = `${currentRect.left - containerRect.left}px`;
+				el.style.top = '50%';
+				el.style.left = '50%';
+				el.style.transform = 'translate(-50%, -50%)';
 				el.style.opacity = '0';
 				containerEl.appendChild(el);
 				return el;
@@ -328,6 +332,7 @@
 				prepared.style.top = '';
 				prepared.style.left = '';
 				prepared.style.bottom = '';
+				prepared.style.transform = '';
 				prepared.style.opacity = '';
 				for (const child of Array.from(containerEl.children)) {
 					if (child !== prepared) containerEl.removeChild(child);
