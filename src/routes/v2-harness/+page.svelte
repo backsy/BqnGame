@@ -130,16 +130,49 @@
 	// Produces an HTMLElement representing a BqnValue.
 	// For 2D arrays: renders as a grid of bars so transpose is visually meaningful.
 
+	// Bar size scaling — match the game's pattern: linear in abs(value), with a
+	// base height that's tall enough to fit the numeric label.
+	const BAR_HEIGHT_BASE = 18;
+	const BAR_HEIGHT_PER_UNIT = 8;
+	const BAR_HEIGHT_MAX = 140;
+
+	function barHeight(value: number): number {
+		return Math.min(BAR_HEIGHT_MAX, Math.abs(value) * BAR_HEIGHT_PER_UNIT + BAR_HEIGHT_BASE);
+	}
+
+	function makeBar(value: number, width = 24, fontSize = '0.85rem'): HTMLElement {
+		const bar = document.createElement('div');
+		bar.className = 'bar';
+		const h = barHeight(value);
+		const color = value < 0 ? '#f76a6a' : '#7c6af7';
+		bar.style.cssText = [
+			`height:${h}px`,
+			`width:${width}px`,
+			`background:${color}`,
+			'border-radius:3px',
+			'display:grid',
+			'place-items:start center',
+			'padding-top:0.18rem',
+			'box-shadow:0 0 8px rgba(124, 106, 247, 0.22)',
+		].join(';');
+		const num = document.createElement('span');
+		num.style.cssText = [
+			'color:#f0fff0',
+			`font-size:${fontSize}`,
+			'font-weight:600',
+			'text-shadow:0 0 4px rgba(0, 0, 0, 0.6)',
+			'font-family:system-ui, -apple-system, sans-serif',
+			'line-height:1',
+		].join(';');
+		num.textContent = String(value);
+		bar.appendChild(num);
+		return bar;
+	}
+
 	function renderBqnValue(value: BqnValue): HTMLElement {
 		switch (value.kind) {
 			case 'number': {
-				const bar = document.createElement('div');
-				bar.className = 'bar';
-				const h = Math.max(4, Math.abs(value.value) * 20);
-				const color = value.value < 0 ? '#f76a6a' : '#7c6af7';
-				bar.style.cssText = `height:${h}px;width:24px;background:${color};border-radius:3px;display:inline-block;margin:2px;vertical-align:bottom;`;
-				bar.title = String(value.value);
-				return bar;
+				return makeBar(value.value);
 			}
 			case 'array': {
 				const is1D = value.shape.length === 1 && value.data.every(v => v.kind === 'number');
@@ -162,15 +195,9 @@
 					grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},28px);gap:4px;padding:8px;`;
 					for (let r = 0; r < rows; r++) {
 						for (let c = 0; c < cols; c++) {
-							const cell = document.createElement('div');
 							const v = value.data[r * cols + c];
 							const val = v.kind === 'number' ? v.value : 0;
-							const h = Math.max(4, Math.abs(val) * 14);
-							const color = val < 0 ? '#f76a6a' : '#7c6af7';
-							cell.className = 'bar';
-							cell.style.cssText = `height:${h}px;width:24px;background:${color};border-radius:3px;`;
-							cell.title = String(val);
-							grid.appendChild(cell);
+							grid.appendChild(makeBar(val, 24, '0.75rem'));
 						}
 					}
 					return grid;

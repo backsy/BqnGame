@@ -105,13 +105,6 @@ function sortPermutation(
 	return perm;
 }
 
-function rotatePermutation(n: number, rotateBy: number): ReadonlyArray<number> {
-	// BQN: W⌽X shifts elements left by W (positive).
-	// Element originally at index i ends up at index ((i - rotateBy) % n + n) % n.
-	const r = ((rotateBy % n) + n) % n;
-	return Array.from({ length: n }, (_, i) => ((i - r) + n) % n);
-}
-
 function transposePermutation(
 	beforeShape: ReadonlyArray<number>,
 ): ReadonlyArray<number> {
@@ -225,11 +218,152 @@ export const sortDownMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promi
 	return lateralMove(beforeRoot, afterRoot, sortPermutation(nums, 'desc'));
 };
 
-export const rotateDyadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
+// ── rotateDyadic ──────────────────────────────────────────────────────────
+// W⌽X in BQN takes the first W elements and moves them to the back (with
+// wrapping for negative W). The animation breaks the rotation into k single-
+// position shifts, performed sequentially: at each iteration, the leftmost
+// bar arcs over the row to the back while the others slide left by one slot.
+// A counter above the row ticks 1, 2, ..., k so the magnitude of the rotation
+// is legible.
+//
+// Inspired by the old range animation's counter pattern.
+
+const ROTATE_ITER_DURATION = 0.55;     // seconds per single-position shift
+const ROTATE_ARC_PEAK = 56;            // upward arc for the wrapping bar
+const ROTATE_ARC_SAMPLES = 16;
+const ROTATE_BETWEEN_MS = 100;         // pause between iterations
+const ROTATE_COUNTER_SIZE = 36;        // px
+const ROTATE_COUNTER_OFFSET = 50;      // px above the row
+
+const _delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'dyadic') return blackBox(step, beforeRoot, afterRoot);
-	const n = step.x.kind === 'array' ? step.x.data.length : 1;
+	if (step.x.kind !== 'array' || step.x.shape.length !== 1) return blackBox(step, beforeRoot, afterRoot);
 	if (step.w.kind !== 'number') return blackBox(step, beforeRoot, afterRoot);
-	return lateralMove(beforeRoot, afterRoot, rotatePermutation(n, step.w.value));
+
+	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+	if (beforeCells.length === 0 || afterCells.length === 0) {
+		afterRoot.style.opacity = '';
+		return;
+	}
+
+	const n = beforeCells.length;
+	// Normalise to a positive left-rotation count: -1⌽X ≡ (n-1)⌽X.
+	const k = ((step.w.value % n) + n) % n;
+
+	if (k === 0) {
+		// Identity rotation — just commit without animation.
+		afterRoot.style.opacity = '';
+		return;
+	}
+
+	const slotRects = beforeCells.map(c => c.getBoundingClientRect());
+
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+
+	for (const cell of beforeCells) cell.style.position = 'relative';
+
+	// Counter element, positioned above the row's horizontal centre.
+	const rowRect = beforeRoot.getBoundingClientRect();
+	const counter = document.createElement('div');
+	Object.assign(counter.style, {
+		position: 'fixed',
+		top: `${rowRect.top - ROTATE_COUNTER_OFFSET}px`,
+		left: `${rowRect.left + rowRect.width / 2 - ROTATE_COUNTER_SIZE / 2}px`,
+		width: `${ROTATE_COUNTER_SIZE}px`,
+		height: `${ROTATE_COUNTER_SIZE}px`,
+		display: 'grid',
+		placeItems: 'center',
+		background: '#5fcc5f',
+		color: '#0a0a0a',
+		borderRadius: '50%',
+		fontFamily: 'system-ui, -apple-system, sans-serif',
+		fontSize: '1rem',
+		fontWeight: '700',
+		opacity: '0',
+		transform: 'scale(0)',
+		zIndex: '10',
+		pointerEvents: 'none',
+		boxShadow: '0 0 16px rgba(95, 204, 95, 0.6)',
+	});
+	document.body.appendChild(counter);
+
+	await animate(
+		counter,
+		{ opacity: [0, 1], transform: ['scale(0)', 'scale(1)'] },
+		{ duration: 0.22, ease: [0.34, 1.56, 0.64, 1] }
+	).finished;
+
+	// k iterations of "rotate left by 1". For each bar i, its position at
+	// iteration j is (i - j + n) % n. The bar at iter j's position 0
+	// (i.e. the bar originally at index j-1) wraps from leftmost to rightmost.
+	for (let j = 1; j <= k; j++) {
+		counter.textContent = String(j);
+		animate(
+			counter,
+			{ transform: ['scale(1)', 'scale(1.25)', 'scale(1)'] },
+			{ duration: 0.25 }
+		);
+
+		const tasks: Promise<unknown>[] = [];
+		for (let i = 0; i < n; i++) {
+			const prevPos = (i - (j - 1) + n) % n;
+			const nextPos = (i - j + n) % n;
+			const bar = beforeCells[i];
+			const startX = slotRects[prevPos].left - slotRects[i].left;
+			const endX = slotRects[nextPos].left - slotRects[i].left;
+
+			if (prevPos === 0) {
+				// Wrapping bar — arc over the row.
+				const xs: number[] = [];
+				const ys: number[] = [];
+				const dx = endX - startX;
+				for (let s = 0; s <= ROTATE_ARC_SAMPLES; s++) {
+					const t = s / ROTATE_ARC_SAMPLES;
+					const tEase = (1 - Math.cos(Math.PI * t)) / 2;
+					xs.push(startX + dx * tEase);
+					ys.push(-ROTATE_ARC_PEAK * Math.sin(Math.PI * t));
+				}
+				bar.style.zIndex = '5';
+				tasks.push(
+					animate(
+						bar,
+						{ x: xs, y: ys },
+						{ duration: ROTATE_ITER_DURATION, ease: 'linear' }
+					).finished
+				);
+			} else {
+				// Sliding bar — one slot left.
+				tasks.push(
+					animate(
+						bar,
+						{ x: endX, y: 0 },
+						{ duration: ROTATE_ITER_DURATION, ease: [0.4, 0, 0.6, 1] }
+					).finished
+				);
+			}
+		}
+
+		await Promise.all(tasks);
+		if (j < k) await _delay(ROTATE_BETWEEN_MS);
+	}
+
+	await _delay(180);
+
+	await animate(
+		counter,
+		{ opacity: 0, transform: 'translateY(-10px) scale(0.85)' },
+		{ duration: 0.3, ease: 'easeIn' }
+	).finished;
+	counter.remove();
+
+	for (const cell of afterCells) cell.style.visibility = '';
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
 };
 
 export const transposeMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
