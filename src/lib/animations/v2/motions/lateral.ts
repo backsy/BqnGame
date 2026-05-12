@@ -135,26 +135,25 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 };
 
 // ── sortUp/sortDownMonadic ────────────────────────────────────────────────
-// Selection-sort visualisation: each iteration finds the next smallest
-// (for ascending) or largest (descending) value in the unsorted suffix
-// and swaps it into the next slot. The user sees the row settle one slot
-// at a time through clear pairwise swaps.
+// Insertion-sort visualisation: each iteration takes the next unsorted
+// element and slides it leftward through the sorted prefix by ADJACENT
+// swaps until it finds its place. Every swap moves cells exactly one
+// slot — no big jumps, every move is small and traceable.
 //
-// During each swap the two cells take opposing arcs so they exchange
-// places without clipping:
-//   - The cell at the lower slot index arcs UP, the one at the higher
-//     slot index arcs DOWN.
-//   - Stationary cells (not in this swap) stay at y=0, so the arcing
-//     cells pass safely above/below them — no clip-through.
+// During each adjacent swap the two cells take opposing arcs:
+//   - The cell at the lower slot index arcs UP.
+//   - The cell at the higher slot index arcs DOWN.
+// They exchange places without sharing screen space mid-swap.
+// Stationary cells stay at y=0 so the arcing cells pass safely above
+// and below them.
 //
-// No-op iterations (the next-best is already in place) collapse to no
-// animation — only real swaps cost time, so already-sorted rows commit
-// immediately.
+// Total swap count equals the number of inversions in the input. For
+// already-sorted inputs that's zero — commit immediately.
 
-const SORT_ARC_PEAK = 36;
-const SORT_SWAP_DURATION = 0.45;
-const SORT_BETWEEN_MS = 100;
-const SORT_SAMPLES = 16;
+const SORT_ARC_PEAK = 32;
+const SORT_SWAP_DURATION = 0.28;
+const SORT_BETWEEN_MS = 50;
+const SORT_SAMPLES = 14;
 
 async function sortByPairwiseSwap(
 	step: Step,
@@ -176,20 +175,19 @@ async function sortByPairwiseSwap(
 	const n = beforeCells.length;
 	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
 
-	// Compute the selection-sort swap sequence on a copy of the values.
-	// Each swap is [slotA, slotB] where slotA < slotB at the time of the
-	// swap. The swap order is the order the animation will play them.
+	// Compute the insertion-sort ADJACENT swap sequence on a copy of the
+	// values. Each swap is [slot, slot+1] — cells exchange with their
+	// immediate neighbour, never jumping over intermediate slots.
 	const arr = [...values];
 	const swaps: Array<[number, number]> = [];
-	for (let i = 0; i < n - 1; i++) {
-		let bestIdx = i;
-		for (let j = i + 1; j < n; j++) {
-			const better = ascending ? arr[j] < arr[bestIdx] : arr[j] > arr[bestIdx];
-			if (better) bestIdx = j;
-		}
-		if (bestIdx !== i) {
-			swaps.push([i, bestIdx]);
-			[arr[i], arr[bestIdx]] = [arr[bestIdx], arr[i]];
+	for (let i = 1; i < n; i++) {
+		let j = i;
+		while (j > 0) {
+			const outOfOrder = ascending ? arr[j] < arr[j - 1] : arr[j] > arr[j - 1];
+			if (!outOfOrder) break;
+			swaps.push([j - 1, j]);
+			[arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
+			j--;
 		}
 	}
 
