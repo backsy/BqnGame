@@ -3,8 +3,12 @@ import type { FnExpr } from './fn-expr.js';
 import type { Step } from './step.js';
 import { valuesEqual } from './value.js';
 
-// ── Opaque brand — not exported, so no external code can construct a Trajectory literal ──
-declare const trajectoryBrand: unique symbol;
+// ── Opaque brand ─────────────────────────────────────────────────────────────
+// Real runtime Symbol — NOT `declare const`, which would compile to a
+// ReferenceError when used as a computed property key. The symbol is
+// module-private (not exported), so callers cannot reproduce the brand
+// and therefore cannot construct a Trajectory literal.
+const trajectoryBrand: unique symbol = Symbol('Trajectory');
 
 // Trajectory carries the chain anchor alongside the steps so that append
 // can apply the next StepInput without replaying history. This is the only
