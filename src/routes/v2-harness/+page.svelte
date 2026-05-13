@@ -149,12 +149,45 @@
 				return { kind: 'number', value: sum };
 			}
 			case 'take': {
-				// harness: 3⊸↑ — bind-left case won't reach here directly;
-				// the harness drives take with a bound-left fn
-				throw new Error('take: use bind-left wrapper in harness');
+				if (arity !== 'dyadic') throw new Error('take: dyadic only');
+				if (w === undefined || w.kind !== 'number') throw new Error('take: expected numeric w');
+				if (input.kind !== 'array' || input.shape.length !== 1) throw new Error('take: expected 1D array');
+				const n = w.value;
+				if (!Number.isInteger(n) || n < 0) throw new Error('take: expected non-negative integer w');
+				if (n > input.data.length) throw new Error('take: n exceeds array length (fill not modelled)');
+				return { kind: 'array', shape: [n], data: input.data.slice(0, n) };
+			}
+			case 'drop': {
+				if (arity !== 'dyadic') throw new Error('drop: dyadic only');
+				if (w === undefined || w.kind !== 'number') throw new Error('drop: expected numeric w');
+				if (input.kind !== 'array' || input.shape.length !== 1) throw new Error('drop: expected 1D array');
+				const n = w.value;
+				if (!Number.isInteger(n) || n < 0) throw new Error('drop: expected non-negative integer w');
+				if (n > input.data.length) throw new Error('drop: n exceeds array length');
+				const rest = input.data.slice(n);
+				return { kind: 'array', shape: [rest.length], data: rest };
+			}
+			case 'select': {
+				// Wired as the BQN filter operation M/X: w is a 0/1 mask of the
+				// same length as input.data. Each input cell whose mask entry is
+				// 1 is kept; 0 cells are discarded.
+				if (arity !== 'dyadic') throw new Error('select (M/X): dyadic only');
+				if (w === undefined || w.kind !== 'array' || w.shape.length !== 1)
+					throw new Error('select (M/X): expected 1D mask');
+				if (input.kind !== 'array' || input.shape.length !== 1)
+					throw new Error('select (M/X): expected 1D array');
+				if (w.data.length !== input.data.length)
+					throw new Error(`select (M/X): mask length ${w.data.length} does not match x length ${input.data.length}`);
+				const kept: BqnValue[] = [];
+				for (let i = 0; i < w.data.length; i++) {
+					const m = w.data[i];
+					if (m.kind !== 'number' || (m.value !== 0 && m.value !== 1))
+						throw new Error('select (M/X): mask entries must be 0 or 1');
+					if (m.value === 1) kept.push(input.data[i]);
+				}
+				return { kind: 'array', shape: [kept.length], data: kept };
 			}
 			case 'bind-left': {
-				if (fn.left.kind !== 'number') throw new Error('bind-left: expected number left');
 				return evalStep(input, fn.of, 'dyadic', fn.left);
 			}
 			default:
@@ -294,10 +327,26 @@
 		fn: FnExpr;
 		arity: 'monadic' | 'dyadic';
 		w?: BqnValue;
-		family: 'lateral' | 'blackBox';
+		family: 'lateral' | 'vertical' | 'blackBox';
+		// Optional builder: when present, called at click time with the
+		// current value to produce the resolved fn. Used by the filter op,
+		// whose mask depends on the current vector.
+		resolveFn?: (x: BqnValue) => FnExpr;
 	};
 
 	const W2: BqnValue = { kind: 'number', value: 2 };
+
+	// Build a 0/1 mask from a 1D number array using a predicate.
+	function maskFromPredicate(x: BqnValue, keep: (n: number) => boolean): BqnValue {
+		if (x.kind !== 'array' || x.shape.length !== 1) {
+			throw new Error('filter mask: expected 1D number array');
+		}
+		const data: BqnValue[] = x.data.map(v => {
+			if (v.kind !== 'number') throw new Error('filter mask: non-numeric element');
+			return { kind: 'number', value: keep(v.value) ? 1 : 0 };
+		});
+		return { kind: 'array', shape: [x.data.length], data };
+	}
 
 	const OPS: OpDesc[] = [
 		// lateral group
@@ -306,17 +355,37 @@
 		{ label: fnExprLabel({ kind: 'sort-down' }), fn: { kind: 'sort-down' }, arity: 'monadic', family: 'lateral' },
 		{ label: `2${fnExprLabel({ kind: 'rotate' })}`, fn: { kind: 'rotate' }, arity: 'dyadic', w: W2, family: 'lateral' },
 		{ label: fnExprLabel({ kind: 'transpose' }), fn: { kind: 'transpose' }, arity: 'monadic', family: 'lateral' },
+		// vertical group
+		{
+			label: `2${fnExprLabel({ kind: 'take' })}`,
+			fn: { kind: 'bind-left', left: { kind: 'number', value: 2 }, of: { kind: 'take' } },
+			arity: 'monadic',
+			family: 'vertical',
+		},
+		{
+			label: `2${fnExprLabel({ kind: 'drop' })}`,
+			fn: { kind: 'bind-left', left: { kind: 'number', value: 2 }, of: { kind: 'drop' } },
+			arity: 'monadic',
+			family: 'vertical',
+		},
+		{
+			// (x>2)/x — keep cells greater than 2. Mask is computed at click
+			// time from the current value, so the op adapts to any 1D vector.
+			label: `(>2)/`,
+			fn: { kind: 'bind-left', left: { kind: 'number', value: 0 }, of: { kind: 'select' } },
+			arity: 'monadic',
+			family: 'vertical',
+			resolveFn: (x: BqnValue): FnExpr => ({
+				kind: 'bind-left',
+				left: maskFromPredicate(x, n => n > 2),
+				of: { kind: 'select' },
+			}),
+		},
 		// blackBox group
 		{ label: fnExprLabel({ kind: 'range' }),     fn: { kind: 'range' },     arity: 'monadic', family: 'blackBox' },
 		{
 			label: `+${fnExprLabel({ kind: 'fold', over: { kind: 'add' } })}`,
 			fn: { kind: 'fold', over: { kind: 'add' } },
-			arity: 'monadic',
-			family: 'blackBox',
-		},
-		{
-			label: `3${fnExprLabel({ kind: 'take' })}`,
-			fn: { kind: 'bind-left', left: { kind: 'number', value: 3 }, of: { kind: 'take' } },
 			arity: 'monadic',
 			family: 'blackBox',
 		},
@@ -398,26 +467,48 @@
 	async function handleOp(op: OpDesc): Promise<void> {
 		if (!stage || playing) return;
 
+		// Resolve fn (filter and friends depend on current value).
+		let fn: FnExpr;
+		try {
+			fn = op.resolveFn ? op.resolveFn(currentValue) : op.fn;
+		} catch (e) {
+			statusMsg = `Cannot prepare op: ${String(e)}`;
+			return;
+		}
+
+		// If the op is a monadic-invocation bind-left wrapper, unwrap it to
+		// the inner dyadic operation. This keeps the animation dispatch on
+		// the inner fn kind (take / drop / select) rather than bind-left
+		// itself, which the v2 engine would route to blackBox.
+		let arity: 'monadic' | 'dyadic' = op.arity;
+		let w: BqnValue | undefined = op.w;
+		let fnForStep: FnExpr = fn;
+		if (arity === 'monadic' && fn.kind === 'bind-left') {
+			fnForStep = fn.of;
+			w = fn.left;
+			arity = 'dyadic';
+		}
+
 		let result: BqnValue;
 		try {
-			result = evalStep(currentValue, op.fn, op.arity, op.w);
+			result = evalStep(currentValue, fnForStep, arity, w);
 		} catch (e) {
 			statusMsg = `Cannot apply to current value: ${String(e)}`;
 			return;
 		}
 
 		let traj: Trajectory | TrajectoryError;
-		if (op.arity === 'monadic') {
+		if (arity === 'monadic') {
 			traj = trajectoryFrom(currentValue, [
-				{ kind: 'monadic', fn: op.fn, result },
+				{ kind: 'monadic', fn: fnForStep, result },
 			]);
 		} else {
-			if (op.w === undefined) {
+			if (w === undefined) {
 				statusMsg = 'Dyadic op missing w';
 				return;
 			}
 			traj = trajectoryFrom(currentValue, [
-				{ kind: 'dyadic', fn: op.fn, w: op.w, x: currentValue, result },
+				{ kind: 'dyadic', fn: fnForStep, w, x: currentValue, result },
 			]);
 		}
 
@@ -492,6 +583,23 @@
 					on:click={() => handleOp(op)}
 					disabled={playing}
 					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #7c6af7;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
+					title={op.fn.kind}
+				>
+					{op.label}
+				</button>
+			{/each}
+		</div>
+	</section>
+
+	<!-- Operation picker: vertical group -->
+	<section style="margin-bottom:0.8rem;">
+		<div style="font-size:0.75rem;color:#5fcc5f;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Vertical</div>
+		<div style="display:flex;flex-wrap:wrap;gap:6px;">
+			{#each OPS.filter(op => op.family === 'vertical') as op}
+				<button
+					on:click={() => handleOp(op)}
+					disabled={playing}
+					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #5fcc5f;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
 					title={op.fn.kind}
 				>
 					{op.label}

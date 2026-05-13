@@ -10,6 +10,11 @@ import {
 	rotateDyadic,
 	transposeMonadic,
 } from './motions/lateral.js';
+import {
+	takeDyadic,
+	dropDyadic,
+	filterDyadic,
+} from './motions/vertical.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
 const assignAnimation: AnimateStep = blackBox;
@@ -157,9 +162,9 @@ export function animateDyadic(fn: FnExpr): AnimateStep {
 		case 'length':                 return blackBox;
 		case 'shape':                  return blackBox;
 		case 'rank-of':                return blackBox;
-		case 'take':                   return blackBox;
-		case 'drop':                   return blackBox;
-		case 'select':                 return blackBox;
+		case 'take':                   return takeDyadic;
+		case 'drop':                   return dropDyadic;
+		case 'select':                 return filterDyadic; // TODO: clarify — M/X filter is wired here; ⊏ pick-by-index would be a separate motion
 		case 'pick':                   return blackBox;
 		case 'first':                  return blackBox;
 		case 'last':                   return blackBox;
