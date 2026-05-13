@@ -131,7 +131,7 @@
 				}
 				return { kind: 'array', shape: [cols, rows], data: newData };
 			}
-			// blackBox group — results that are obviously computable
+			// distributing group — scalar → many
 			case 'range': {
 				if (arity !== 'monadic') throw new Error('range: monadic only');
 				if (input.kind !== 'number') throw new Error('range: expected number');
@@ -141,6 +141,14 @@
 					shape: [n],
 					data: Array.from({ length: n }, (_, i) => ({ kind: 'number' as const, value: i })),
 				};
+			}
+			case 'enclose': {
+				if (arity !== 'monadic') throw new Error('enclose: monadic only');
+				// <x in BQN normally wraps any value in a length-1 unit
+				// array with shape ⟨⟩ (rank 0). For the harness we render it
+				// as a single-element 1D row so the distributing motion has
+				// a measurable target cell.
+				return { kind: 'array', shape: [1], data: [input] };
 			}
 			case 'add':
 			case 'sub':
@@ -479,12 +487,22 @@
 		return { kind: 'array', shape: [rows, cols], data: data.map(v => ({ kind: 'number', value: v })) };
 	}
 
+	function mkNum(v: number): BqnValue {
+		return { kind: 'number', value: v };
+	}
+
 	const STARTERS: Starter[] = [
 		{ label: '[3 1 4 1 5]', value: mkArr([3, 1, 4, 1, 5]) },
 		{ label: '[9 2 6 5 3]', value: mkArr([9, 2, 6, 5, 3]) },
 		{ label: '[1 2 3 4 5 6]', value: mkArr([1, 2, 3, 4, 5, 6]) },
 		{ label: '2×3 grid', value: mk2D(2, 3, [1, 2, 3, 4, 5, 6]) },
 		{ label: '[-3 1 -2 4]', value: mkArr([-3, 1, -2, 4]) },
+		// Scalar starters — the distributing family (↕, <) needs a single
+		// number as input. Each ↕N can be reached by mounting the matching
+		// scalar then tapping ↕.
+		{ label: '3', value: mkNum(3) },
+		{ label: '5', value: mkNum(5) },
+		{ label: '8', value: mkNum(8) },
 	];
 
 	// ── Op descriptors ───────────────────────────────────────────────────────
@@ -494,7 +512,7 @@
 		fn: FnExpr;
 		arity: 'monadic' | 'dyadic';
 		w?: BqnValue;
-		family: 'lateral' | 'vertical' | 'sizing' | 'merging' | 'blackBox';
+		family: 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'blackBox';
 	};
 
 	const W2: BqnValue = { kind: 'number', value: 2 };
@@ -573,8 +591,12 @@
 		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'add' } }), fn: { kind: 'scan', over: { kind: 'add' } }, arity: 'monadic', family: 'merging' },
 		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'sub' } }), fn: { kind: 'scan', over: { kind: 'sub' } }, arity: 'monadic', family: 'merging' },
 		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'max' } }), fn: { kind: 'scan', over: { kind: 'max' } }, arity: 'monadic', family: 'merging' },
-		// blackBox group
-		{ label: fnExprLabel({ kind: 'range' }),     fn: { kind: 'range' },     arity: 'monadic', family: 'blackBox' },
+		// distributing group — one cell spreads to many. ↕N counts out N
+		// indices (needs a scalar starter); <x wraps a scalar in a length-1
+		// array (also scalar input).
+		{ label: fnExprLabel({ kind: 'range' }),   fn: { kind: 'range' },   arity: 'monadic', family: 'distributing' },
+		{ label: fnExprLabel({ kind: 'enclose' }), fn: { kind: 'enclose' }, arity: 'monadic', family: 'distributing' },
+		// blackBox group (currently empty — every wired op has a hand-tuned motion)
 	];
 
 	// ── Stage implementation ──────────────────────────────────────────────────
@@ -831,6 +853,23 @@
 					on:click={() => handleOp(op)}
 					disabled={playing}
 					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #f7a86a;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
+					title={op.fn.kind}
+				>
+					{op.label}
+				</button>
+			{/each}
+		</div>
+	</section>
+
+	<!-- Operation picker: distributing group -->
+	<section style="margin-bottom:0.8rem;">
+		<div style="font-size:0.75rem;color:#d86af7;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Distributing</div>
+		<div style="display:flex;flex-wrap:wrap;gap:6px;">
+			{#each OPS.filter(op => op.family === 'distributing') as op}
+				<button
+					on:click={() => handleOp(op)}
+					disabled={playing}
+					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #d86af7;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
 					title={op.fn.kind}
 				>
 					{op.label}

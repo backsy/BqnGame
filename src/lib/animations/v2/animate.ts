@@ -34,6 +34,10 @@ import {
 	makeFoldMonadic,
 	makeScanMonadic,
 } from './motions/merging.js';
+import {
+	rangeMonadic,
+	encloseMonadic,
+} from './motions/distributing.js';
 import { fnExprLabel } from './fn-label.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
@@ -88,12 +92,12 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'pick':                   return blackBox;
 		case 'first':                  return blackBox;
 		case 'last':                   return blackBox;
-		case 'enclose':                return blackBox;
+		case 'enclose':                return encloseMonadic;
 		case 'merge':                  return blackBox;
 		case 'join-to':                return blackBox;
 		case 'pair':                   return blackBox;
 		case 'solo':                   return blackBox;
-		case 'range':                  return blackBox;
+		case 'range':                  return rangeMonadic;
 		case 'sort-up':                return sortUpMonadic;
 		case 'sort-down':              return sortDownMonadic;
 		case 'grade-up':               return blackBox;
