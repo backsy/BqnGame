@@ -2,10 +2,30 @@
 	import { onMount } from 'svelte';
 	import { play, trajectoryFrom, fnExprLabel, assertNever, setAnimationSpeed, getAnimationSpeed } from '$lib/animations/v2/index.js';
 	import type { Stage, BqnValue, Trajectory, TrajectoryError, FnExpr } from '$lib/animations/v2/index.js';
+	import { motionCoverage } from '$lib/animations/v2/coverage.js';
+
+	const coverage = motionCoverage();
 
 	// ── Small in-harness evaluator ───────────────────────────────────────────
 	// NOT in v2/. Handles only the operations the harness wires up.
 	// Throws for unsupported combinations; the harness won't call those.
+
+	// Pick a binary op function for the operand of a fold/scan modifier.
+	// Returns null when the operand isn't one of the simple arithmetic
+	// primitives covered by the merging motion family — caller surfaces a
+	// clean error message.
+	function pickMergeBinOp(kind: string): ((a: number, b: number) => number) | null {
+		switch (kind) {
+			case 'add': return (a, b) => a + b;
+			case 'sub': return (a, b) => a - b;
+			case 'mul': return (a, b) => a * b;
+			case 'div': return (a, b) => a / b;
+			case 'mod': return (a, b) => (a === 0 ? b : ((b % a) + a) % a);
+			case 'min': return (a, b) => Math.min(a, b);
+			case 'max': return (a, b) => Math.max(a, b);
+			default:    return null;
+		}
+	}
 
 	// BQN-correct sort: sorts the MAJOR-axis cells. For a vector, that's
 	// the individual elements; for a matrix, the rows (compared lex).
@@ -202,14 +222,60 @@
 			}
 			case 'fold': {
 				if (arity !== 'monadic') throw new Error('fold: monadic only');
-				// Only support +´ here
-				if (fn.over.kind !== 'add') throw new Error('fold: only +´ supported in harness');
 				if (input.kind !== 'array') throw new Error('fold: expected array');
-				const sum = input.data.reduce((acc, v) => {
+				// Supported operand set mirrors the merging motion family:
+				// add, sub, mul, div, mod, min, max. Pow is omitted because
+				// the visual gets noisy fast.
+				const binOp = pickMergeBinOp(fn.over.kind);
+				if (binOp === null) {
+					throw new Error(`fold: unsupported operand "${fn.over.kind}" — supported: add, sub, mul, div, mod, min, max`);
+				}
+				// Right-fold semantics:
+				//   F´[a b c d] ≡ a F (b F (c F d))
+				// Computed from the right: acc = data[N-1], then for
+				// i from N-2 down to 0, acc = binOp(data[i], acc). For
+				// commutative ops (+, ×, ⌊, ⌈) this is identical to a
+				// left-fold; for non-commutative (-, ÷, |) the direction is
+				// load-bearing.
+				const nums: number[] = [];
+				for (const v of input.data) {
 					if (v.kind !== 'number') throw new Error('fold: non-numeric element');
-					return acc + v.value;
-				}, 0);
-				return { kind: 'number', value: sum };
+					nums.push(v.value);
+				}
+				if (nums.length === 0) throw new Error('fold: empty array (no identity wired)');
+				let acc = nums[nums.length - 1];
+				for (let i = nums.length - 2; i >= 0; i--) {
+					acc = binOp(nums[i], acc);
+				}
+				return { kind: 'number', value: acc };
+			}
+			case 'scan': {
+				if (arity !== 'monadic') throw new Error('scan: monadic only');
+				if (input.kind !== 'array' || input.shape.length !== 1) {
+					throw new Error('scan: expected 1D array');
+				}
+				const binOp = pickMergeBinOp(fn.over.kind);
+				if (binOp === null) {
+					throw new Error(`scan: unsupported operand "${fn.over.kind}" — supported: add, sub, mul, div, mod, min, max`);
+				}
+				const nums: number[] = [];
+				for (const v of input.data) {
+					if (v.kind !== 'number') throw new Error('scan: non-numeric element');
+					nums.push(v.value);
+				}
+				// BQN F` is LEFT-to-right associative:
+				//   result[0] = data[0]
+				//   result[i] = binOp(result[i-1], data[i])
+				const out: BqnValue[] = [];
+				if (nums.length > 0) {
+					let acc = nums[0];
+					out.push({ kind: 'number', value: acc });
+					for (let i = 1; i < nums.length; i++) {
+						acc = binOp(acc, nums[i]);
+						out.push({ kind: 'number', value: acc });
+					}
+				}
+				return { kind: 'array', shape: [nums.length], data: out };
 			}
 			case 'take': {
 				if (arity !== 'dyadic') throw new Error('take: dyadic only');
@@ -428,7 +494,7 @@
 		fn: FnExpr;
 		arity: 'monadic' | 'dyadic';
 		w?: BqnValue;
-		family: 'lateral' | 'vertical' | 'sizing' | 'blackBox';
+		family: 'lateral' | 'vertical' | 'sizing' | 'merging' | 'blackBox';
 	};
 
 	const W2: BqnValue = { kind: 'number', value: 2 };
@@ -495,14 +561,20 @@
 		// monadic per-cell
 		{ label: fnExprLabel({ kind: 'neg' }), fn: { kind: 'neg' }, arity: 'monadic', family: 'sizing' },
 		{ label: fnExprLabel({ kind: 'abs' }), fn: { kind: 'abs' }, arity: 'monadic', family: 'sizing' },
+		// merging group — fold (F´) and scan (F`). The label comes straight
+		// from fnExprLabel which renders e.g. `{ kind: 'fold', over: add }`
+		// as `+´`. Right-fold direction is enforced in the evaluator and the
+		// motion; non-commutative ops show their associativity through the
+		// rightmost-pair-first merge sequence.
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'add' } }), fn: { kind: 'fold', over: { kind: 'add' } }, arity: 'monadic', family: 'merging' },
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'sub' } }), fn: { kind: 'fold', over: { kind: 'sub' } }, arity: 'monadic', family: 'merging' },
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'mul' } }), fn: { kind: 'fold', over: { kind: 'mul' } }, arity: 'monadic', family: 'merging' },
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'max' } }), fn: { kind: 'fold', over: { kind: 'max' } }, arity: 'monadic', family: 'merging' },
+		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'add' } }), fn: { kind: 'scan', over: { kind: 'add' } }, arity: 'monadic', family: 'merging' },
+		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'sub' } }), fn: { kind: 'scan', over: { kind: 'sub' } }, arity: 'monadic', family: 'merging' },
+		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'max' } }), fn: { kind: 'scan', over: { kind: 'max' } }, arity: 'monadic', family: 'merging' },
 		// blackBox group
 		{ label: fnExprLabel({ kind: 'range' }),     fn: { kind: 'range' },     arity: 'monadic', family: 'blackBox' },
-		{
-			label: `+${fnExprLabel({ kind: 'fold', over: { kind: 'add' } })}`,
-			fn: { kind: 'fold', over: { kind: 'add' } },
-			arity: 'monadic',
-			family: 'blackBox',
-		},
 	];
 
 	// ── Stage implementation ──────────────────────────────────────────────────
@@ -659,7 +731,15 @@
 </svelte:head>
 
 <main style="padding:1rem;font-family:sans-serif;background:#0d0d1a;min-height:100vh;color:#e0e0ff;max-width:480px;margin:0 auto;">
-	<h1 style="font-size:1.1rem;margin-bottom:1rem;color:#a89cf7;">v2 Animation Harness</h1>
+	<div style="display:flex;align-items:baseline;justify-content:space-between;gap:0.6rem;margin-bottom:1rem;">
+		<h1 style="font-size:1.1rem;margin:0;color:#a89cf7;">v2 Animation Harness</h1>
+		<span
+			title="FnExpr kinds with at least one hand-tuned motion (vs blackBox)"
+			style="font-size:0.7rem;color:#a89cf7;background:rgba(168,156,247,0.12);padding:0.18rem 0.5rem;border-radius:10px;font-variant-numeric:tabular-nums;border:1px solid rgba(168,156,247,0.3);letter-spacing:0.02em;"
+		>
+			{coverage.animated}/{coverage.total} · {coverage.percent}%
+		</span>
+	</div>
 
 	<!-- Starter picker -->
 	<section style="margin-bottom:1rem;">
@@ -717,6 +797,23 @@
 					on:click={() => handleOp(op)}
 					disabled={playing}
 					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #5fcc5f;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
+					title={op.fn.kind}
+				>
+					{op.label}
+				</button>
+			{/each}
+		</div>
+	</section>
+
+	<!-- Operation picker: merging group -->
+	<section style="margin-bottom:0.8rem;">
+		<div style="font-size:0.75rem;color:#6af7d8;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Merging</div>
+		<div style="display:flex;flex-wrap:wrap;gap:6px;">
+			{#each OPS.filter(op => op.family === 'merging') as op}
+				<button
+					on:click={() => handleOp(op)}
+					disabled={playing}
+					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #6af7d8;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
 					title={op.fn.kind}
 				>
 					{op.label}

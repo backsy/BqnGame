@@ -30,6 +30,10 @@ import {
 	floorMonadic,
 	ceilMonadic,
 } from './motions/sizing.js';
+import {
+	makeFoldMonadic,
+	makeScanMonadic,
+} from './motions/merging.js';
 import { fnExprLabel } from './fn-label.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
@@ -104,9 +108,9 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'left-id':                return blackBox;
 		case 'right-id':               return blackBox;
 		// 1-modifier applications
-		case 'fold':                   return blackBox;
+		case 'fold':                   return makeFoldMonadic(fn.over);
 		case 'fold-from':              return blackBox;
-		case 'scan':                   return blackBox;
+		case 'scan':                   return makeScanMonadic(fn.over);
 		case 'each':                   return blackBox;
 		case 'cells':                  return blackBox;
 		case 'table':                  return blackBox;
