@@ -16,6 +16,20 @@ import {
 	filterDyadic,
 	makeFilterWithLabel,
 } from './motions/vertical.js';
+import {
+	addDyadic,
+	subDyadic,
+	mulDyadic,
+	divDyadic,
+	powDyadic,
+	modDyadic,
+	minDyadic,
+	maxDyadic,
+	negMonadic,
+	absMonadic,
+	floorMonadic,
+	ceilMonadic,
+} from './motions/sizing.js';
 import { fnExprLabel } from './fn-label.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
@@ -37,10 +51,10 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'mod':                    return blackBox;
 		case 'min':                    return blackBox;
 		case 'max':                    return blackBox;
-		case 'floor':                  return blackBox;
-		case 'ceil':                   return blackBox;
-		case 'abs':                    return blackBox;
-		case 'neg':                    return blackBox;
+		case 'floor':                  return floorMonadic;
+		case 'ceil':                   return ceilMonadic;
+		case 'abs':                    return absMonadic;
+		case 'neg':                    return negMonadic;
 		// Comparison
 		case 'eq':                     return blackBox;
 		case 'ne':                     return blackBox;
@@ -136,15 +150,15 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 export function animateDyadic(fn: FnExpr): AnimateStep {
 	switch (fn.kind) {
 		// Arithmetic
-		case 'add':                    return blackBox;
-		case 'sub':                    return blackBox;
-		case 'mul':                    return blackBox;
-		case 'div':                    return blackBox;
-		case 'pow':                    return blackBox;
+		case 'add':                    return addDyadic;
+		case 'sub':                    return subDyadic;
+		case 'mul':                    return mulDyadic;
+		case 'div':                    return divDyadic;
+		case 'pow':                    return powDyadic;
 		case 'root':                   return blackBox;
-		case 'mod':                    return blackBox;
-		case 'min':                    return blackBox;
-		case 'max':                    return blackBox;
+		case 'mod':                    return modDyadic;
+		case 'min':                    return minDyadic;
+		case 'max':                    return maxDyadic;
 		case 'floor':                  return blackBox;
 		case 'ceil':                   return blackBox;
 		case 'abs':                    return blackBox;

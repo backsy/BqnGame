@@ -122,17 +122,63 @@
 					data: Array.from({ length: n }, (_, i) => ({ kind: 'number' as const, value: i })),
 				};
 			}
-			case 'add': {
-				if (arity !== 'dyadic') throw new Error('add: dyadic only');
+			case 'add':
+			case 'sub':
+			case 'mul':
+			case 'div':
+			case 'pow':
+			case 'mod':
+			case 'min':
+			case 'max': {
+				if (arity !== 'dyadic') throw new Error(`${fn.kind}: dyadic only`);
 				if (w === undefined || w.kind !== 'number' || input.kind !== 'array')
-					throw new Error('add: expected number w and array x');
+					throw new Error(`${fn.kind}: expected number w and array x`);
 				const wValue = w.value;
+				// BQN modulus is W|X: W is the modulus, X the dividend. The
+				// result has the sign of W and lies in [0, |W|) — handled by
+				// the standard math: ((x % w) + w) % w.
+				const apply = (xv: number): number => {
+					switch (fn.kind) {
+						case 'add': return wValue + xv;
+						case 'sub': return wValue - xv;
+						case 'mul': return wValue * xv;
+						case 'div': return wValue / xv;
+						case 'pow': return Math.pow(wValue, xv);
+						case 'mod': return wValue === 0 ? xv : ((xv % wValue) + wValue) % wValue;
+						case 'min': return Math.min(wValue, xv);
+						case 'max': return Math.max(wValue, xv);
+					}
+				};
 				return {
 					kind: 'array',
 					shape: input.shape,
 					data: input.data.map(v =>
 						v.kind === 'number'
-							? { kind: 'number' as const, value: v.value + wValue }
+							? { kind: 'number' as const, value: apply(v.value) }
+							: v,
+					),
+				};
+			}
+			case 'neg':
+			case 'abs':
+			case 'floor':
+			case 'ceil': {
+				if (arity !== 'monadic') throw new Error(`${fn.kind}: monadic only`);
+				if (input.kind !== 'array') throw new Error(`${fn.kind}: expected array`);
+				const apply = (xv: number): number => {
+					switch (fn.kind) {
+						case 'neg': return -xv;
+						case 'abs': return Math.abs(xv);
+						case 'floor': return Math.floor(xv);
+						case 'ceil': return Math.ceil(xv);
+					}
+				};
+				return {
+					kind: 'array',
+					shape: input.shape,
+					data: input.data.map(v =>
+						v.kind === 'number'
+							? { kind: 'number' as const, value: apply(v.value) }
 							: v,
 					),
 				};
@@ -365,7 +411,7 @@
 		fn: FnExpr;
 		arity: 'monadic' | 'dyadic';
 		w?: BqnValue;
-		family: 'lateral' | 'vertical' | 'blackBox';
+		family: 'lateral' | 'vertical' | 'sizing' | 'blackBox';
 	};
 
 	const W2: BqnValue = { kind: 'number', value: 2 };
@@ -408,6 +454,16 @@
 		{ label: stripBindPlumbing(fnExprLabel(TAKE2)), fn: TAKE2, arity: 'monadic', family: 'vertical' },
 		{ label: stripBindPlumbing(fnExprLabel(DROP2)), fn: DROP2, arity: 'monadic', family: 'vertical' },
 		{ label: `(>2)/`, fn: FILTER_GT2, arity: 'monadic', family: 'vertical' },
+		// sizing group — per-cell arithmetic. Dyadics show as `2<glyph>`
+		// because W=2 is bound on the left; mirrors the existing `2+` convention.
+		{ label: `2${fnExprLabel({ kind: 'add' })}`, fn: { kind: 'add' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: `2${fnExprLabel({ kind: 'sub' })}`, fn: { kind: 'sub' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: `2${fnExprLabel({ kind: 'mul' })}`, fn: { kind: 'mul' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: `2${fnExprLabel({ kind: 'div' })}`, fn: { kind: 'div' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: `3${fnExprLabel({ kind: 'mod' })}`, fn: { kind: 'mod' }, arity: 'dyadic', w: { kind: 'number', value: 3 }, family: 'sizing' },
+		// monadic per-cell
+		{ label: fnExprLabel({ kind: 'neg' }), fn: { kind: 'neg' }, arity: 'monadic', family: 'sizing' },
+		{ label: fnExprLabel({ kind: 'abs' }), fn: { kind: 'abs' }, arity: 'monadic', family: 'sizing' },
 		// blackBox group
 		{ label: fnExprLabel({ kind: 'range' }),     fn: { kind: 'range' },     arity: 'monadic', family: 'blackBox' },
 		{
@@ -621,6 +677,23 @@
 					on:click={() => handleOp(op)}
 					disabled={playing}
 					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #5fcc5f;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
+					title={op.fn.kind}
+				>
+					{op.label}
+				</button>
+			{/each}
+		</div>
+	</section>
+
+	<!-- Operation picker: sizing group -->
+	<section style="margin-bottom:0.8rem;">
+		<div style="font-size:0.75rem;color:#f7a86a;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Sizing</div>
+		<div style="display:flex;flex-wrap:wrap;gap:6px;">
+			{#each OPS.filter(op => op.family === 'sizing') as op}
+				<button
+					on:click={() => handleOp(op)}
+					disabled={playing}
+					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #f7a86a;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
 					title={op.fn.kind}
 				>
 					{op.label}
