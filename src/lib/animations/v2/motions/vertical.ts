@@ -1,5 +1,7 @@
 import { animate } from 'motion';
 import type { AnimateStep } from '../stage.js';
+import type { Step } from '../step.js';
+import { valuesEqual } from '../value.js';
 import { blackBox } from './black-box.js';
 import { scaled, scaledMs } from '../speed.js';
 
@@ -296,16 +298,18 @@ export const dropDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Prom
 	beforeRoot.style.opacity = '0';
 };
 
-// ── filterDyadic ──────────────────────────────────────────────────────────
-// M/X: each cell of X gets a predicate badge ("M=1" / "M=0") matching its
-// mask entry, the badges flip into a verdict mark (✓ for pass, ✗ for fail),
-// fails drop with their badges, and passes slide to the measured post-commit
-// destinations.
+// ── filter motion ─────────────────────────────────────────────────────────
+// Each cell of X gets a predicate badge (e.g. ">⟜2") above it. The badges
+// flip into a verdict mark (✓ for pass, ✗ for fail) — that flip is what
+// reveals the predicate's truth value per cell. Fails drop with their badges,
+// passes slide to the measured post-commit destinations.
 //
-// TODO: clarify — wired against the 'select' FnExpr kind because there is
-// no 'replicate' kind in the current model; "filter" in BQN is M/X which is
-// not the same operation as ⊏ (select / pick-by-index). The naming is muddy
-// at the FnExpr level; that is tracked separately.
+// Two entry shapes feed this motion:
+//   - Monadic (F⊸G) X where G = / (select): the mask is implicit — derived
+//     from the order-preserving correspondence between step.x and step.result.
+//     The predicate label is whatever the harness passes via makeFilterWithLabel.
+//   - Dyadic M/X: step.w IS the 0/1 mask. No predicate string is available
+//     so the badge falls back to the generic "M" label.
 
 const FILTER_BADGE_DURATION = 0.4;
 const FILTER_BADGE_STAGGER = 0.04;
@@ -342,18 +346,55 @@ function createFilterBadge(text: string): HTMLElement {
 	return badge;
 }
 
-export const filterDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
-	if (step.kind !== 'dyadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'array' || step.x.shape.length !== 1) return blackBox(step, beforeRoot, afterRoot);
-	if (step.w.kind !== 'array' || step.w.shape.length !== 1) return blackBox(step, beforeRoot, afterRoot);
-	if (step.w.data.length !== step.x.data.length) return blackBox(step, beforeRoot, afterRoot);
+// Derive the implicit mask from step.x (input vector) and step.result
+// (filtered output). Filter preserves order — walk x with a cursor k into
+// result; mark mask[i]=1 if x[i] equals result[k] (advance k), else 0.
+// Returns null if the data shapes don't agree.
+function deriveMaskFromBeforeStep(step: Step): number[] | null {
+	if (step.kind !== 'monadic') return null;
+	if (step.x.kind !== 'array' || step.x.shape.length !== 1) return null;
+	if (step.result.kind !== 'array' || step.result.shape.length !== 1) return null;
+	const xData = step.x.data;
+	const rData = step.result.data;
+	const mask: number[] = new Array(xData.length).fill(0);
+	let k = 0;
+	for (let i = 0; i < xData.length; i++) {
+		if (k < rData.length && valuesEqual(xData[i], rData[k])) {
+			mask[i] = 1;
+			k++;
+		}
+	}
+	if (k !== rData.length) return null;
+	return mask;
+}
 
+function deriveMaskFromDyadicStep(step: Step): number[] | null {
+	if (step.kind !== 'dyadic') return null;
+	if (step.x.kind !== 'array' || step.x.shape.length !== 1) return null;
+	if (step.w.kind !== 'array' || step.w.shape.length !== 1) return null;
+	if (step.w.data.length !== step.x.data.length) return null;
 	const mask: number[] = [];
 	for (const m of step.w.data) {
-		if (m.kind !== 'number') return blackBox(step, beforeRoot, afterRoot);
-		if (m.value !== 0 && m.value !== 1) return blackBox(step, beforeRoot, afterRoot);
+		if (m.kind !== 'number') return null;
+		if (m.value !== 0 && m.value !== 1) return null;
 		mask.push(m.value);
 	}
+	return mask;
+}
+
+async function runFilterMotion(
+	step: Step,
+	beforeRoot: HTMLElement,
+	afterRoot: HTMLElement,
+	label: string,
+): Promise<void> {
+	const mask =
+		step.kind === 'monadic'
+			? deriveMaskFromBeforeStep(step)
+			: step.kind === 'dyadic'
+				? deriveMaskFromDyadicStep(step)
+				: null;
+	if (mask === null) return blackBox(step, beforeRoot, afterRoot);
 
 	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
 	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
@@ -376,12 +417,12 @@ export const filterDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 
 	for (const cell of beforeCells) cell.style.position = 'relative';
 
-	// Phase 1: a predicate badge ("M=1" / "M=0") above every cell, scaled in
-	// with a staggered delay so the row reads as a sequence.
+	// Phase 1: the same predicate badge above EVERY cell. Staggered scale-in
+	// makes the row read as a sequence; the badge text is the predicate the
+	// player just tapped, not the per-cell verdict.
 	const badges: HTMLElement[] = [];
 	for (let i = 0; i < beforeCells.length; i++) {
-		const text = mask[i] === 1 ? 'M=1' : 'M=0';
-		const badge = createFilterBadge(text);
+		const badge = createFilterBadge(label);
 		beforeCells[i].appendChild(badge);
 		badges.push(badge);
 	}
@@ -480,4 +521,15 @@ export const filterDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
 	beforeRoot.style.opacity = '0';
-};
+}
+
+// Dyadic select (M/X) — used when select is dispatched directly without a
+// 'before' wrapper. No predicate string is available so the badge reads 'M'.
+export const filterDyadic: AnimateStep = (step, beforeRoot, afterRoot) =>
+	runFilterMotion(step, beforeRoot, afterRoot, 'M');
+
+// Factory for the monadic (F⊸/) X path — captures the predicate label
+// derived from fnExprLabel(F) at dispatch time.
+export function makeFilterWithLabel(label: string): AnimateStep {
+	return (step, beforeRoot, afterRoot) => runFilterMotion(step, beforeRoot, afterRoot, label);
+}

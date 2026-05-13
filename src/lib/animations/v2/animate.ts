@@ -14,7 +14,9 @@ import {
 	takeDyadic,
 	dropDyadic,
 	filterDyadic,
+	makeFilterWithLabel,
 } from './motions/vertical.js';
+import { fnExprLabel } from './fn-label.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
 const assignAnimation: AnimateStep = blackBox;
@@ -101,7 +103,10 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'over':                   return blackBox;
 		case 'bind-left':              return blackBox;
 		case 'bind-right':             return blackBox;
-		case 'before':                 return blackBox;
+		case 'before':
+			// (F⊸G) X — when G is 'select', this is the filter motion with a
+			// predicate label derived from F. Other G's fall through to blackBox.
+			return fn.g.kind === 'select' ? makeFilterWithLabel(fnExprLabel(fn.f)) : blackBox;
 		case 'after':                  return blackBox;
 		case 'under':                  return blackBox;
 		case 'choose':                 return blackBox;

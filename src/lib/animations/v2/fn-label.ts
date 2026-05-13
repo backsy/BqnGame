@@ -12,9 +12,21 @@ function isBqnValue(v: FnExpr | BqnValue): v is BqnValue {
 function tineLabel(v: FnExpr | BqnValue): string {
 	if (isBqnValue(v)) {
 		if (v.kind === 'fn') return fnExprLabel(v.def);
-		return '·';
+		return valueLabel(v);
 	}
 	return fnExprLabel(v);
+}
+
+// Short readable rendering of a BqnValue for use inside an FnExpr label.
+// Numbers print as the number; small arrays as BQN strand form ⟨a‿b‿c⟩;
+// other variants collapse to ·.
+function valueLabel(v: BqnValue): string {
+	if (v.kind === 'number') return String(v.value);
+	if (v.kind === 'array' && v.shape.length === 1 && v.data.length <= 5) {
+		const parts = v.data.map(d => (d.kind === 'number' ? String(d.value) : '·'));
+		return '⟨' + parts.join('‿') + '⟩';
+	}
+	return '·';
 }
 
 // BQN glyph map for base primitives (monadic glyph shown; most glyphs are
@@ -184,8 +196,8 @@ export function fnExprLabel(fn: FnExpr): string {
 		// ── 2-modifier applications: F∘G F○G etc. ────────────────────────────
 		case 'compose':   return fnExprLabel(fn.f) + MOD2_GLYPH['compose'] + fnExprLabel(fn.g);
 		case 'over':      return fnExprLabel(fn.f) + MOD2_GLYPH['over']    + fnExprLabel(fn.g);
-		case 'bind-left': return fnExprLabel(fn.of) + MOD2_GLYPH['bind-left'];
-		case 'bind-right': return fnExprLabel(fn.of) + MOD2_GLYPH['bind-right'];
+		case 'bind-left': return valueLabel(fn.left) + MOD2_GLYPH['bind-left'] + fnExprLabel(fn.of);
+		case 'bind-right': return fnExprLabel(fn.of) + MOD2_GLYPH['bind-right'] + valueLabel(fn.right);
 		case 'before':    return fnExprLabel(fn.f) + MOD2_GLYPH['before'] + fnExprLabel(fn.g);
 		case 'after':     return fnExprLabel(fn.f) + MOD2_GLYPH['after']  + fnExprLabel(fn.g);
 		case 'under':     return fnExprLabel(fn.f) + MOD2_GLYPH['under']  + fnExprLabel(fn.g);

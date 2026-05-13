@@ -190,6 +190,44 @@
 			case 'bind-left': {
 				return evalStep(input, fn.of, 'dyadic', fn.left);
 			}
+			case 'bind-right': {
+				// (F⟜N) X ≡ X F N — dyadic call with w = X, x = N.
+				return evalStep(fn.right, fn.of, 'dyadic', input);
+			}
+			case 'before': {
+				// (F⊸G) X ≡ (F X) G X — apply F monadically to X, then call G
+				// dyadically with the result as W and X as X.
+				if (arity !== 'monadic') throw new Error('before: monadic only');
+				const mask = evalStep(input, fn.f, 'monadic');
+				return evalStep(input, fn.g, 'dyadic', mask);
+			}
+			case 'gt': {
+				// Dyadic W > X with scalar-array broadcasting. Returns a 0/1
+				// array shaped like the array argument; or a 0/1 scalar when
+				// both args are scalar.
+				if (arity !== 'dyadic') throw new Error('gt: dyadic only');
+				if (w === undefined) throw new Error('gt: expected w');
+				if (w.kind === 'number' && input.kind === 'number') {
+					return { kind: 'number', value: w.value > input.value ? 1 : 0 };
+				}
+				if (w.kind === 'array' && input.kind === 'number') {
+					const xv = input.value;
+					const data: BqnValue[] = w.data.map(v => {
+						if (v.kind !== 'number') throw new Error('gt: non-numeric element');
+						return { kind: 'number' as const, value: v.value > xv ? 1 : 0 };
+					});
+					return { kind: 'array', shape: w.shape, data };
+				}
+				if (w.kind === 'number' && input.kind === 'array') {
+					const wv = w.value;
+					const data: BqnValue[] = input.data.map(v => {
+						if (v.kind !== 'number') throw new Error('gt: non-numeric element');
+						return { kind: 'number' as const, value: wv > v.value ? 1 : 0 };
+					});
+					return { kind: 'array', shape: input.shape, data };
+				}
+				throw new Error('gt: unsupported argument shapes');
+			}
 			default:
 				throw new Error(`evalStep: unsupported fn kind "${fn.kind}" in harness`);
 		}
@@ -328,25 +366,36 @@
 		arity: 'monadic' | 'dyadic';
 		w?: BqnValue;
 		family: 'lateral' | 'vertical' | 'blackBox';
-		// Optional builder: when present, called at click time with the
-		// current value to produce the resolved fn. Used by the filter op,
-		// whose mask depends on the current vector.
-		resolveFn?: (x: BqnValue) => FnExpr;
 	};
 
 	const W2: BqnValue = { kind: 'number', value: 2 };
 
-	// Build a 0/1 mask from a 1D number array using a predicate.
-	function maskFromPredicate(x: BqnValue, keep: (n: number) => boolean): BqnValue {
-		if (x.kind !== 'array' || x.shape.length !== 1) {
-			throw new Error('filter mask: expected 1D number array');
-		}
-		const data: BqnValue[] = x.data.map(v => {
-			if (v.kind !== 'number') throw new Error('filter mask: non-numeric element');
-			return { kind: 'number', value: keep(v.value) ? 1 : 0 };
-		});
-		return { kind: 'array', shape: [x.data.length], data };
+	// Strip the bind-plumbing glyphs (⊸ / ⟜) from a label produced by
+	// fnExprLabel so buttons read in their natural BQN form: `2⊸↑` → `2↑`,
+	// `>⟜2` → `>2`. The plumbing only exists so we can call dyadic ops with
+	// one argument at the rune layer (see CLAUDE.md invariant 6).
+	function stripBindPlumbing(s: string): string {
+		return s.replace(/⊸/g, '').replace(/⟜/g, '');
 	}
+
+	// (>2)/X — keep elements of X that are greater than 2. As a real BQN
+	// expression this is `(>⟜2)⊸/`, i.e. `before` with f = `>⟜2` (bind-right
+	// gt by 2) and g = `/` (select / filter). The animation engine sees the
+	// 'before' kind and renders the predicate `fnExprLabel(f)` = ">⟜2" on
+	// every cell during Phase 1 of the filter motion.
+	const GT2_PRED: FnExpr = {
+		kind: 'bind-right',
+		right: { kind: 'number', value: 2 },
+		of: { kind: 'gt' },
+	};
+	const FILTER_GT2: FnExpr = {
+		kind: 'before',
+		f: GT2_PRED,
+		g: { kind: 'select' },
+	};
+
+	const TAKE2: FnExpr = { kind: 'bind-left', left: W2, of: { kind: 'take' } };
+	const DROP2: FnExpr = { kind: 'bind-left', left: W2, of: { kind: 'drop' } };
 
 	const OPS: OpDesc[] = [
 		// lateral group
@@ -356,31 +405,9 @@
 		{ label: `2${fnExprLabel({ kind: 'rotate' })}`, fn: { kind: 'rotate' }, arity: 'dyadic', w: W2, family: 'lateral' },
 		{ label: fnExprLabel({ kind: 'transpose' }), fn: { kind: 'transpose' }, arity: 'monadic', family: 'lateral' },
 		// vertical group
-		{
-			label: `2${fnExprLabel({ kind: 'take' })}`,
-			fn: { kind: 'bind-left', left: { kind: 'number', value: 2 }, of: { kind: 'take' } },
-			arity: 'monadic',
-			family: 'vertical',
-		},
-		{
-			label: `2${fnExprLabel({ kind: 'drop' })}`,
-			fn: { kind: 'bind-left', left: { kind: 'number', value: 2 }, of: { kind: 'drop' } },
-			arity: 'monadic',
-			family: 'vertical',
-		},
-		{
-			// (x>2)/x — keep cells greater than 2. Mask is computed at click
-			// time from the current value, so the op adapts to any 1D vector.
-			label: `(>2)/`,
-			fn: { kind: 'bind-left', left: { kind: 'number', value: 0 }, of: { kind: 'select' } },
-			arity: 'monadic',
-			family: 'vertical',
-			resolveFn: (x: BqnValue): FnExpr => ({
-				kind: 'bind-left',
-				left: maskFromPredicate(x, n => n > 2),
-				of: { kind: 'select' },
-			}),
-		},
+		{ label: stripBindPlumbing(fnExprLabel(TAKE2)), fn: TAKE2, arity: 'monadic', family: 'vertical' },
+		{ label: stripBindPlumbing(fnExprLabel(DROP2)), fn: DROP2, arity: 'monadic', family: 'vertical' },
+		{ label: `(>2)/`, fn: FILTER_GT2, arity: 'monadic', family: 'vertical' },
 		// blackBox group
 		{ label: fnExprLabel({ kind: 'range' }),     fn: { kind: 'range' },     arity: 'monadic', family: 'blackBox' },
 		{
@@ -467,19 +494,13 @@
 	async function handleOp(op: OpDesc): Promise<void> {
 		if (!stage || playing) return;
 
-		// Resolve fn (filter and friends depend on current value).
-		let fn: FnExpr;
-		try {
-			fn = op.resolveFn ? op.resolveFn(currentValue) : op.fn;
-		} catch (e) {
-			statusMsg = `Cannot prepare op: ${String(e)}`;
-			return;
-		}
+		const fn: FnExpr = op.fn;
 
-		// If the op is a monadic-invocation bind-left wrapper, unwrap it to
-		// the inner dyadic operation. This keeps the animation dispatch on
-		// the inner fn kind (take / drop / select) rather than bind-left
-		// itself, which the v2 engine would route to blackBox.
+		// Unwrap a monadic-invocation bind-left wrapper to the inner dyadic
+		// operation so the v2 engine dispatches on the operation kind
+		// (take / drop) rather than on bind-left, which routes to blackBox.
+		// Other monadic wrappers (notably 'before') keep their outer kind so
+		// animateMonadic can route on them.
 		let arity: 'monadic' | 'dyadic' = op.arity;
 		let w: BqnValue | undefined = op.w;
 		let fnForStep: FnExpr = fn;
