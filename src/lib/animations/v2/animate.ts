@@ -38,6 +38,14 @@ import {
 	rangeMonadic,
 	encloseMonadic,
 } from './motions/distributing.js';
+import {
+	eqDyadic,
+	neDyadic,
+	ltDyadic,
+	leDyadic,
+	gtDyadic,
+	geDyadic,
+} from './motions/comparison.js';
 import { fnExprLabel } from './fn-label.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
@@ -172,12 +180,12 @@ export function animateDyadic(fn: FnExpr): AnimateStep {
 		case 'abs':                    return blackBox;
 		case 'neg':                    return blackBox;
 		// Comparison
-		case 'eq':                     return blackBox;
-		case 'ne':                     return blackBox;
-		case 'lt':                     return blackBox;
-		case 'le':                     return blackBox;
-		case 'gt':                     return blackBox;
-		case 'ge':                     return blackBox;
+		case 'eq':                     return eqDyadic;
+		case 'ne':                     return neDyadic;
+		case 'lt':                     return ltDyadic;
+		case 'le':                     return leDyadic;
+		case 'gt':                     return gtDyadic;
+		case 'ge':                     return geDyadic;
 		case 'match':                  return blackBox;
 		case 'not-match':              return blackBox;
 		// Logical

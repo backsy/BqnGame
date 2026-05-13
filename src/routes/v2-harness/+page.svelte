@@ -338,32 +338,48 @@
 				const mask = evalStep(input, fn.f, 'monadic');
 				return evalStep(input, fn.g, 'dyadic', mask);
 			}
-			case 'gt': {
-				// Dyadic W > X with scalar-array broadcasting. Returns a 0/1
+			case 'eq':
+			case 'ne':
+			case 'lt':
+			case 'le':
+			case 'gt':
+			case 'ge': {
+				// Dyadic W F X with scalar-array broadcasting. Returns a 0/1
 				// array shaped like the array argument; or a 0/1 scalar when
-				// both args are scalar.
-				if (arity !== 'dyadic') throw new Error('gt: dyadic only');
-				if (w === undefined) throw new Error('gt: expected w');
+				// both args are scalar. Operand order is load-bearing — `2>3`
+				// is 0 while `3>2` is 1; the same applies to <, ≤, ≥.
+				if (arity !== 'dyadic') throw new Error(`${fn.kind}: dyadic only`);
+				if (w === undefined) throw new Error(`${fn.kind}: expected w`);
+				const apply = (wv: number, xv: number): number => {
+					switch (fn.kind) {
+						case 'eq': return wv === xv ? 1 : 0;
+						case 'ne': return wv !== xv ? 1 : 0;
+						case 'lt': return wv < xv ? 1 : 0;
+						case 'le': return wv <= xv ? 1 : 0;
+						case 'gt': return wv > xv ? 1 : 0;
+						case 'ge': return wv >= xv ? 1 : 0;
+					}
+				};
 				if (w.kind === 'number' && input.kind === 'number') {
-					return { kind: 'number', value: w.value > input.value ? 1 : 0 };
-				}
-				if (w.kind === 'array' && input.kind === 'number') {
-					const xv = input.value;
-					const data: BqnValue[] = w.data.map(v => {
-						if (v.kind !== 'number') throw new Error('gt: non-numeric element');
-						return { kind: 'number' as const, value: v.value > xv ? 1 : 0 };
-					});
-					return { kind: 'array', shape: w.shape, data };
+					return { kind: 'number', value: apply(w.value, input.value) };
 				}
 				if (w.kind === 'number' && input.kind === 'array') {
 					const wv = w.value;
 					const data: BqnValue[] = input.data.map(v => {
-						if (v.kind !== 'number') throw new Error('gt: non-numeric element');
-						return { kind: 'number' as const, value: wv > v.value ? 1 : 0 };
+						if (v.kind !== 'number') throw new Error(`${fn.kind}: non-numeric element`);
+						return { kind: 'number' as const, value: apply(wv, v.value) };
 					});
 					return { kind: 'array', shape: input.shape, data };
 				}
-				throw new Error('gt: unsupported argument shapes');
+				if (w.kind === 'array' && input.kind === 'number') {
+					const xv = input.value;
+					const data: BqnValue[] = w.data.map(v => {
+						if (v.kind !== 'number') throw new Error(`${fn.kind}: non-numeric element`);
+						return { kind: 'number' as const, value: apply(v.value, xv) };
+					});
+					return { kind: 'array', shape: w.shape, data };
+				}
+				throw new Error(`${fn.kind}: unsupported argument shapes`);
 			}
 			default:
 				throw new Error(`evalStep: unsupported fn kind "${fn.kind}" in harness`);
@@ -507,7 +523,7 @@
 
 	// ── Op descriptors ───────────────────────────────────────────────────────
 
-	type Family = 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'blackBox';
+	type Family = 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'comparison' | 'blackBox';
 
 	type OpDesc = {
 		label: string;
@@ -527,6 +543,7 @@
 		{ key: 'merging',      label: 'Merging',      color: '#6af7d8', btnColor: '#e0e0ff' },
 		{ key: 'sizing',       label: 'Sizing',       color: '#f7a86a', btnColor: '#e0e0ff' },
 		{ key: 'distributing', label: 'Distributing', color: '#d86af7', btnColor: '#e0e0ff' },
+		{ key: 'comparison',   label: 'Comparison',   color: '#f76a8a', btnColor: '#e0e0ff' },
 		{ key: 'blackBox',     label: 'Black-box',    color: '#555',    btnColor: '#a0a0b0' },
 	];
 
@@ -538,7 +555,8 @@
 		vertical: false,
 		sizing: false,
 		merging: false,
-		distributing: true,
+		distributing: false,
+		comparison: true,
 		blackBox: false,
 	};
 
@@ -582,6 +600,15 @@
 	// and the per-cell op becomes `cell - 2` / `cell ÷ 2`.
 	const SUB_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'sub' } };
 	const DIV_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'div' } };
+
+	// Comparison ops bound on the RIGHT — `>⟜2` reads "X > 2" per cell, so
+	// the stripped badge label is ">2". The bind-left forms (`2>`, `2=`, …)
+	// are direct dyadic ops with the scalar on the W side. The two are NOT
+	// the same operation: `2>X` is `X<2` (true where cell is less than 2)
+	// while `X>2` is true where cell is greater than 2.
+	const EQ_TO2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'eq' } };
+	const GT_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'gt' } };
+	const LT_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'lt' } };
 
 	const OPS: OpDesc[] = [
 		// lateral group
@@ -627,6 +654,16 @@
 		// array (also scalar input).
 		{ label: fnExprLabel({ kind: 'range' }),   fn: { kind: 'range' },   arity: 'monadic', family: 'distributing' },
 		{ label: fnExprLabel({ kind: 'enclose' }), fn: { kind: 'enclose' }, arity: 'monadic', family: 'distributing' },
+		// comparison group — per-cell W F X with one scalar side. Bind-left
+		// (`2=`, `2>`, `2<`) reads "2 F cell"; bind-right (`=2`, `>2`, `<2`,
+		// via F⟜2) reads "cell F 2". Operand order matters: `2>X` and `X>2`
+		// produce different masks. Tap them back-to-back to see the flip.
+		{ label: `2${fnExprLabel({ kind: 'eq' })}`, fn: { kind: 'eq' }, arity: 'dyadic', w: W2, family: 'comparison' },
+		{ label: `2${fnExprLabel({ kind: 'gt' })}`, fn: { kind: 'gt' }, arity: 'dyadic', w: W2, family: 'comparison' },
+		{ label: `2${fnExprLabel({ kind: 'lt' })}`, fn: { kind: 'lt' }, arity: 'dyadic', w: W2, family: 'comparison' },
+		{ label: stripBindPlumbing(fnExprLabel(EQ_TO2)), fn: EQ_TO2, arity: 'monadic', family: 'comparison' },
+		{ label: stripBindPlumbing(fnExprLabel(GT_BY2)), fn: GT_BY2, arity: 'monadic', family: 'comparison' },
+		{ label: stripBindPlumbing(fnExprLabel(LT_BY2)), fn: LT_BY2, arity: 'monadic', family: 'comparison' },
 		// blackBox group (currently empty — every wired op has a hand-tuned motion)
 	];
 
