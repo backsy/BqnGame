@@ -131,33 +131,50 @@
 			case 'min':
 			case 'max': {
 				if (arity !== 'dyadic') throw new Error(`${fn.kind}: dyadic only`);
-				if (w === undefined || w.kind !== 'number' || input.kind !== 'array')
-					throw new Error(`${fn.kind}: expected number w and array x`);
-				const wValue = w.value;
-				// BQN modulus is W|X: W is the modulus, X the dividend. The
-				// result has the sign of W and lies in [0, |W|) — handled by
-				// the standard math: ((x % w) + w) % w.
-				const apply = (xv: number): number => {
+				if (w === undefined) throw new Error(`${fn.kind}: expected w`);
+				// Apply preserves BQN's W F X order — never swap operands.
+				// Modulus is W|X with the result having sign of W and lying
+				// in [0, |W|); ((x % w) + w) % w handles negative cases.
+				const apply = (wv: number, xv: number): number => {
 					switch (fn.kind) {
-						case 'add': return wValue + xv;
-						case 'sub': return wValue - xv;
-						case 'mul': return wValue * xv;
-						case 'div': return wValue / xv;
-						case 'pow': return Math.pow(wValue, xv);
-						case 'mod': return wValue === 0 ? xv : ((xv % wValue) + wValue) % wValue;
-						case 'min': return Math.min(wValue, xv);
-						case 'max': return Math.max(wValue, xv);
+						case 'add': return wv + xv;
+						case 'sub': return wv - xv;
+						case 'mul': return wv * xv;
+						case 'div': return wv / xv;
+						case 'pow': return Math.pow(wv, xv);
+						case 'mod': return wv === 0 ? xv : ((xv % wv) + wv) % wv;
+						case 'min': return Math.min(wv, xv);
+						case 'max': return Math.max(wv, xv);
 					}
 				};
-				return {
-					kind: 'array',
-					shape: input.shape,
-					data: input.data.map(v =>
-						v.kind === 'number'
-							? { kind: 'number' as const, value: apply(v.value) }
-							: v,
-					),
-				};
+				// Scalar+array broadcast (either direction). Both directions
+				// preserve BQN's W F X ordering — only which side carries the
+				// array changes.
+				if (w.kind === 'number' && input.kind === 'array') {
+					const wv = w.value;
+					return {
+						kind: 'array',
+						shape: input.shape,
+						data: input.data.map(v =>
+							v.kind === 'number'
+								? { kind: 'number' as const, value: apply(wv, v.value) }
+								: v,
+						),
+					};
+				}
+				if (w.kind === 'array' && input.kind === 'number') {
+					const xv = input.value;
+					return {
+						kind: 'array',
+						shape: w.shape,
+						data: w.data.map(v =>
+							v.kind === 'number'
+								? { kind: 'number' as const, value: apply(v.value, xv) }
+								: v,
+						),
+					};
+				}
+				throw new Error(`${fn.kind}: expected one scalar and one array`);
 			}
 			case 'neg':
 			case 'abs':
@@ -443,6 +460,14 @@
 	const TAKE2: FnExpr = { kind: 'bind-left', left: W2, of: { kind: 'take' } };
 	const DROP2: FnExpr = { kind: 'bind-left', left: W2, of: { kind: 'drop' } };
 
+	// Non-commutative arithmetic in BQN reads `W F X` — so `2-X` means
+	// "two minus X" and flips sign when X > 2. To get the more intuitive
+	// "subtract 2 from each cell" / "divide each by 2", bind the scalar
+	// on the RIGHT (`-⟜2`, `÷⟜2`); the stripped label reads `-2`, `÷2`
+	// and the per-cell op becomes `cell - 2` / `cell ÷ 2`.
+	const SUB_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'sub' } };
+	const DIV_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'div' } };
+
 	const OPS: OpDesc[] = [
 		// lateral group
 		{ label: fnExprLabel({ kind: 'reverse' }),   fn: { kind: 'reverse' },   arity: 'monadic', family: 'lateral' },
@@ -454,12 +479,15 @@
 		{ label: stripBindPlumbing(fnExprLabel(TAKE2)), fn: TAKE2, arity: 'monadic', family: 'vertical' },
 		{ label: stripBindPlumbing(fnExprLabel(DROP2)), fn: DROP2, arity: 'monadic', family: 'vertical' },
 		{ label: `(>2)/`, fn: FILTER_GT2, arity: 'monadic', family: 'vertical' },
-		// sizing group — per-cell arithmetic. Dyadics show as `2<glyph>`
-		// because W=2 is bound on the left; mirrors the existing `2+` convention.
+		// sizing group — per-cell arithmetic. Commutative ops (`+`, `×`) and
+		// ops whose `W F X` reading is the natural one (`3|X` = "X mod 3")
+		// use bind-LEFT and read as `2+`, `2×`, `3|`. Non-commutative ops
+		// (`-`, `÷`) use bind-RIGHT so the per-cell reading is intuitive:
+		// `-2` means "subtract 2 from each", `÷2` means "divide each by 2".
 		{ label: `2${fnExprLabel({ kind: 'add' })}`, fn: { kind: 'add' }, arity: 'dyadic', w: W2, family: 'sizing' },
-		{ label: `2${fnExprLabel({ kind: 'sub' })}`, fn: { kind: 'sub' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: stripBindPlumbing(fnExprLabel(SUB_BY2)), fn: SUB_BY2, arity: 'monadic', family: 'sizing' },
 		{ label: `2${fnExprLabel({ kind: 'mul' })}`, fn: { kind: 'mul' }, arity: 'dyadic', w: W2, family: 'sizing' },
-		{ label: `2${fnExprLabel({ kind: 'div' })}`, fn: { kind: 'div' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: stripBindPlumbing(fnExprLabel(DIV_BY2)), fn: DIV_BY2, arity: 'monadic', family: 'sizing' },
 		{ label: `3${fnExprLabel({ kind: 'mod' })}`, fn: { kind: 'mod' }, arity: 'dyadic', w: { kind: 'number', value: 3 }, family: 'sizing' },
 		// monadic per-cell
 		{ label: fnExprLabel({ kind: 'neg' }), fn: { kind: 'neg' }, arity: 'monadic', family: 'sizing' },
@@ -552,23 +580,32 @@
 
 		const fn: FnExpr = op.fn;
 
-		// Unwrap a monadic-invocation bind-left wrapper to the inner dyadic
+		// Unwrap monadic bind-{left,right} wrappers to the inner dyadic
 		// operation so the v2 engine dispatches on the operation kind
-		// (take / drop) rather than on bind-left, which routes to blackBox.
-		// Other monadic wrappers (notably 'before') keep their outer kind so
-		// animateMonadic can route on them.
+		// (take / drop / sub / div ...) rather than on the bind wrapper,
+		// which routes to blackBox. Other monadic wrappers (notably
+		// 'before') keep their outer kind so animateMonadic can route them.
+		//
+		// bind-left  (N⊸F):  W = N (bound), X = currentValue.
+		// bind-right (F⟜N):  W = currentValue, X = N (bound).
 		let arity: 'monadic' | 'dyadic' = op.arity;
 		let w: BqnValue | undefined = op.w;
+		let xForStep: BqnValue = currentValue;
 		let fnForStep: FnExpr = fn;
 		if (arity === 'monadic' && fn.kind === 'bind-left') {
 			fnForStep = fn.of;
 			w = fn.left;
 			arity = 'dyadic';
+		} else if (arity === 'monadic' && fn.kind === 'bind-right') {
+			fnForStep = fn.of;
+			w = currentValue;
+			xForStep = fn.right;
+			arity = 'dyadic';
 		}
 
 		let result: BqnValue;
 		try {
-			result = evalStep(currentValue, fnForStep, arity, w);
+			result = evalStep(xForStep, fnForStep, arity, w);
 		} catch (e) {
 			statusMsg = `Cannot apply to current value: ${String(e)}`;
 			return;
@@ -585,7 +622,7 @@
 				return;
 			}
 			traj = trajectoryFrom(currentValue, [
-				{ kind: 'dyadic', fn: fnForStep, w, x: currentValue, result },
+				{ kind: 'dyadic', fn: fnForStep, w, x: xForStep, result },
 			]);
 		}
 

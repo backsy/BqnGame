@@ -88,13 +88,15 @@ async function runSizingMotion(
 	afterRoot: HTMLElement,
 	label: string,
 ): Promise<void> {
-	const beforeValue: BqnValue =
-		step.kind === 'monadic' ? step.x
-		: step.kind === 'dyadic' ? step.x
-		: { kind: 'number', value: 0 };
 	if (step.kind !== 'monadic' && step.kind !== 'dyadic') {
 		return blackBox(step, beforeRoot, afterRoot);
 	}
+	// The array side is what the cells render. For monadic it's always X;
+	// for dyadic it can be either W (bind-right form) or X (bind-left form).
+	const beforeValue: BqnValue =
+		step.kind === 'monadic' ? step.x
+		: step.w.kind === 'array' ? step.w
+		: step.x;
 
 	const beforeNums = numericCells(beforeValue);
 	const afterNums = numericCells(step.result);
@@ -254,17 +256,24 @@ export function monadicSizing(opLabel: string): AnimateStep {
 		runSizingMotion(step, beforeRoot, afterRoot, opLabel);
 }
 
-// Dyadic per-cell arithmetic exports. Each captures its operator glyph; the
-// scalar value comes from step.w at render time and is composed into the
-// badge label by the dispatcher in animate.ts.
+// Dyadic per-cell arithmetic. The array can be on EITHER side:
+//   - W scalar, X array — BQN's `2-X`. Per-cell op reads `2-cell`. Badge
+//     puts the scalar BEFORE the glyph: "2-".
+//   - W array, X scalar — BQN's `X-2` written as `-⟜2`. Per-cell op reads
+//     `cell-2`. Badge puts the scalar AFTER the glyph: "-2".
+// Operand-order matters for non-commutative ops; the label reflects the
+// position of the bound scalar so the badge reads as the actual per-cell
+// expression. Array+array falls through to blackBox.
 function dyadicWithW(glyph: string): AnimateStep {
 	return (step, beforeRoot, afterRoot) => {
 		if (step.kind !== 'dyadic') return blackBox(step, beforeRoot, afterRoot);
-		const w = step.w;
-		// Compose the label using the actual scalar W. Array+array would
-		// need a different motion (per-cell parallel labels), so fall through.
-		if (w.kind !== 'number') return blackBox(step, beforeRoot, afterRoot);
-		return runSizingMotion(step, beforeRoot, afterRoot, `${glyph}${w.value}`);
+		if (step.w.kind === 'number' && step.x.kind === 'array') {
+			return runSizingMotion(step, beforeRoot, afterRoot, `${step.w.value}${glyph}`);
+		}
+		if (step.w.kind === 'array' && step.x.kind === 'number') {
+			return runSizingMotion(step, beforeRoot, afterRoot, `${glyph}${step.x.value}`);
+		}
+		return blackBox(step, beforeRoot, afterRoot);
 	};
 }
 
