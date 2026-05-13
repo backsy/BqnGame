@@ -507,13 +507,44 @@
 
 	// ── Op descriptors ───────────────────────────────────────────────────────
 
+	type Family = 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'blackBox';
+
 	type OpDesc = {
 		label: string;
 		fn: FnExpr;
 		arity: 'monadic' | 'dyadic';
 		w?: BqnValue;
-		family: 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'blackBox';
+		family: Family;
 	};
+
+	// Section ordering + accent colour per family. Buttons in each section
+	// pick up the colour for their border; the family header also uses it.
+	// Black-box gets a muted accent because it's the "no hand-tuned motion"
+	// catch-all, not a phase.
+	const FAMILIES: Array<{ key: Family; label: string; color: string; btnColor: string }> = [
+		{ key: 'lateral',      label: 'Lateral',      color: '#7c6af7', btnColor: '#e0e0ff' },
+		{ key: 'vertical',     label: 'Vertical',     color: '#5fcc5f', btnColor: '#e0e0ff' },
+		{ key: 'merging',      label: 'Merging',      color: '#6af7d8', btnColor: '#e0e0ff' },
+		{ key: 'sizing',       label: 'Sizing',       color: '#f7a86a', btnColor: '#e0e0ff' },
+		{ key: 'distributing', label: 'Distributing', color: '#d86af7', btnColor: '#e0e0ff' },
+		{ key: 'blackBox',     label: 'Black-box',    color: '#555',    btnColor: '#a0a0b0' },
+	];
+
+	// Collapsed by default — the page already runs out of vertical room on
+	// a phone with all sections open. Distributing (newest family) starts
+	// open so a fresh visit has something to tap; user can toggle any.
+	let familyOpen: Record<Family, boolean> = {
+		lateral: false,
+		vertical: false,
+		sizing: false,
+		merging: false,
+		distributing: true,
+		blackBox: false,
+	};
+
+	function toggleFamily(key: Family): void {
+		familyOpen[key] = !familyOpen[key];
+	}
 
 	const W2: BqnValue = { kind: 'number', value: 2 };
 
@@ -793,107 +824,35 @@
 		<p style="font-size:0.8rem;color:#f76a6a;margin-bottom:0.8rem;">{statusMsg}</p>
 	{/if}
 
-	<!-- Operation picker: lateral group -->
-	<section style="margin-bottom:0.8rem;">
-		<div style="font-size:0.75rem;color:#7c6af7;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Lateral</div>
-		<div style="display:flex;flex-wrap:wrap;gap:6px;">
-			{#each OPS.filter(op => op.family === 'lateral') as op}
-				<button
-					on:click={() => handleOp(op)}
-					disabled={playing}
-					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #7c6af7;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
-					title={op.fn.kind}
-				>
-					{op.label}
-				</button>
-			{/each}
-		</div>
-	</section>
-
-	<!-- Operation picker: vertical group -->
-	<section style="margin-bottom:0.8rem;">
-		<div style="font-size:0.75rem;color:#5fcc5f;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Vertical</div>
-		<div style="display:flex;flex-wrap:wrap;gap:6px;">
-			{#each OPS.filter(op => op.family === 'vertical') as op}
-				<button
-					on:click={() => handleOp(op)}
-					disabled={playing}
-					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #5fcc5f;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
-					title={op.fn.kind}
-				>
-					{op.label}
-				</button>
-			{/each}
-		</div>
-	</section>
-
-	<!-- Operation picker: merging group -->
-	<section style="margin-bottom:0.8rem;">
-		<div style="font-size:0.75rem;color:#6af7d8;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Merging</div>
-		<div style="display:flex;flex-wrap:wrap;gap:6px;">
-			{#each OPS.filter(op => op.family === 'merging') as op}
-				<button
-					on:click={() => handleOp(op)}
-					disabled={playing}
-					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #6af7d8;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
-					title={op.fn.kind}
-				>
-					{op.label}
-				</button>
-			{/each}
-		</div>
-	</section>
-
-	<!-- Operation picker: sizing group -->
-	<section style="margin-bottom:0.8rem;">
-		<div style="font-size:0.75rem;color:#f7a86a;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Sizing</div>
-		<div style="display:flex;flex-wrap:wrap;gap:6px;">
-			{#each OPS.filter(op => op.family === 'sizing') as op}
-				<button
-					on:click={() => handleOp(op)}
-					disabled={playing}
-					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #f7a86a;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
-					title={op.fn.kind}
-				>
-					{op.label}
-				</button>
-			{/each}
-		</div>
-	</section>
-
-	<!-- Operation picker: distributing group -->
-	<section style="margin-bottom:0.8rem;">
-		<div style="font-size:0.75rem;color:#d86af7;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Distributing</div>
-		<div style="display:flex;flex-wrap:wrap;gap:6px;">
-			{#each OPS.filter(op => op.family === 'distributing') as op}
-				<button
-					on:click={() => handleOp(op)}
-					disabled={playing}
-					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#e0e0ff;border:1px solid #d86af7;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
-					title={op.fn.kind}
-				>
-					{op.label}
-				</button>
-			{/each}
-		</div>
-	</section>
-
-	<!-- Operation picker: blackBox group -->
-	<section style="margin-bottom:1rem;">
-		<div style="font-size:0.75rem;color:#555;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Black-box</div>
-		<div style="display:flex;flex-wrap:wrap;gap:6px;">
-			{#each OPS.filter(op => op.family === 'blackBox') as op}
-				<button
-					on:click={() => handleOp(op)}
-					disabled={playing}
-					style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:#a0a0b0;border:1px solid #333;border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
-					title={op.fn.kind}
-				>
-					{op.label}
-				</button>
-			{/each}
-		</div>
-	</section>
+	<!-- Operation picker: collapsible per-family sections. Each header is a
+	     toggle; the body shows the family's buttons when open. -->
+	{#each FAMILIES as fam}
+		{@const ops = OPS.filter(op => op.family === fam.key)}
+		<section style="margin-bottom:0.5rem;">
+			<button
+				on:click={() => toggleFamily(fam.key)}
+				style="background:transparent;border:none;color:{fam.color};font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;padding:0.2rem 0;margin-bottom:0.3rem;cursor:pointer;display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;font-family:inherit;"
+			>
+				<span style="opacity:0.65;width:0.8rem;display:inline-block;">{familyOpen[fam.key] ? '▾' : '▸'}</span>
+				<span>{fam.label}</span>
+				<span style="opacity:0.45;font-size:0.7rem;">{ops.length}</span>
+			</button>
+			{#if familyOpen[fam.key]}
+				<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:0.5rem;">
+					{#each ops as op}
+						<button
+							on:click={() => handleOp(op)}
+							disabled={playing}
+							style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:{fam.btnColor};border:1px solid {fam.color};border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
+							title={op.fn.kind}
+						>
+							{op.label}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</section>
+	{/each}
 
 	<!-- Speed + reset row -->
 	<div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
