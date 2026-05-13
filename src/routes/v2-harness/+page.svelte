@@ -479,14 +479,17 @@
 		{ label: stripBindPlumbing(fnExprLabel(TAKE2)), fn: TAKE2, arity: 'monadic', family: 'vertical' },
 		{ label: stripBindPlumbing(fnExprLabel(DROP2)), fn: DROP2, arity: 'monadic', family: 'vertical' },
 		{ label: `(>2)/`, fn: FILTER_GT2, arity: 'monadic', family: 'vertical' },
-		// sizing group — per-cell arithmetic. Commutative ops (`+`, `×`) and
-		// ops whose `W F X` reading is the natural one (`3|X` = "X mod 3")
-		// use bind-LEFT and read as `2+`, `2×`, `3|`. Non-commutative ops
-		// (`-`, `÷`) use bind-RIGHT so the per-cell reading is intuitive:
-		// `-2` means "subtract 2 from each", `÷2` means "divide each by 2".
+		// sizing group — per-cell arithmetic. Non-commutative ops appear in
+		// BOTH bind-left and bind-right forms because operand order is
+		// load-bearing in BQN: `2-X` is "two minus each cell" (flips sign
+		// when X > 2); `X-2` written `-⟜2` is "subtract 2 from each cell".
+		// Tap them back-to-back and the badge position + colour-flip make
+		// the difference visible.
 		{ label: `2${fnExprLabel({ kind: 'add' })}`, fn: { kind: 'add' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: `2${fnExprLabel({ kind: 'sub' })}`, fn: { kind: 'sub' }, arity: 'dyadic', w: W2, family: 'sizing' },
 		{ label: stripBindPlumbing(fnExprLabel(SUB_BY2)), fn: SUB_BY2, arity: 'monadic', family: 'sizing' },
 		{ label: `2${fnExprLabel({ kind: 'mul' })}`, fn: { kind: 'mul' }, arity: 'dyadic', w: W2, family: 'sizing' },
+		{ label: `2${fnExprLabel({ kind: 'div' })}`, fn: { kind: 'div' }, arity: 'dyadic', w: W2, family: 'sizing' },
 		{ label: stripBindPlumbing(fnExprLabel(DIV_BY2)), fn: DIV_BY2, arity: 'monadic', family: 'sizing' },
 		{ label: `3${fnExprLabel({ kind: 'mod' })}`, fn: { kind: 'mod' }, arity: 'dyadic', w: { kind: 'number', value: 3 }, family: 'sizing' },
 		// monadic per-cell
