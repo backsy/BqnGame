@@ -496,7 +496,17 @@
 	function renderBqnValue(value: BqnValue): HTMLElement {
 		switch (value.kind) {
 			case 'number': {
-				return makeBar(value.value);
+				// Wrap the bar in a row container so a scalar renders with the
+				// same structure as a 1D array (row > bar). Motions iterate
+				// root.children and operate on bars; if the root WERE the bar
+				// itself, that iteration would land on the numeric span inside
+				// the bar — wrong target, visible as a "floating box" plus a
+				// teleport at handoff.
+				const row = document.createElement('div');
+				row.className = 'row';
+				row.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
+				row.appendChild(makeBar(value.value));
+				return row;
 			}
 			case 'array': {
 				const is1D = value.shape.length === 1 && value.data.every(v => v.kind === 'number');
