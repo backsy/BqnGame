@@ -676,44 +676,40 @@ export const rankOfMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 
 // ── pairDyadic ────────────────────────────────────────────────────────────
 // W⋈X — pair two values into a length-2 array. In the harness this is
-// reached via `bind-left` (W⊸⋈) so X is on stage as the current value and
+// reached via `bind-left` (W⊸⋈), so X is on stage as the current value and
 // W is the bound scalar.
 //
-// Visual: X is already rendered in beforeRoot; the bound W doesn't have a
-// pre-existing on-stage representation, so we synthesise a "ghost" W bar
-// that flies in from above beforeRoot. W and X then settle into the two
-// post-commit positions (the length-2 result row) side-by-side. The result
-// reads as "these two values, paired."
+// Visual: W slides in from off-screen LEFT (bind-left → comes from the left
+// of the row) directly to its final post-commit slot. In parallel, X glides
+// from its current centred position to its final slot to the right of W.
+// No hover, no overlap mid-flight — the gesture is one continuous "W joins
+// X from the left to form a pair."
 //
 // Falls through to blackBox when either side is not a scalar — a non-scalar
-// X would produce a nested ⟨1, ⟨a b c⟩⟩ output the harness can't render.
+// X would produce a nested ⟨W, ⟨a b c⟩⟩ output the harness can't render.
 
-const PAIR_GHOST_LIFT_PX = 60;
-const PAIR_GHOST_IN_DURATION = 0.4;
-const PAIR_GHOST_HOLD_MS = 140;
+const PAIR_OFFSCREEN_OFFSET_PX = 120;
+const PAIR_BAR_WIDTH = 24;
 const PAIR_SETTLE_DURATION = 0.5;
 const PAIR_POST_HOLD_MS = 220;
 
-// Build a ghost bar matching the style of the harness's makeBar() so the
-// flying-in W reads as the same visual class as the existing X. We don't
-// import makeBar (Rule A — no imports from outside v2/) — instead we
-// approximate with a div carrying the same height heuristic. Pixel-exact
-// landing comes from gliding to afterRect[0]'s position, not from matching
-// makeBar exactly.
-function createWGhost(value: number, rect: DOMRect): HTMLElement {
+// Build a single-bar W ghost matching the harness's makeBar() style. Width
+// is fixed at PAIR_BAR_WIDTH (a single bar slot) so the ghost reads as a
+// single value, not as a row.
+function createWGhost(value: number): HTMLElement {
 	const ghost = document.createElement('div');
 	const color = value < 0 ? '#f76a6a' : '#7c6af7';
 	const h = Math.min(140, Math.abs(value) * 8 + 18);
 	Object.assign(ghost.style, {
 		position: 'fixed',
-		left: `${rect.left + rect.width / 2}px`,
-		top: `${rect.top + rect.height / 2}px`,
-		width: `${Math.max(rect.width, 24)}px`,
+		left: '0px',
+		top: '0px',
+		width: `${PAIR_BAR_WIDTH}px`,
 		height: `${h}px`,
 		background: color,
 		borderRadius: '3px',
 		boxShadow: '0 0 12px rgba(124, 106, 247, 0.4)',
-		transform: `translate(-50%, calc(-50% - ${PAIR_GHOST_LIFT_PX}px)) scale(0.6)`,
+		transform: 'translate(-50%, -50%)',
 		opacity: '0',
 		zIndex: '10',
 		pointerEvents: 'none',
@@ -749,6 +745,13 @@ export const pairDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Prom
 	const afterRectW = afterCells[0].getBoundingClientRect();
 	const afterRectX = afterCells[1].getBoundingClientRect();
 
+	const wTargetCx = afterRectW.left + afterRectW.width / 2;
+	const wTargetCy = afterRectW.top + afterRectW.height / 2;
+	const xTargetCx = afterRectX.left + afterRectX.width / 2;
+	const xTargetCy = afterRectX.top + afterRectX.height / 2;
+	const xCx = xRect.left + xRect.width / 2;
+	const xCy = xRect.top + xRect.height / 2;
+
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
@@ -756,67 +759,42 @@ export const pairDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Prom
 	beforeRoot.style.position = beforeRoot.style.position || 'relative';
 	beforeRoot.style.zIndex = '5';
 
-	// Phase 1: synthesise the W ghost above beforeRoot's centre and fly it
-	// down to its natural-rest position (centred above X). The ghost flies
-	// from a lifted-and-shrunk start to a settled hover so the user sees
-	// W "arrive from off-stage."
-	const wGhost = createWGhost(step.w.value, xRect);
+	// Spawn the ghost at the OFF-LEFT origin (well to the left of W's final
+	// slot), invisible. Then in one motion: ghost fades in and slides right
+	// to its final slot; X glides from centre to its final slot. They arrive
+	// together as the length-2 pair.
+	const wStartCx = wTargetCx - PAIR_OFFSCREEN_OFFSET_PX;
+	const wStartCy = wTargetCy;
+
+	const wGhost = createWGhost(step.w.value);
 	document.body.appendChild(wGhost);
 
-	await animate(
-		wGhost,
-		{
-			opacity: [0, 1],
-			transform: [
-				`translate(-50%, calc(-50% - ${PAIR_GHOST_LIFT_PX}px)) scale(0.6)`,
-				'translate(-50%, -50%) scale(1)',
-			],
-		},
-		{ duration: scaled(PAIR_GHOST_IN_DURATION), ease: [0.34, 1.56, 0.64, 1] },
-	).finished;
-	await _delayMs(scaledMs(PAIR_GHOST_HOLD_MS));
-
-	// Phase 2: glide W ghost to afterCells[0] and X (beforeRoot) to
-	// afterCells[1]. Both end at the measured post-commit positions, so
-	// the after-cell handoff is pixel-exact.
-	const xCx = xRect.left + xRect.width / 2;
-	const xCy = xRect.top + xRect.height / 2;
-	const wTargetCx = afterRectW.left + afterRectW.width / 2;
-	const wTargetCy = afterRectW.top + afterRectW.height / 2;
-	const xTargetCx = afterRectX.left + afterRectX.width / 2;
-	const xTargetCy = afterRectX.top + afterRectX.height / 2;
-
-	// Ghost's current viewport-anchored position is (xCx, xCy); animate
-	// its left/top to the target. Use motion's left/top via style strings —
-	// motion supports them on position:fixed elements.
-	const wMoveTasks: Promise<unknown>[] = [];
-	wMoveTasks.push(
+	const moveTasks: Promise<unknown>[] = [];
+	moveTasks.push(
 		animate(
 			wGhost,
 			{
-				left: [`${xCx}px`, `${wTargetCx}px`],
-				top: [`${xCy}px`, `${wTargetCy}px`],
+				opacity: [0, 1, 1],
+				left: [`${wStartCx}px`, `${wTargetCx}px`],
+				top: [`${wStartCy}px`, `${wTargetCy}px`],
 			},
 			{ duration: scaled(PAIR_SETTLE_DURATION), ease: [0.22, 1, 0.36, 1] },
 		).finished,
 	);
-
-	const xDx = xTargetCx - xCx;
-	const xDy = xTargetCy - xCy;
-	wMoveTasks.push(
+	moveTasks.push(
 		animate(
 			beforeRoot,
-			{ x: xDx, y: xDy },
+			{ x: xTargetCx - xCx, y: xTargetCy - xCy },
 			{ duration: scaled(PAIR_SETTLE_DURATION), ease: [0.22, 1, 0.36, 1] },
 		).finished,
 	);
 
-	await Promise.all(wMoveTasks);
+	await Promise.all(moveTasks);
 	await _delayMs(scaledMs(PAIR_POST_HOLD_MS));
 
-	// Fade the ghost out as the after-cells reveal — the after-cell at
-	// afterCells[0] takes the ghost's exact position, so the visual swap
-	// is invisible.
+	// Reveal the after-cells (they sit exactly under the ghost and the
+	// translated X) and tear down. Pixel-exact handoff — ghost-at-target
+	// rect equals afterCells[0] rect by construction.
 	for (const cell of afterCells) cell.style.visibility = '';
 	wGhost.remove();
 	afterRoot.style.pointerEvents = '';
