@@ -8,7 +8,7 @@ import { scaled, scaledMs } from '../speed.js';
 // operations that ask a question ABOUT an array rather than transforming its
 // elements. Two visual sub-vocabularies:
 //
-//   - Extraction (first, last, solo): one cell of the input survives or the
+//   - Extraction (first, solo): one cell of the input survives or the
 //     whole input is wrapped. Dims-and-glide gesture: non-surviving cells fade
 //     in place, the survivor pulses and glides to the post-commit position.
 //
@@ -156,9 +156,9 @@ async function extractRunner(
 	// Phase 3: survivors glide from their beforeRoot positions to the
 	// measured afterRoot child positions. Each survivor i targets
 	// afterRects[k] where k is its index within survivorIndices — that's
-	// the order they're laid out in the post-commit row. (For first/last
-	// there's exactly one survivor; for a 2D first-row case there are C
-	// survivors, all gliding together.)
+	// the order they're laid out in the post-commit row. (For first there's
+	// exactly one survivor; for a 2D first-row case there are C survivors,
+	// all gliding together.)
 	const glideTasks: Promise<unknown>[] = [];
 	for (let k = 0; k < survivorIndices.length; k++) {
 		const i = survivorIndices[k];
@@ -212,27 +212,6 @@ export const firstMonadic: AnimateStep = (step, beforeRoot, afterRoot) => {
 		const C = step.x.shape[1];
 		const surv: number[] = [];
 		for (let c = 0; c < C; c++) surv.push(c);
-		return extractRunner(step, beforeRoot, afterRoot, surv);
-	}
-	return blackBox(step, beforeRoot, afterRoot);
-};
-
-export const lastMonadic: AnimateStep = (step, beforeRoot, afterRoot) => {
-	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.data.length === 0) return blackBox(step, beforeRoot, afterRoot);
-
-	const rank = step.x.shape.length;
-	if (rank === 1) {
-		const last = step.x.data.length - 1;
-		return extractRunner(step, beforeRoot, afterRoot, [last]);
-	}
-	if (rank === 2) {
-		// Last major-axis cell = entire last row.
-		const [R, C] = step.x.shape;
-		const surv: number[] = [];
-		const startIdx = (R - 1) * C;
-		for (let c = 0; c < C; c++) surv.push(startIdx + c);
 		return extractRunner(step, beforeRoot, afterRoot, surv);
 	}
 	return blackBox(step, beforeRoot, afterRoot);

@@ -29,8 +29,11 @@ function valueLabel(v: BqnValue): string {
 	return '·';
 }
 
-// BQN glyph map for base primitives (monadic glyph shown; most glyphs are
-// the same for monadic and dyadic contexts — callers choose the label).
+// BQN glyph map for base primitives. The glyph for each kind is the glyph
+// that produces that operation in real BQN — sourced from
+// `docs/bqn-reference.md`. NEVER invent or guess a glyph; if a kind has no
+// real BQN primitive (e.g. a synthetic "last"), don't add it as an FnExpr
+// kind in the first place. The animator renders BQN, not our own dialect.
 const PRIM_GLYPH: Record<string, string> = {
 	add:                  '+',
 	sub:                  '-',
@@ -67,10 +70,9 @@ const PRIM_GLYPH: Record<string, string> = {
 	'rank-of':            '=',
 	take:                 '↑',
 	drop:                 '↓',
-	select:               '⊏',
+	replicate:            '/',
 	pick:                 '⊑',
 	first:                '⊑',
-	last:                 '⊑',
 	enclose:              '<',
 	merge:                '>',
 	'join-to':            '∾',
@@ -159,10 +161,9 @@ export function fnExprLabel(fn: FnExpr): string {
 		case 'rank-of':              return PRIM_GLYPH['rank-of'];
 		case 'take':                 return PRIM_GLYPH['take'];
 		case 'drop':                 return PRIM_GLYPH['drop'];
-		case 'select':               return PRIM_GLYPH['select'];
+		case 'replicate':            return PRIM_GLYPH['replicate'];
 		case 'pick':                 return PRIM_GLYPH['pick'];
 		case 'first':                return PRIM_GLYPH['first'];
-		case 'last':                 return PRIM_GLYPH['last'];
 		case 'enclose':              return PRIM_GLYPH['enclose'];
 		case 'merge':                return PRIM_GLYPH['merge'];
 		case 'join-to':              return PRIM_GLYPH['join-to'];

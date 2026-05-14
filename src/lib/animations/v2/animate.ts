@@ -48,7 +48,6 @@ import {
 } from './motions/comparison.js';
 import {
 	firstMonadic,
-	lastMonadic,
 	lengthMonadic,
 	shapeMonadic,
 	rankOfMonadic,
@@ -105,10 +104,9 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'rank-of':                return rankOfMonadic; // ≢ base primitive — NOT the rank 2-modifier
 		case 'take':                   return blackBox;
 		case 'drop':                   return blackBox;
-		case 'select':                 return blackBox;
+		case 'replicate':              return blackBox; // monadic / — Indices, not yet animated
 		case 'pick':                   return blackBox;
 		case 'first':                  return firstMonadic;
-		case 'last':                   return lastMonadic;
 		case 'enclose':                return encloseMonadic;
 		case 'merge':                  return blackBox;
 		case 'join-to':                return blackBox;
@@ -143,12 +141,12 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'bind-left':              return blackBox;
 		case 'bind-right':             return blackBox;
 		case 'before':
-			// (F⊸G) X — when G is 'select', this is the filter motion with a
-			// per-cell predicate label derived from F. The bind glyphs (⊸ / ⟜)
-			// are the higher-order plumbing that applies F across the whole
-			// array; per cell the comparison is just F itself, so strip the
-			// bind from the badge label.
-			return fn.g.kind === 'select'
+			// (F⊸G) X — when G is 'replicate' (/), this is the filter motion
+			// with a per-cell predicate label derived from F. The bind glyphs
+			// (⊸ / ⟜) are the higher-order plumbing that applies F across the
+			// whole array; per cell the comparison is just F itself, so strip
+			// the bind from the badge label.
+			return fn.g.kind === 'replicate'
 				? makeFilterWithLabel(fnExprLabel(fn.f).replace(/[⊸⟜]/g, ''))
 				: blackBox;
 		case 'after':                  return blackBox;
@@ -213,10 +211,9 @@ export function animateDyadic(fn: FnExpr): AnimateStep {
 		case 'rank-of':                return blackBox;
 		case 'take':                   return takeDyadic;
 		case 'drop':                   return dropDyadic;
-		case 'select':                 return filterDyadic; // TODO: clarify — M/X filter is wired here; ⊏ pick-by-index would be a separate motion
+		case 'replicate':              return filterDyadic; // M/X — filter / replicate
 		case 'pick':                   return blackBox;
 		case 'first':                  return blackBox;
-		case 'last':                   return blackBox;
 		case 'enclose':                return blackBox;
 		case 'merge':                  return blackBox;
 		case 'join-to':                return blackBox;

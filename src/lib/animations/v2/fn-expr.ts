@@ -45,10 +45,9 @@ export type FnExpr =
 	| { kind: 'rank-of' } // ≢ — base primitive (tally of shape)
 	| { kind: 'take' }
 	| { kind: 'drop' }
-	| { kind: 'select' }
+	| { kind: 'replicate' } // / — Indices (monadic) / Replicate aka filter (dyadic)
 	| { kind: 'pick' }
 	| { kind: 'first' }
-	| { kind: 'last' }
 	| { kind: 'enclose' }
 	| { kind: 'merge' }
 	| { kind: 'join-to' } // ∾

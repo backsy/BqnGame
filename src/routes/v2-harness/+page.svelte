@@ -163,17 +163,6 @@
 				}
 				throw new Error('first: unsupported rank');
 			}
-			case 'last': {
-				if (arity !== 'monadic') throw new Error('last: monadic only');
-				if (input.kind !== 'array') throw new Error('last: expected array');
-				if (input.data.length === 0) throw new Error('last: empty array');
-				if (input.shape.length === 1) return input.data[input.data.length - 1];
-				if (input.shape.length === 2) {
-					const [R, C] = input.shape;
-					return { kind: 'array', shape: [C], data: input.data.slice((R - 1) * C, R * C) };
-				}
-				throw new Error('last: unsupported rank');
-			}
 			case 'length': {
 				if (arity !== 'monadic') throw new Error('length: monadic only');
 				if (input.kind !== 'array') throw new Error('length: expected array');
@@ -377,22 +366,24 @@
 				const rest = input.data.slice(n);
 				return { kind: 'array', shape: [rest.length], data: rest };
 			}
-			case 'select': {
-				// Wired as the BQN filter operation M/X: w is a 0/1 mask of the
-				// same length as input.data. Each input cell whose mask entry is
-				// 1 is kept; 0 cells are discarded.
-				if (arity !== 'dyadic') throw new Error('select (M/X): dyadic only');
+			case 'replicate': {
+				// M/X — w is a 0/1 mask of the same length as input.data.
+				// Each input cell whose mask entry is 1 is kept; 0 cells are
+				// discarded. (BQN's general replicate allows mask entries to
+				// be any non-negative integer for repeat counts, but the
+				// harness only exercises the 0/1 filter case.)
+				if (arity !== 'dyadic') throw new Error('replicate (M/X): dyadic only');
 				if (w === undefined || w.kind !== 'array' || w.shape.length !== 1)
-					throw new Error('select (M/X): expected 1D mask');
+					throw new Error('replicate (M/X): expected 1D mask');
 				if (input.kind !== 'array' || input.shape.length !== 1)
-					throw new Error('select (M/X): expected 1D array');
+					throw new Error('replicate (M/X): expected 1D array');
 				if (w.data.length !== input.data.length)
-					throw new Error(`select (M/X): mask length ${w.data.length} does not match x length ${input.data.length}`);
+					throw new Error(`replicate (M/X): mask length ${w.data.length} does not match x length ${input.data.length}`);
 				const kept: BqnValue[] = [];
 				for (let i = 0; i < w.data.length; i++) {
 					const m = w.data[i];
 					if (m.kind !== 'number' || (m.value !== 0 && m.value !== 1))
-						throw new Error('select (M/X): mask entries must be 0 or 1');
+						throw new Error('replicate (M/X): mask entries must be 0 or 1');
 					if (m.value === 1) kept.push(input.data[i]);
 				}
 				return { kind: 'array', shape: [kept.length], data: kept };
@@ -662,7 +653,7 @@
 	const FILTER_GT2: FnExpr = {
 		kind: 'before',
 		f: GT2_PRED,
-		g: { kind: 'select' },
+		g: { kind: 'replicate' },
 	};
 
 	const TAKE2: FnExpr = { kind: 'bind-left', left: W2, of: { kind: 'take' } };
@@ -745,12 +736,11 @@
 		{ label: stripBindPlumbing(fnExprLabel(EQ_TO2)), fn: EQ_TO2, arity: 'monadic', family: 'comparison' },
 		{ label: stripBindPlumbing(fnExprLabel(GT_BY2)), fn: GT_BY2, arity: 'monadic', family: 'comparison' },
 		{ label: stripBindPlumbing(fnExprLabel(LT_BY2)), fn: LT_BY2, arity: 'monadic', family: 'comparison' },
-		// structural group — extraction (first / last / solo) and measurement
-		// (length / shape / rank-of). shape and rank-of intentionally share
-		// the ≢ glyph because BQN does — the player meets glyph reuse by
-		// seeing two same-label buttons that behave differently.
+		// structural group — extraction (first / solo) and measurement
+		// (length / shape / rank-of). All real BQN primitives — no synthetic
+		// "last" kind since BQN has no last primitive (write `(¯1)⊑X` or
+		// `⊑⌽X` instead).
 		{ label: fnExprLabel({ kind: 'first' }),   fn: { kind: 'first' },   arity: 'monadic', family: 'structural' },
-		{ label: fnExprLabel({ kind: 'last' }),    fn: { kind: 'last' },    arity: 'monadic', family: 'structural' },
 		{ label: fnExprLabel({ kind: 'length' }),  fn: { kind: 'length' },  arity: 'monadic', family: 'structural' },
 		{ label: fnExprLabel({ kind: 'shape' }),   fn: { kind: 'shape' },   arity: 'monadic', family: 'structural' },
 		{ label: fnExprLabel({ kind: 'rank-of' }), fn: { kind: 'rank-of' }, arity: 'monadic', family: 'structural' },

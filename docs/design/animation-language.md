@@ -88,8 +88,8 @@ type FnExpr =
   | { kind: 'transpose' }
   | { kind: 'length' } | { kind: 'shape' } | { kind: 'rank-of' }   // ≠ ≢ =
   | { kind: 'take' }   | { kind: 'drop' }
-  | { kind: 'select' } | { kind: 'pick' }
-  | { kind: 'first' }  | { kind: 'last' }
+  | { kind: 'replicate' } | { kind: 'pick' }                    // / ⊑
+  | { kind: 'first' }                                            // ⊑ monadic
   | { kind: 'enclose' } | { kind: 'merge' }
   | { kind: 'join-to' } | { kind: 'pair' } | { kind: 'solo' }   // ∾ ⋈ ≍
   | { kind: 'range' }

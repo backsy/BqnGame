@@ -13,7 +13,7 @@ export const ALL_FN_KINDS = [
 	'and', 'or', 'not', 'span',
 	'reverse', 'rotate', 'reshape', 'deshape', 'transpose',
 	'length', 'shape', 'rank-of',
-	'take', 'drop', 'select', 'pick', 'first', 'last',
+	'take', 'drop', 'replicate', 'pick', 'first',
 	'enclose', 'merge', 'join-to', 'pair', 'solo',
 	'range', 'sort-up', 'sort-down', 'grade-up', 'grade-down', 'group',
 	'index-of', 'progressive-index-of', 'unique', 'mark-firsts', 'find', 'member',
@@ -35,8 +35,8 @@ const DUMMY_FN: FnExpr = { kind: 'add' };
 
 // Build a minimal valid FnExpr for each kind so the dispatcher can be probed
 // without crashing on missing fields. For arms that animate conditionally
-// (`before` only filters when g='select'), pick the stub that exercises the
-// animated path — coverage answers "does this kind have any hand-tuned
+// (`before` only filters when g='replicate'), pick the stub that exercises
+// the animated path — coverage answers "does this kind have any hand-tuned
 // motion," not "is every shape of it animated."
 function stubFn(kind: FnExpr['kind']): FnExpr {
 	switch (kind) {
@@ -56,7 +56,7 @@ function stubFn(kind: FnExpr['kind']): FnExpr {
 		case 'valences':
 		case 'catch':
 		case 'atop': return { kind, f: DUMMY_FN, g: DUMMY_FN };
-		case 'before': return { kind: 'before', f: DUMMY_FN, g: { kind: 'select' } };
+		case 'before': return { kind: 'before', f: DUMMY_FN, g: { kind: 'replicate' } };
 		case 'fork': return { kind: 'fork', f: DUMMY_FN, g: DUMMY_FN, h: DUMMY_FN };
 		case 'bind-left': return { kind: 'bind-left', left: DUMMY_VAL, of: DUMMY_FN };
 		case 'bind-right': return { kind: 'bind-right', right: DUMMY_VAL, of: DUMMY_FN };
