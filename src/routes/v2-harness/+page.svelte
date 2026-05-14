@@ -936,7 +936,7 @@
 	     all sides. -->
 	<div
 		bind:this={containerEl}
-		style="position:relative;min-height:320px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:center;justify-content:center;overflow:hidden;"
+		style="position:relative;min-height:320px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:center;justify-content:center;overflow:visible;"
 	></div>
 
 	{#if statusMsg}
