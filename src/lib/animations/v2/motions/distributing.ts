@@ -148,14 +148,17 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 	await _delayMs(scaledMs(BOX_REVEAL_HOLD_MS));
 
 	// ── Phase 3: emit cells, counter ticks down ────────────────────────────
+	// Each iteration: text change + scale pulse + cell flight fire in the
+	// SAME tick so the counter ball reads as "this is the moment of the
+	// emit." The pulse and the digit update are part of one beat — they
+	// must not drift apart.
 	for (let i = 0; i < n; i++) {
 		const cell = afterCells[i];
 		const cellRect = afterRects[i];
 		const startDx = counterCx - (cellRect.left + cellRect.width / 2);
 		const startDy = counterCy - (cellRect.top + cellRect.height / 2);
 
-		// Tick pulse — fires while the cell flies, so the counter "spits
-		// out" the cell on each emit.
+		counter.textContent = String(n - i - 1);
 		animate(
 			counter,
 			{ transform: ['scale(1)', 'scale(1.25)', 'scale(1)'] },
@@ -173,10 +176,6 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 			},
 			{ duration: scaled(EMIT_DURATION), ease: [0.34, 1.56, 0.64, 1] },
 		).finished;
-
-		// Counter decrements only AFTER its cell has landed — reads as
-		// "spent that one, this many left."
-		counter.textContent = String(n - i - 1);
 
 		if (i < n - 1) await _delayMs(scaledMs(BETWEEN_EMITS_MS));
 	}
