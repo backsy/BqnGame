@@ -514,7 +514,7 @@
 
 				if (is1D) {
 					const row = document.createElement('div');
-					row.className = 'row';
+					row.className = 'row bqn-vector';
 					row.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
 					// Build bars directly — don't recurse through renderBqnValue
 					// for items, because the scalar case wraps each bar in its
@@ -1017,3 +1017,27 @@
 		<span style="margin-left:0.8rem;font-size:0.85rem;color:#7c6af7;">animating…</span>
 	{/if}
 </main>
+
+<style>
+	/* BQN-style brackets around 1D vector renderings so the user can tell
+	   scalar from rank-1 at a glance:
+	     5    — bare bar inside a row wrapper (scalar, rank 0)
+	     ⟨5⟩  — bar with ⟨⟩ around it (vector, rank 1)
+	   For rank 2 the stacked-rows grid is already visually distinct, no
+	   brackets needed.
+	   Pseudo-elements stay out of .children, so the motions iterate only
+	   the bar cells. :global because renderBqnValue creates the elements
+	   imperatively with classList, outside Svelte's scoped-style hashing. */
+	:global(.bqn-vector)::before,
+	:global(.bqn-vector)::after {
+		color: #777;
+		font-family: 'BQN386', ui-monospace, monospace;
+		font-size: 2rem;
+		line-height: 1;
+		display: flex;
+		align-items: flex-end;
+		padding-bottom: 0.2rem;
+	}
+	:global(.bqn-vector)::before { content: '⟨'; padding-right: 4px; }
+	:global(.bqn-vector)::after  { content: '⟩'; padding-left: 4px; }
+</style>
