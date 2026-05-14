@@ -10,12 +10,11 @@ import { scaled, scaledMs } from '../speed.js';
 // array, so each bar resizes to the height of a 0-or-1 bar and its label
 // cross-fades to "0" or "1".
 //
-// Phase 1: each cell's badge shows its OWN literal comparison ("3>2",
-//          "1>2", …). Not the abstract predicate — the actual values being
-//          compared, so the per-cell semantics is visible.
-// Phase 2: each badge flips to the comparison's RESULT — "1" (green) for
-//          true, "0" (red) for false. The flip reads as "3>2 evaluates
-//          to 1." Staggered so the row reads as a sequence of decisions.
+// Phase 1: a predicate badge (e.g. ">2") appears above each cell. The
+//          cell value is already on the bar below — the badge shows what
+//          each cell is being compared against, not the cell value itself.
+// Phase 2: each badge flips per-cell to "✓" (green, true) or "✗" (red,
+//          false). Stagger conveys the per-cell decision sequence.
 // Phase 3: bars resize to the 0/1 height, labels cross-fade to "0"/"1".
 // Phase 4: badges fade and afterRoot's cells are revealed.
 
@@ -92,20 +91,16 @@ async function runComparisonMotion(
 	if (step.kind !== 'dyadic') return blackBox(step, beforeRoot, afterRoot);
 
 	// Need exactly one scalar side and one array side. The array side is what
-	// the cells render. The badge per cell shows the literal BQN expression
-	// W F X with the per-cell value substituted in for the array side.
-	let scalarOnLeft: boolean;
-	let scalarValue: number;
+	// the cells render — its index is what the badge is placed above.
+	let badgeLabel: string;
 	let beforeValue: BqnValue;
 	if (step.w.kind === 'number' && step.x.kind === 'array') {
-		// W=2, X=array. Per cell the expression is "2 F cell".
-		scalarOnLeft = true;
-		scalarValue = step.w.value;
+		// W scalar before glyph: badge reads e.g. "2>".
+		badgeLabel = `${step.w.value}${glyph}`;
 		beforeValue = step.x;
 	} else if (step.w.kind === 'array' && step.x.kind === 'number') {
-		// W=array, X=2 (bind-right form). Per cell the expression is "cell F 2".
-		scalarOnLeft = false;
-		scalarValue = step.x.value;
+		// W array, X scalar (bind-right form): badge reads e.g. ">2".
+		badgeLabel = `${glyph}${step.x.value}`;
 		beforeValue = step.w;
 	} else {
 		return blackBox(step, beforeRoot, afterRoot);
@@ -140,18 +135,12 @@ async function runComparisonMotion(
 		if (!cell.style.position) cell.style.position = 'relative';
 	}
 
-	// Phase 1: each cell's badge shows ITS OWN literal comparison, e.g.
-	// "3>2" — the cell value substituted in for the array side. The badge
-	// is over the cell, so its position implicitly marks which cell the
-	// expression is "about".
+	// Phase 1: stagger predicate badges in above each cell. Every cell gets
+	// the same predicate label — the verdict comes in Phase 2.
 	const badges: HTMLElement[] = [];
-	for (let i = 0; i < beforeCells.length; i++) {
-		const cellValue = beforeNums[i];
-		const literal = scalarOnLeft
-			? `${scalarValue}${glyph}${cellValue}`
-			: `${cellValue}${glyph}${scalarValue}`;
-		const badge = createComparisonBadge(literal);
-		beforeCells[i].appendChild(badge);
+	for (const cell of beforeCells) {
+		const badge = createComparisonBadge(badgeLabel);
+		cell.appendChild(badge);
 		badges.push(badge);
 	}
 
@@ -177,10 +166,10 @@ async function runComparisonMotion(
 	);
 	await _delayMs(scaledMs(PRE_HOLD_MS));
 
-	// Phase 2: each badge pulses and flips to its RESULT — the literal
-	// expression resolves to "1" (green, true) or "0" (red, false). The
-	// flip reads as "3>2 evaluates to 1". Colour matches filter's
-	// convention so the truth-value semantics carry across motions.
+	// Phase 2: each badge pulses and flips to its verdict (✓ pass / ✗ fail).
+	// Colour carries the truth value — green for true (=1), red for false
+	// (=0) — matching filter's convention so the user's mental model is
+	// consistent across motions.
 	await Promise.all(
 		badges.map(async (b, i) => {
 			const passes = afterNums[i] === 1;
@@ -193,7 +182,7 @@ async function runComparisonMotion(
 					delay: scaled(i * FLIP_STAGGER),
 				},
 			).finished;
-			b.textContent = passes ? '1' : '0';
+			b.textContent = passes ? '✓' : '✗';
 			if (passes) {
 				b.style.background = VERDICT_PASS_BG;
 				b.style.boxShadow = `0 0 12px ${VERDICT_PASS_GLOW}`;
