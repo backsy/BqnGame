@@ -454,9 +454,17 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 	}
 	await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
 
-	// Emit the result cell from the counter's centre. The after-cell
-	// already sits at its measured layout slot; we pre-offset its
-	// transform to the counter, then tween back to (0, 0).
+	// Fade the input BEFORE emitting the result so they don't overlap.
+	// The result cell lands at the centred afterRoot position, which is the
+	// same space the input row occupies — without this fade, the count
+	// would visibly sit on top of the dimmed input.
+	await animate(
+		beforeRoot,
+		{ opacity: [parseFloat(beforeRoot.style.opacity || '1'), 0] },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
+	).finished;
+
+	// Emit the result cell from the counter's centre into cleared space.
 	const afterRect = afterCells[0].getBoundingClientRect();
 	await emitFromPoint(afterCells[0], afterRect, counterCx, counterCy);
 
@@ -465,13 +473,6 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 	void MEASURE_TICK_FADE_MS;
 
 	await counterOutAndRemove(counter);
-
-	// Fade out the dimmed before-row.
-	await animate(
-		beforeRoot,
-		{ opacity: [parseFloat(beforeRoot.style.opacity || '1'), 0] },
-		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
-	).finished;
 
 	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
@@ -527,35 +528,28 @@ export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 
 	await counterIn(counter);
 
-	// For each axis, pulse the cells along that axis and tick the counter
-	// to the axis's length. Then emit one after-cell from the counter.
+	// Phase 1 — count every axis: pulse the cells along it and tick the
+	// counter to its length. No emits yet; the matrix stays visible so the
+	// pulses are legible.
 	//
 	//   1D: axis 0 = the whole row. Length = N.
 	//   2D: axis 0 = the rows (group by row). Length = R.
 	//        axis 1 = the columns (group by column). Length = C.
+	const axisLengths: number[] = [];
 	for (let axis = 0; axis < rank; axis++) {
 		const len = step.x.shape[axis];
-		// Build per-axis cell groups. For axis 0 of a 2D, each row is one
-		// "axis element" — pulse the cells in that row in unison (so the
-		// pulse reads as "this row, that row, …" along the axis). For axis
-		// 1 of a 2D, each column is one axis element. For rank 1 there's
-		// only one axis element per cell.
+		axisLengths.push(len);
 		if (rank === 1) {
-			// Single axis: pulse all cells together (the whole row), tick
-			// the counter to N in one go.
 			await pulseAxisCells(beforeCells);
 			await tickCounter(counter, String(len));
 			await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
 		} else {
-			// rank 2 — len axis elements, sliceSize cells per element.
 			const C = step.x.shape[1];
 			for (let i = 0; i < len; i++) {
 				const groupCells: HTMLElement[] = [];
 				if (axis === 0) {
-					// Row i: cells [i*C, i*C+1, …, i*C+C-1].
 					for (let c = 0; c < C; c++) groupCells.push(beforeCells[i * C + c]);
 				} else {
-					// Column i: cells [i, i+C, i+2C, …] across R rows.
 					const R = step.x.shape[0];
 					for (let r = 0; r < R; r++) groupCells.push(beforeCells[r * C + i]);
 				}
@@ -564,27 +558,32 @@ export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 				if (i < len - 1) await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
 			}
 		}
-		await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
-
-		const afterRect = afterCells[axis].getBoundingClientRect();
-		await emitFromPoint(afterCells[axis], afterRect, counterCx, counterCy);
-
-		// Between axes (only matters for rank 2), pause briefly and reset
-		// the counter back to 0 visually before the next axis starts ticking.
 		if (axis < rank - 1) {
 			await _delayMs(scaledMs(MEASURE_BETWEEN_EMITS_MS));
 			counter.textContent = '0';
 		}
 	}
+	await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
+
+	// Phase 2 — fade the input matrix. The result cells emerge into cleared
+	// space so they don't sit on top of the input cells.
+	await animate(
+		beforeRoot,
+		{ opacity: [1, 0] },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
+	).finished;
+
+	// Phase 3 — emit each after-cell from the counter, tied to its axis by
+	// re-displaying that axis's length on the counter immediately before.
+	for (let axis = 0; axis < rank; axis++) {
+		counter.textContent = String(axisLengths[axis]);
+		const afterRect = afterCells[axis].getBoundingClientRect();
+		await emitFromPoint(afterCells[axis], afterRect, counterCx, counterCy);
+		if (axis < rank - 1) await _delayMs(scaledMs(MEASURE_BETWEEN_EMITS_MS));
+	}
 
 	await _delayMs(scaledMs(MEASURE_POST_HOLD_MS));
 	await counterOutAndRemove(counter);
-
-	await animate(
-		beforeRoot,
-		{ opacity: 0 },
-		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
-	).finished;
 
 	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
@@ -657,17 +656,18 @@ export const rankOfMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 	}
 	await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
 
+	// Fade the input before emitting so the result doesn't sit on top of it.
+	await animate(
+		beforeRoot,
+		{ opacity: [1, 0] },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
+	).finished;
+
 	const afterRect = afterCells[0].getBoundingClientRect();
 	await emitFromPoint(afterCells[0], afterRect, counterCx, counterCy);
 
 	await _delayMs(scaledMs(MEASURE_POST_HOLD_MS));
 	await counterOutAndRemove(counter);
-
-	await animate(
-		beforeRoot,
-		{ opacity: 0 },
-		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
-	).finished;
 
 	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
