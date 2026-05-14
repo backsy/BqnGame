@@ -46,6 +46,15 @@ import {
 	gtDyadic,
 	geDyadic,
 } from './motions/comparison.js';
+import {
+	firstMonadic,
+	lastMonadic,
+	lengthMonadic,
+	shapeMonadic,
+	rankOfMonadic,
+	pairDyadic,
+	soloMonadic,
+} from './motions/structural.js';
 import { fnExprLabel } from './fn-label.js';
 
 // ── assignAnimation / accessAnimation ────────────────────────────────────
@@ -91,20 +100,20 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'reshape':                return blackBox;
 		case 'deshape':                return blackBox;
 		case 'transpose':              return transposeMonadic;
-		case 'length':                 return blackBox;
-		case 'shape':                  return blackBox;
-		case 'rank-of':                return blackBox; // ≢ base primitive — NOT the rank 2-modifier
+		case 'length':                 return lengthMonadic;
+		case 'shape':                  return shapeMonadic;
+		case 'rank-of':                return rankOfMonadic; // ≢ base primitive — NOT the rank 2-modifier
 		case 'take':                   return blackBox;
 		case 'drop':                   return blackBox;
 		case 'select':                 return blackBox;
 		case 'pick':                   return blackBox;
-		case 'first':                  return blackBox;
-		case 'last':                   return blackBox;
+		case 'first':                  return firstMonadic;
+		case 'last':                   return lastMonadic;
 		case 'enclose':                return encloseMonadic;
 		case 'merge':                  return blackBox;
 		case 'join-to':                return blackBox;
-		case 'pair':                   return blackBox;
-		case 'solo':                   return blackBox;
+		case 'pair':                   return blackBox; // monadic ⋈ — no defined motion yet
+		case 'solo':                   return soloMonadic;
 		case 'range':                  return rangeMonadic;
 		case 'sort-up':                return sortUpMonadic;
 		case 'sort-down':              return sortDownMonadic;
@@ -211,7 +220,7 @@ export function animateDyadic(fn: FnExpr): AnimateStep {
 		case 'enclose':                return blackBox;
 		case 'merge':                  return blackBox;
 		case 'join-to':                return blackBox;
-		case 'pair':                   return blackBox;
+		case 'pair':                   return pairDyadic;
 		case 'solo':                   return blackBox;
 		case 'range':                  return blackBox;
 		case 'sort-up':                return blackBox; // no dyadic sort-up

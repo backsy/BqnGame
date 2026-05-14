@@ -1,0 +1,845 @@
+import { animate } from 'motion';
+import type { AnimateStep } from '../stage.js';
+import type { Step } from '../step.js';
+import { blackBox } from './black-box.js';
+import { scaled, scaledMs } from '../speed.js';
+
+// Structural motion family. Extraction and measurement primitives — the
+// operations that ask a question ABOUT an array rather than transforming its
+// elements. Two visual sub-vocabularies:
+//
+//   - Extraction (first, last, solo): one cell of the input survives or the
+//     whole input is wrapped. Dims-and-glide gesture: non-surviving cells fade
+//     in place, the survivor pulses and glides to the post-commit position.
+//
+//   - Measurement (length, shape, rank-of): the input collapses into a
+//     numeric answer about its structure. A counter overlay ticks through
+//     the thing being counted (cells along an axis, axes themselves), then
+//     emits the count as the result bar(s).
+//
+// pair (dyadic) sits across both: two scalar values arrive — one already
+// on-stage as X, the other (the bound W) flies in from above — and settle
+// side-by-side as a length-2 row. The choreography is closest to enclose's
+// emit-and-settle but with two emitters.
+
+const _delayMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+const STRUCTURAL_ACCENT = '#f7e16a';
+const STRUCTURAL_GLOW = 'rgba(247, 225, 106, 0.55)';
+
+// ── shared counter overlay ────────────────────────────────────────────────
+// Same shape and styling as rotate's / range's counters so the visual
+// vocabulary stays consistent — counter overlays mean "magnitude being
+// counted out for you." The accent colour is the structural family's
+// yellow rather than the distributing magenta.
+
+const COUNTER_SIZE = 36;       // px
+const COUNTER_OFFSET = 50;     // px above the row
+const COUNTER_IN_DURATION = 0.25;
+const COUNTER_TICK_DURATION = 0.28;
+const COUNTER_OUT_DURATION = 0.3;
+
+function createCounter(centerX: number, topY: number): HTMLElement {
+	const counter = document.createElement('div');
+	Object.assign(counter.style, {
+		position: 'fixed',
+		top: `${topY}px`,
+		left: `${centerX - COUNTER_SIZE / 2}px`,
+		width: `${COUNTER_SIZE}px`,
+		height: `${COUNTER_SIZE}px`,
+		display: 'grid',
+		placeItems: 'center',
+		background: STRUCTURAL_ACCENT,
+		color: '#0a0a0a',
+		borderRadius: '50%',
+		fontFamily: 'system-ui, -apple-system, sans-serif',
+		fontSize: '1rem',
+		fontWeight: '700',
+		opacity: '0',
+		transform: 'scale(0)',
+		zIndex: '10',
+		pointerEvents: 'none',
+		boxShadow: `0 0 16px ${STRUCTURAL_GLOW}`,
+	});
+	return counter;
+}
+
+// ── beforeCells helper ────────────────────────────────────────────────────
+// beforeRoot for a 1D array is a `.row` flexbox whose children are the bar
+// divs. For a 2D array beforeRoot is a CSS grid whose children are bars in
+// row-major order. Both expose `.children` of the same form (cells), so a
+// shallow `Array.from(.children)` works for both.
+
+function beforeCellsOf(root: HTMLElement): HTMLElement[] {
+	return Array.from(root.children) as HTMLElement[];
+}
+
+// ── firstMonadic ──────────────────────────────────────────────────────────
+// ⊑X — the first major-axis cell of X survives, everything else is discarded.
+// Visual: dim all non-survivors in place; pulse cell[0] to mark it as the
+// chosen one; glide cell[0] to the measured afterRoot position; fade the
+// dimmed cells away as the handoff completes.
+//
+// For a 2D input the "first cell" along the major axis is the first ROW, so
+// the entire row 0 survives. We treat it as a single multi-cell group that
+// glides as a block.
+//
+// Falls through to blackBox for: empty arrays (nothing to pick), scalar input
+// (already the first cell — nothing to animate), rank > 2 (no grid render).
+
+const EXTRACT_DIM_DURATION = 0.32;
+const EXTRACT_PULSE_DURATION = 0.36;
+const EXTRACT_PULSE_HOLD_MS = 120;
+const EXTRACT_GLIDE_DURATION = 0.55;
+const EXTRACT_POST_HOLD_MS = 180;
+
+async function extractRunner(
+	step: Step,
+	beforeRoot: HTMLElement,
+	afterRoot: HTMLElement,
+	survivorIndices: number[],
+): Promise<void> {
+	const beforeCells = beforeCellsOf(beforeRoot);
+	const afterCells = beforeCellsOf(afterRoot);
+	if (beforeCells.length === 0 || afterCells.length === 0) {
+		afterRoot.style.opacity = '';
+		return;
+	}
+	if (afterCells.length !== survivorIndices.length) {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
+
+	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
+	const afterRects = afterCells.map(c => c.getBoundingClientRect());
+
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	for (const cell of beforeCells) {
+		if (!cell.style.position) cell.style.position = 'relative';
+	}
+
+	const survivorSet = new Set(survivorIndices);
+
+	// Phase 1: dim the discarded cells in place. Survivors stay at full
+	// opacity so the eye locks on to them through the contrast jump.
+	const dimTasks: Promise<unknown>[] = [];
+	for (let i = 0; i < beforeCells.length; i++) {
+		if (survivorSet.has(i)) continue;
+		dimTasks.push(
+			animate(
+				beforeCells[i],
+				{ opacity: [1, 0.22] },
+				{ duration: scaled(EXTRACT_DIM_DURATION), ease: 'easeOut' },
+			).finished,
+		);
+	}
+	if (dimTasks.length > 0) await Promise.all(dimTasks);
+
+	// Phase 2: pulse the survivors so the user registers "these are what
+	// gets kept." All survivors pulse in lock-step.
+	const pulseTasks: Promise<unknown>[] = [];
+	for (const i of survivorIndices) {
+		const cell = beforeCells[i];
+		cell.style.zIndex = '5';
+		pulseTasks.push(
+			animate(
+				cell,
+				{ scale: [1, 1.18, 1] },
+				{ duration: scaled(EXTRACT_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+			).finished,
+		);
+	}
+	if (pulseTasks.length > 0) await Promise.all(pulseTasks);
+	await _delayMs(scaledMs(EXTRACT_PULSE_HOLD_MS));
+
+	// Phase 3: survivors glide from their beforeRoot positions to the
+	// measured afterRoot child positions. Each survivor i targets
+	// afterRects[k] where k is its index within survivorIndices — that's
+	// the order they're laid out in the post-commit row. (For first/last
+	// there's exactly one survivor; for a 2D first-row case there are C
+	// survivors, all gliding together.)
+	const glideTasks: Promise<unknown>[] = [];
+	for (let k = 0; k < survivorIndices.length; k++) {
+		const i = survivorIndices[k];
+		const cell = beforeCells[i];
+		const before = beforeRects[i];
+		const after = afterRects[k];
+		const dx = (after.left + after.width / 2) - (before.left + before.width / 2);
+		const dy = (after.top + after.height / 2) - (before.top + before.height / 2);
+		glideTasks.push(
+			animate(
+				cell,
+				{ x: dx, y: dy },
+				{ duration: scaled(EXTRACT_GLIDE_DURATION), ease: [0.22, 1, 0.36, 1] },
+			).finished,
+		);
+	}
+
+	// In parallel, fade the dimmed cells out completely.
+	for (let i = 0; i < beforeCells.length; i++) {
+		if (survivorSet.has(i)) continue;
+		glideTasks.push(
+			animate(
+				beforeCells[i],
+				{ opacity: [0.22, 0] },
+				{ duration: scaled(EXTRACT_GLIDE_DURATION), ease: 'easeIn' },
+			).finished,
+		);
+	}
+	await Promise.all(glideTasks);
+
+	await _delayMs(scaledMs(EXTRACT_POST_HOLD_MS));
+
+	for (const cell of afterCells) cell.style.visibility = '';
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
+}
+
+export const firstMonadic: AnimateStep = (step, beforeRoot, afterRoot) => {
+	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.data.length === 0) return blackBox(step, beforeRoot, afterRoot);
+
+	const rank = step.x.shape.length;
+	if (rank === 1) {
+		// Single cell at index 0 survives.
+		return extractRunner(step, beforeRoot, afterRoot, [0]);
+	}
+	if (rank === 2) {
+		// First major-axis cell = entire first row. survivorIndices is
+		// [0, 1, …, C-1] in row-major order.
+		const C = step.x.shape[1];
+		const surv: number[] = [];
+		for (let c = 0; c < C; c++) surv.push(c);
+		return extractRunner(step, beforeRoot, afterRoot, surv);
+	}
+	return blackBox(step, beforeRoot, afterRoot);
+};
+
+export const lastMonadic: AnimateStep = (step, beforeRoot, afterRoot) => {
+	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.data.length === 0) return blackBox(step, beforeRoot, afterRoot);
+
+	const rank = step.x.shape.length;
+	if (rank === 1) {
+		const last = step.x.data.length - 1;
+		return extractRunner(step, beforeRoot, afterRoot, [last]);
+	}
+	if (rank === 2) {
+		// Last major-axis cell = entire last row.
+		const [R, C] = step.x.shape;
+		const surv: number[] = [];
+		const startIdx = (R - 1) * C;
+		for (let c = 0; c < C; c++) surv.push(startIdx + c);
+		return extractRunner(step, beforeRoot, afterRoot, surv);
+	}
+	return blackBox(step, beforeRoot, afterRoot);
+};
+
+// ── soloMonadic ───────────────────────────────────────────────────────────
+// ≍X — wrap X in a length-1 array along a new leading axis. For our render,
+// solo of a scalar produces a length-1 1D row (one cell); solo of a 1D array
+// produces a 1×N matrix.
+//
+// For the scalar case, the choreography is exactly enclose's: pulse the
+// input bar, emit a single after-cell from its position. We inline the same
+// gesture here instead of re-exporting enclose so the structural-family
+// accent (yellow rather than magenta) and timings can diverge if we tune
+// solo later — the visual stories happen to coincide today but the
+// operations aren't the same primitive.
+//
+// For an array input solo produces a 1×N matrix. We fall through to blackBox
+// rather than draw that — the grid-rendered output isn't a single emit, and
+// the harness's existing distributing visuals don't generalise to "wrap
+// whole row in a new outer axis."
+
+const SOLO_PULSE_DURATION = 0.35;
+const SOLO_PULSE_HOLD_MS = 80;
+const SOLO_EMIT_DURATION = 0.42;
+const SOLO_POST_HOLD_MS = 240;
+const SOLO_FADE_DURATION = 0.28;
+
+export const soloMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
+	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'number') return blackBox(step, beforeRoot, afterRoot);
+
+	const afterCells = beforeCellsOf(afterRoot);
+	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
+
+	const scalarRect = beforeRoot.getBoundingClientRect();
+	const scalarCx = scalarRect.left + scalarRect.width / 2;
+	const scalarCy = scalarRect.top + scalarRect.height / 2;
+
+	const cell = afterCells[0];
+	const cellRect = cell.getBoundingClientRect();
+	const cellCx = cellRect.left + cellRect.width / 2;
+	const cellCy = cellRect.top + cellRect.height / 2;
+
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	cell.style.visibility = 'hidden';
+
+	beforeRoot.style.position = beforeRoot.style.position || 'relative';
+	beforeRoot.style.zIndex = '5';
+
+	// Phase 0 — pulse the scalar. Same neutral entry as enclose so the
+	// "something is happening to this single value" cue is identical.
+	await animate(
+		beforeRoot,
+		{ scale: [1, 1.15, 1] },
+		{ duration: scaled(SOLO_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+	).finished;
+	await _delayMs(scaledMs(SOLO_PULSE_HOLD_MS));
+
+	// Phase 1 — single emission. The after-cell pre-offsets to the scalar's
+	// viewport centre then animates back to its measured final position
+	// (translate = 0). End state is no transform — pixel-exact final layout.
+	const startDx = scalarCx - cellCx;
+	const startDy = scalarCy - cellCy;
+	cell.style.visibility = '';
+	animate(
+		beforeRoot,
+		{ opacity: 0 },
+		{ duration: scaled(SOLO_EMIT_DURATION), ease: 'linear' },
+	);
+	await animate(
+		cell,
+		{
+			x: [startDx, 0],
+			y: [startDy, 0],
+			scale: [0.35, 1.08, 1],
+			opacity: [0, 1, 1],
+		},
+		{ duration: scaled(SOLO_EMIT_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+	).finished;
+
+	await _delayMs(scaledMs(SOLO_POST_HOLD_MS));
+
+	// Belt-and-braces fade for the scalar — the parallel opacity animation
+	// above is timed to land near 0 already; this guarantees a clean 0 at
+	// the handoff moment.
+	beforeRoot.style.opacity = '0';
+	void SOLO_FADE_DURATION;
+
+	afterRoot.style.pointerEvents = '';
+};
+
+// ── measurement helpers ───────────────────────────────────────────────────
+// length, shape, rank-of all share the same overall structure: a counter
+// scales in above the post-commit row, ticks through the thing being
+// counted, then the after-cells emit from a single "answer point" near the
+// counter. Variants:
+//
+//   - lengthMonadic: tick once per major-axis cell, one output cell (scalar).
+//   - shapeMonadic 1D: tick once (the single axis length), one output cell.
+//   - shapeMonadic 2D: tick once per axis (R, C), two output cells.
+//   - rankOfMonadic: tick once per axis (collapsing each major-axis cell as
+//     it's counted), one output cell carrying the rank scalar.
+//
+// The same emit primitive (after-cell pre-offsets to the counter's position,
+// tweens back to its measured final position) is reused so the output cells
+// land pixel-exact regardless of which measurement produced them.
+
+const MEASURE_TICK_BETWEEN_MS = 150;
+const MEASURE_TICK_FADE_MS = 80;
+const MEASURE_PRE_EMIT_MS = 200;
+const MEASURE_EMIT_DURATION = 0.45;
+const MEASURE_BETWEEN_EMITS_MS = 130;
+const MEASURE_POST_HOLD_MS = 240;
+const MEASURE_CELL_DIM_DURATION = 0.22;
+const MEASURE_CELL_DIM_OPACITY = 0.25;
+
+// Emit one after-cell from a viewport-source point. Reveals the cell,
+// pre-offsets the transform to the source, then tweens to (0, 0).
+async function emitFromPoint(
+	cell: HTMLElement,
+	cellRect: DOMRect,
+	srcCx: number,
+	srcCy: number,
+): Promise<void> {
+	const cellCx = cellRect.left + cellRect.width / 2;
+	const cellCy = cellRect.top + cellRect.height / 2;
+	const startDx = srcCx - cellCx;
+	const startDy = srcCy - cellCy;
+	cell.style.visibility = '';
+	await animate(
+		cell,
+		{
+			x: [startDx, 0],
+			y: [startDy, 0],
+			scale: [0.35, 1.08, 1],
+			opacity: [0, 1, 1],
+		},
+		{ duration: scaled(MEASURE_EMIT_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+	).finished;
+}
+
+// Animate counter scale-in.
+async function counterIn(counter: HTMLElement): Promise<void> {
+	await animate(
+		counter,
+		{ opacity: [0, 1], transform: ['scale(0)', 'scale(1)'] },
+		{ duration: scaled(COUNTER_IN_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+	).finished;
+}
+
+// Animate counter fade-out and remove. The transform target uses a lift so
+// the counter visually retreats up and away — matches rotate/range's exit.
+async function counterOutAndRemove(counter: HTMLElement): Promise<void> {
+	await animate(
+		counter,
+		{ opacity: 0, transform: 'translateY(-10px) scale(0.85)' },
+		{ duration: scaled(COUNTER_OUT_DURATION), ease: 'easeIn' },
+	).finished;
+	counter.remove();
+}
+
+// Tick the counter to a new value with a quick scale pulse, after a brief
+// label cross-fade so the digit change isn't a jarring snap.
+async function tickCounter(counter: HTMLElement, label: string): Promise<void> {
+	counter.textContent = label;
+	await animate(
+		counter,
+		{ transform: ['scale(1)', 'scale(1.28)', 'scale(1)'] },
+		{ duration: scaled(COUNTER_TICK_DURATION) },
+	).finished;
+}
+
+// Dim a single before-cell as its contribution is "counted." Used by length
+// and rank-of so the user sees each cell get consumed by the count.
+function dimCell(cell: HTMLElement): Promise<unknown> {
+	return animate(
+		cell,
+		{ opacity: [parseFloat(cell.style.opacity || '1'), MEASURE_CELL_DIM_OPACITY] },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeOut' },
+	).finished;
+}
+
+// ── lengthMonadic ─────────────────────────────────────────────────────────
+// ≠X — count of cells along the major axis. For a 1D array that's the
+// number of elements; for a 2D array it's the number of rows.
+//
+// Visual: counter scales in above the input row's centre; for i = 1..N,
+// dim the i-th major-axis cell (a 2D "cell" is a whole row dimmed in
+// unison) and tick the counter to i. After the final tick, emit a single
+// after-cell carrying the count from the counter's position.
+//
+// Falls through to blackBox for: non-array input, rank > 2 (no grid render).
+
+export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
+	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
+	const rank = step.x.shape.length;
+	if (rank < 1 || rank > 2) return blackBox(step, beforeRoot, afterRoot);
+
+	const beforeCells = beforeCellsOf(beforeRoot);
+	const afterCells = beforeCellsOf(afterRoot);
+	if (beforeCells.length === 0) return blackBox(step, beforeRoot, afterRoot);
+	// length result is a single scalar bar, rendered as one cell.
+	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
+
+	const majorDim = step.x.shape[0];
+	const sliceSize = rank === 1 ? 1 : step.x.shape[1];
+
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+
+	// Counter sits above the row centre — for a 2D grid that's the grid's
+	// horizontal centre. Use beforeRoot's bounding rect rather than the
+	// individual cells so the counter is centred over the whole input.
+	const rowRect = beforeRoot.getBoundingClientRect();
+	const counterCx = rowRect.left + rowRect.width / 2;
+	const counterCy = rowRect.top - COUNTER_OFFSET + COUNTER_SIZE / 2;
+	const counter = createCounter(counterCx, rowRect.top - COUNTER_OFFSET);
+	counter.textContent = '0';
+	document.body.appendChild(counter);
+
+	await counterIn(counter);
+
+	// Tick once per major-axis cell. For rank 1 each tick dims one bar;
+	// for rank 2 each tick dims one row (sliceSize bars in unison).
+	for (let i = 0; i < majorDim; i++) {
+		const dimTasks: Promise<unknown>[] = [];
+		for (let j = 0; j < sliceSize; j++) {
+			const cellIdx = i * sliceSize + j;
+			dimTasks.push(dimCell(beforeCells[cellIdx]));
+		}
+		// Run the dim concurrent with the tick — the user reads them as
+		// "this cell counts" + "the counter goes up" together.
+		const tick = tickCounter(counter, String(i + 1));
+		await Promise.all([...dimTasks, tick]);
+		if (i < majorDim - 1) await _delayMs(scaledMs(MEASURE_TICK_BETWEEN_MS));
+	}
+	await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
+
+	// Emit the result cell from the counter's centre. The after-cell
+	// already sits at its measured layout slot; we pre-offset its
+	// transform to the counter, then tween back to (0, 0).
+	const afterRect = afterCells[0].getBoundingClientRect();
+	await emitFromPoint(afterCells[0], afterRect, counterCx, counterCy);
+
+	await _delayMs(scaledMs(MEASURE_POST_HOLD_MS));
+
+	void MEASURE_TICK_FADE_MS;
+
+	await counterOutAndRemove(counter);
+
+	// Fade out the dimmed before-row.
+	await animate(
+		beforeRoot,
+		{ opacity: [parseFloat(beforeRoot.style.opacity || '1'), 0] },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
+	).finished;
+
+	for (const cell of afterCells) cell.style.visibility = '';
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
+};
+
+// ── shapeMonadic ──────────────────────────────────────────────────────────
+// ≢X — the shape vector. For 1D the result is ⟨N⟩; for 2D ⟨R C⟩.
+//
+// Visual: for each axis in turn, outline the axis (we pulse the cells
+// belonging to that axis), tick a counter to the axis's length, and emit
+// one after-cell carrying that length from the counter's position. 1D
+// runs one axis; 2D runs two axes back-to-back. The two emitted cells
+// sit side-by-side as the post-commit row.
+//
+// Falls through to blackBox for non-array input or rank > 2.
+
+const AXIS_PULSE_DURATION = 0.32;
+const AXIS_PULSE_HOLD_MS = 80;
+
+async function pulseAxisCells(cells: HTMLElement[]): Promise<void> {
+	const tasks = cells.map(c =>
+		animate(
+			c,
+			{ scale: [1, 1.12, 1], opacity: [parseFloat(c.style.opacity || '1'), 1, parseFloat(c.style.opacity || '1')] },
+			{ duration: scaled(AXIS_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+		).finished,
+	);
+	await Promise.all(tasks);
+}
+
+export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
+	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
+	const rank = step.x.shape.length;
+	if (rank < 1 || rank > 2) return blackBox(step, beforeRoot, afterRoot);
+
+	const beforeCells = beforeCellsOf(beforeRoot);
+	const afterCells = beforeCellsOf(afterRoot);
+	if (beforeCells.length === 0) return blackBox(step, beforeRoot, afterRoot);
+	if (afterCells.length !== rank) return blackBox(step, beforeRoot, afterRoot);
+
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+
+	const rowRect = beforeRoot.getBoundingClientRect();
+	const counterCx = rowRect.left + rowRect.width / 2;
+	const counterCy = rowRect.top - COUNTER_OFFSET + COUNTER_SIZE / 2;
+	const counter = createCounter(counterCx, rowRect.top - COUNTER_OFFSET);
+	counter.textContent = '0';
+	document.body.appendChild(counter);
+
+	await counterIn(counter);
+
+	// For each axis, pulse the cells along that axis and tick the counter
+	// to the axis's length. Then emit one after-cell from the counter.
+	//
+	//   1D: axis 0 = the whole row. Length = N.
+	//   2D: axis 0 = the rows (group by row). Length = R.
+	//        axis 1 = the columns (group by column). Length = C.
+	for (let axis = 0; axis < rank; axis++) {
+		const len = step.x.shape[axis];
+		// Build per-axis cell groups. For axis 0 of a 2D, each row is one
+		// "axis element" — pulse the cells in that row in unison (so the
+		// pulse reads as "this row, that row, …" along the axis). For axis
+		// 1 of a 2D, each column is one axis element. For rank 1 there's
+		// only one axis element per cell.
+		if (rank === 1) {
+			// Single axis: pulse all cells together (the whole row), tick
+			// the counter to N in one go.
+			await pulseAxisCells(beforeCells);
+			await tickCounter(counter, String(len));
+			await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
+		} else {
+			// rank 2 — len axis elements, sliceSize cells per element.
+			const C = step.x.shape[1];
+			for (let i = 0; i < len; i++) {
+				const groupCells: HTMLElement[] = [];
+				if (axis === 0) {
+					// Row i: cells [i*C, i*C+1, …, i*C+C-1].
+					for (let c = 0; c < C; c++) groupCells.push(beforeCells[i * C + c]);
+				} else {
+					// Column i: cells [i, i+C, i+2C, …] across R rows.
+					const R = step.x.shape[0];
+					for (let r = 0; r < R; r++) groupCells.push(beforeCells[r * C + i]);
+				}
+				await pulseAxisCells(groupCells);
+				await tickCounter(counter, String(i + 1));
+				if (i < len - 1) await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
+			}
+		}
+		await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
+
+		const afterRect = afterCells[axis].getBoundingClientRect();
+		await emitFromPoint(afterCells[axis], afterRect, counterCx, counterCy);
+
+		// Between axes (only matters for rank 2), pause briefly and reset
+		// the counter back to 0 visually before the next axis starts ticking.
+		if (axis < rank - 1) {
+			await _delayMs(scaledMs(MEASURE_BETWEEN_EMITS_MS));
+			counter.textContent = '0';
+		}
+	}
+
+	await _delayMs(scaledMs(MEASURE_POST_HOLD_MS));
+	await counterOutAndRemove(counter);
+
+	await animate(
+		beforeRoot,
+		{ opacity: 0 },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
+	).finished;
+
+	for (const cell of afterCells) cell.style.visibility = '';
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
+};
+
+// ── rankOfMonadic ─────────────────────────────────────────────────────────
+// ≢X (as the count of axes, conceptually = ≠≢X). For 1D the rank is 1; for
+// 2D it's 2. Result is always a scalar.
+//
+// Visual: similar to shape but the counter ticks AXES, not axis lengths.
+// Each tick dims an entire axis worth of cells (whole row for axis 0,
+// whole column for axis 1 in a 2D). The counter advances by 1 per axis.
+// After all axes are counted, emit a single after-cell from the counter.
+
+export const rankOfMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
+	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
+	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
+	const rank = step.x.shape.length;
+	if (rank < 1 || rank > 2) return blackBox(step, beforeRoot, afterRoot);
+
+	const beforeCells = beforeCellsOf(beforeRoot);
+	const afterCells = beforeCellsOf(afterRoot);
+	if (beforeCells.length === 0) return blackBox(step, beforeRoot, afterRoot);
+	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
+
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+
+	const rowRect = beforeRoot.getBoundingClientRect();
+	const counterCx = rowRect.left + rowRect.width / 2;
+	const counterCy = rowRect.top - COUNTER_OFFSET + COUNTER_SIZE / 2;
+	const counter = createCounter(counterCx, rowRect.top - COUNTER_OFFSET);
+	counter.textContent = '0';
+	document.body.appendChild(counter);
+
+	await counterIn(counter);
+
+	// Tick once per axis. Each tick pulses the cells participating in that
+	// axis — for rank 1 that's the whole row (one axis); for rank 2 the
+	// first tick pulses the row group (axis 0 = rows), the second pulses
+	// the column group (axis 1 = cols). Visually the same cells get
+	// re-highlighted per axis — that's the point: the same cells are
+	// reached by N different indexing directions, which is exactly what
+	// rank measures.
+	for (let axis = 0; axis < rank; axis++) {
+		if (rank === 1) {
+			await pulseAxisCells(beforeCells);
+		} else {
+			// rank 2 — pulse the relevant "spine" of one row (axis 0) or
+			// one column (axis 1), not every cell along that axis. The
+			// spine highlights the dimension while keeping the other
+			// dimension dimmer, so the user sees the shape-of-thought
+			// rather than just "everything pulses again."
+			const C = step.x.shape[1];
+			const R = step.x.shape[0];
+			const spine: HTMLElement[] = [];
+			if (axis === 0) {
+				// Spine of axis 0 = the first column (one element per row).
+				for (let r = 0; r < R; r++) spine.push(beforeCells[r * C]);
+			} else {
+				// Spine of axis 1 = the first row (one element per col).
+				for (let c = 0; c < C; c++) spine.push(beforeCells[c]);
+			}
+			await pulseAxisCells(spine);
+		}
+		await tickCounter(counter, String(axis + 1));
+		if (axis < rank - 1) await _delayMs(scaledMs(MEASURE_TICK_BETWEEN_MS));
+	}
+	await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
+
+	const afterRect = afterCells[0].getBoundingClientRect();
+	await emitFromPoint(afterCells[0], afterRect, counterCx, counterCy);
+
+	await _delayMs(scaledMs(MEASURE_POST_HOLD_MS));
+	await counterOutAndRemove(counter);
+
+	await animate(
+		beforeRoot,
+		{ opacity: 0 },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
+	).finished;
+
+	for (const cell of afterCells) cell.style.visibility = '';
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
+};
+
+// ── pairDyadic ────────────────────────────────────────────────────────────
+// W⋈X — pair two values into a length-2 array. In the harness this is
+// reached via `bind-left` (W⊸⋈) so X is on stage as the current value and
+// W is the bound scalar.
+//
+// Visual: X is already rendered in beforeRoot; the bound W doesn't have a
+// pre-existing on-stage representation, so we synthesise a "ghost" W bar
+// that flies in from above beforeRoot. W and X then settle into the two
+// post-commit positions (the length-2 result row) side-by-side. The result
+// reads as "these two values, paired."
+//
+// Falls through to blackBox when either side is not a scalar — a non-scalar
+// X would produce a nested ⟨1, ⟨a b c⟩⟩ output the harness can't render.
+
+const PAIR_GHOST_LIFT_PX = 60;
+const PAIR_GHOST_IN_DURATION = 0.4;
+const PAIR_GHOST_HOLD_MS = 140;
+const PAIR_SETTLE_DURATION = 0.5;
+const PAIR_POST_HOLD_MS = 220;
+
+// Build a ghost bar matching the style of the harness's makeBar() so the
+// flying-in W reads as the same visual class as the existing X. We don't
+// import makeBar (Rule A — no imports from outside v2/) — instead we
+// approximate with a div carrying the same height heuristic. Pixel-exact
+// landing comes from gliding to afterRect[0]'s position, not from matching
+// makeBar exactly.
+function createWGhost(value: number, rect: DOMRect): HTMLElement {
+	const ghost = document.createElement('div');
+	const color = value < 0 ? '#f76a6a' : '#7c6af7';
+	const h = Math.min(140, Math.abs(value) * 8 + 18);
+	Object.assign(ghost.style, {
+		position: 'fixed',
+		left: `${rect.left + rect.width / 2}px`,
+		top: `${rect.top + rect.height / 2}px`,
+		width: `${Math.max(rect.width, 24)}px`,
+		height: `${h}px`,
+		background: color,
+		borderRadius: '3px',
+		boxShadow: '0 0 12px rgba(124, 106, 247, 0.4)',
+		transform: `translate(-50%, calc(-50% - ${PAIR_GHOST_LIFT_PX}px)) scale(0.6)`,
+		opacity: '0',
+		zIndex: '10',
+		pointerEvents: 'none',
+		display: 'grid',
+		placeItems: 'start center',
+		paddingTop: '0.18rem',
+	});
+	const num = document.createElement('span');
+	Object.assign(num.style, {
+		color: '#f0fff0',
+		fontSize: '0.85rem',
+		fontWeight: '600',
+		textShadow: '0 0 4px rgba(0, 0, 0, 0.6)',
+		fontFamily: 'system-ui, -apple-system, sans-serif',
+		lineHeight: '1',
+	});
+	num.textContent = String(value);
+	ghost.appendChild(num);
+	return ghost;
+}
+
+export const pairDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
+	if (step.kind !== 'dyadic') return blackBox(step, beforeRoot, afterRoot);
+	// Only scalar+scalar — the renderable case for our length-2 row output.
+	if (step.w.kind !== 'number' || step.x.kind !== 'number') {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
+
+	const afterCells = beforeCellsOf(afterRoot);
+	if (afterCells.length !== 2) return blackBox(step, beforeRoot, afterRoot);
+
+	const xRect = beforeRoot.getBoundingClientRect();
+	const afterRectW = afterCells[0].getBoundingClientRect();
+	const afterRectX = afterCells[1].getBoundingClientRect();
+
+	afterRoot.style.opacity = '1';
+	afterRoot.style.pointerEvents = 'none';
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+
+	beforeRoot.style.position = beforeRoot.style.position || 'relative';
+	beforeRoot.style.zIndex = '5';
+
+	// Phase 1: synthesise the W ghost above beforeRoot's centre and fly it
+	// down to its natural-rest position (centred above X). The ghost flies
+	// from a lifted-and-shrunk start to a settled hover so the user sees
+	// W "arrive from off-stage."
+	const wGhost = createWGhost(step.w.value, xRect);
+	document.body.appendChild(wGhost);
+
+	await animate(
+		wGhost,
+		{
+			opacity: [0, 1],
+			transform: [
+				`translate(-50%, calc(-50% - ${PAIR_GHOST_LIFT_PX}px)) scale(0.6)`,
+				'translate(-50%, -50%) scale(1)',
+			],
+		},
+		{ duration: scaled(PAIR_GHOST_IN_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+	).finished;
+	await _delayMs(scaledMs(PAIR_GHOST_HOLD_MS));
+
+	// Phase 2: glide W ghost to afterCells[0] and X (beforeRoot) to
+	// afterCells[1]. Both end at the measured post-commit positions, so
+	// the after-cell handoff is pixel-exact.
+	const xCx = xRect.left + xRect.width / 2;
+	const xCy = xRect.top + xRect.height / 2;
+	const wTargetCx = afterRectW.left + afterRectW.width / 2;
+	const wTargetCy = afterRectW.top + afterRectW.height / 2;
+	const xTargetCx = afterRectX.left + afterRectX.width / 2;
+	const xTargetCy = afterRectX.top + afterRectX.height / 2;
+
+	// Ghost's current viewport-anchored position is (xCx, xCy); animate
+	// its left/top to the target. Use motion's left/top via style strings —
+	// motion supports them on position:fixed elements.
+	const wMoveTasks: Promise<unknown>[] = [];
+	wMoveTasks.push(
+		animate(
+			wGhost,
+			{
+				left: [`${xCx}px`, `${wTargetCx}px`],
+				top: [`${xCy}px`, `${wTargetCy}px`],
+			},
+			{ duration: scaled(PAIR_SETTLE_DURATION), ease: [0.22, 1, 0.36, 1] },
+		).finished,
+	);
+
+	const xDx = xTargetCx - xCx;
+	const xDy = xTargetCy - xCy;
+	wMoveTasks.push(
+		animate(
+			beforeRoot,
+			{ x: xDx, y: xDy },
+			{ duration: scaled(PAIR_SETTLE_DURATION), ease: [0.22, 1, 0.36, 1] },
+		).finished,
+	);
+
+	await Promise.all(wMoveTasks);
+	await _delayMs(scaledMs(PAIR_POST_HOLD_MS));
+
+	// Fade the ghost out as the after-cells reveal — the after-cell at
+	// afterCells[0] takes the ghost's exact position, so the visual swap
+	// is invisible.
+	for (const cell of afterCells) cell.style.visibility = '';
+	wGhost.remove();
+	afterRoot.style.pointerEvents = '';
+	beforeRoot.style.opacity = '0';
+};

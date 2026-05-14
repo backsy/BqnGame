@@ -150,6 +150,79 @@
 				// a measurable target cell.
 				return { kind: 'array', shape: [1], data: [input] };
 			}
+			case 'first': {
+				if (arity !== 'monadic') throw new Error('first: monadic only');
+				if (input.kind !== 'array') throw new Error('first: expected array');
+				if (input.data.length === 0) throw new Error('first: empty array');
+				// ⊑X — first major-axis cell. For 1D that's data[0]; for 2D
+				// it's the first row, returned as a 1D array of length C.
+				if (input.shape.length === 1) return input.data[0];
+				if (input.shape.length === 2) {
+					const C = input.shape[1];
+					return { kind: 'array', shape: [C], data: input.data.slice(0, C) };
+				}
+				throw new Error('first: unsupported rank');
+			}
+			case 'last': {
+				if (arity !== 'monadic') throw new Error('last: monadic only');
+				if (input.kind !== 'array') throw new Error('last: expected array');
+				if (input.data.length === 0) throw new Error('last: empty array');
+				if (input.shape.length === 1) return input.data[input.data.length - 1];
+				if (input.shape.length === 2) {
+					const [R, C] = input.shape;
+					return { kind: 'array', shape: [C], data: input.data.slice((R - 1) * C, R * C) };
+				}
+				throw new Error('last: unsupported rank');
+			}
+			case 'length': {
+				if (arity !== 'monadic') throw new Error('length: monadic only');
+				if (input.kind !== 'array') throw new Error('length: expected array');
+				// ≠X — count of major-axis cells. For 1D that's data.length;
+				// for 2D it's the row count (shape[0]).
+				return { kind: 'number', value: input.shape[0] };
+			}
+			case 'shape': {
+				if (arity !== 'monadic') throw new Error('shape: monadic only');
+				if (input.kind !== 'array') throw new Error('shape: expected array');
+				// ≢X — shape vector. Always a 1D array of axis lengths, even
+				// for a 1D input (where it's a length-1 array carrying N).
+				const dims = input.shape.map(n => ({ kind: 'number' as const, value: n }));
+				return { kind: 'array', shape: [input.shape.length], data: dims };
+			}
+			case 'rank-of': {
+				if (arity !== 'monadic') throw new Error('rank-of: monadic only');
+				if (input.kind !== 'array') throw new Error('rank-of: expected array');
+				// ≢X (rank semantics, = ≠≢X). Scalar number = number of axes.
+				return { kind: 'number', value: input.shape.length };
+			}
+			case 'solo': {
+				if (arity !== 'monadic') throw new Error('solo: monadic only');
+				// ≍X — wrap X along a new leading axis. Scalar → length-1
+				// 1D row (matches enclose's render so the structural motion
+				// gets a measurable target cell). Array input would yield a
+				// 1×N matrix; the structural motion doesn't draw that case
+				// (falls through to blackBox), but the evaluator computes it
+				// correctly so the trajectory result type is right.
+				if (input.kind === 'number') {
+					return { kind: 'array', shape: [1], data: [input] };
+				}
+				if (input.kind === 'array' && input.shape.length === 1) {
+					return { kind: 'array', shape: [1, input.data.length], data: input.data };
+				}
+				throw new Error('solo: unsupported input shape');
+			}
+			case 'pair': {
+				if (arity !== 'dyadic') throw new Error('pair: dyadic only');
+				if (w === undefined) throw new Error('pair: expected w');
+				// W⋈X — length-2 array containing W and X. The harness can
+				// render only scalar+scalar (yielding a 1D length-2 row);
+				// for non-scalar arms the result would nest, which our
+				// renderBqnValue can't draw as a flat row of bars.
+				if (w.kind !== 'number' || input.kind !== 'number') {
+					throw new Error('pair: requires scalar W and scalar X');
+				}
+				return { kind: 'array', shape: [2], data: [w, input] };
+			}
 			case 'add':
 			case 'sub':
 			case 'mul':
@@ -523,7 +596,7 @@
 
 	// ── Op descriptors ───────────────────────────────────────────────────────
 
-	type Family = 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'comparison' | 'blackBox';
+	type Family = 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'comparison' | 'structural' | 'blackBox';
 
 	type OpDesc = {
 		label: string;
@@ -544,6 +617,7 @@
 		{ key: 'sizing',       label: 'Sizing',       color: '#f7a86a', btnColor: '#e0e0ff' },
 		{ key: 'distributing', label: 'Distributing', color: '#d86af7', btnColor: '#e0e0ff' },
 		{ key: 'comparison',   label: 'Comparison',   color: '#f76a8a', btnColor: '#e0e0ff' },
+		{ key: 'structural',   label: 'Structural',   color: '#f7e16a', btnColor: '#e0e0ff' },
 		{ key: 'blackBox',     label: 'Black-box',    color: '#555',    btnColor: '#a0a0b0' },
 	];
 
@@ -556,7 +630,8 @@
 		sizing: false,
 		merging: false,
 		distributing: false,
-		comparison: true,
+		comparison: false,
+		structural: true,
 		blackBox: false,
 	};
 
@@ -609,6 +684,12 @@
 	const EQ_TO2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'eq' } };
 	const GT_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'gt' } };
 	const LT_BY2: FnExpr = { kind: 'bind-right', right: W2, of: { kind: 'lt' } };
+
+	// 1⋈X — pair the scalar 1 with X. Bind-left form so the button reads
+	// "1⋈" (operation glyph kept per CLAUDE.md invariant 6; the ⊸ plumbing
+	// is stripped). Only meaningful on the scalar starters (3, 5, 8) —
+	// otherwise the evaluator throws.
+	const PAIR_1: FnExpr = { kind: 'bind-left', left: { kind: 'number', value: 1 }, of: { kind: 'pair' } };
 
 	const OPS: OpDesc[] = [
 		// lateral group
@@ -664,6 +745,17 @@
 		{ label: stripBindPlumbing(fnExprLabel(EQ_TO2)), fn: EQ_TO2, arity: 'monadic', family: 'comparison' },
 		{ label: stripBindPlumbing(fnExprLabel(GT_BY2)), fn: GT_BY2, arity: 'monadic', family: 'comparison' },
 		{ label: stripBindPlumbing(fnExprLabel(LT_BY2)), fn: LT_BY2, arity: 'monadic', family: 'comparison' },
+		// structural group — extraction (first / last / solo) and measurement
+		// (length / shape / rank-of). shape and rank-of intentionally share
+		// the ≢ glyph because BQN does — the player meets glyph reuse by
+		// seeing two same-label buttons that behave differently.
+		{ label: fnExprLabel({ kind: 'first' }),   fn: { kind: 'first' },   arity: 'monadic', family: 'structural' },
+		{ label: fnExprLabel({ kind: 'last' }),    fn: { kind: 'last' },    arity: 'monadic', family: 'structural' },
+		{ label: fnExprLabel({ kind: 'length' }),  fn: { kind: 'length' },  arity: 'monadic', family: 'structural' },
+		{ label: fnExprLabel({ kind: 'shape' }),   fn: { kind: 'shape' },   arity: 'monadic', family: 'structural' },
+		{ label: fnExprLabel({ kind: 'rank-of' }), fn: { kind: 'rank-of' }, arity: 'monadic', family: 'structural' },
+		{ label: fnExprLabel({ kind: 'solo' }),    fn: { kind: 'solo' },    arity: 'monadic', family: 'structural' },
+		{ label: stripBindPlumbing(fnExprLabel(PAIR_1)), fn: PAIR_1, arity: 'monadic', family: 'structural' },
 		// blackBox group (currently empty — every wired op has a hand-tuned motion)
 	];
 
