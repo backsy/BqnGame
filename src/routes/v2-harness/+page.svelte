@@ -531,7 +531,7 @@
 				if (is2D) {
 					const [rows, cols] = value.shape;
 					const grid = document.createElement('div');
-					grid.className = 'row';
+					grid.className = 'row bqn-matrix';
 					// align-items:end so bars sit on a baseline within each row
 					// instead of stretching to the top of their grid cell.
 					grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},28px);gap:4px;padding:8px;align-items:end;`;
@@ -792,6 +792,12 @@
 				el.style.left = '50%';
 				el.style.transform = 'translate(-50%, -50%)';
 				el.style.opacity = '0';
+				// Mark as preparing: the embossed-box CSS suppresses
+				// decoration on prepared elements, so afterRoot's container
+				// outline doesn't appear stacked behind / clipping with the
+				// still-visible beforeRoot during a motion. commit() clears
+				// the attribute so the new currentEl shows its decoration.
+				el.dataset.preparing = 'true';
 				containerEl.appendChild(el);
 				return el;
 			},
@@ -802,6 +808,7 @@
 				prepared.style.bottom = '';
 				prepared.style.transform = '';
 				prepared.style.opacity = '';
+				delete prepared.dataset.preparing;
 				for (const child of Array.from(containerEl.children)) {
 					if (child !== prepared) containerEl.removeChild(child);
 				}
@@ -1019,25 +1026,21 @@
 </main>
 
 <style>
-	/* BQN-style brackets around 1D vector renderings so the user can tell
-	   scalar from rank-1 at a glance:
-	     5    — bare bar inside a row wrapper (scalar, rank 0)
-	     ⟨5⟩  — bar with ⟨⟩ around it (vector, rank 1)
-	   For rank 2 the stacked-rows grid is already visually distinct, no
-	   brackets needed.
-	   Pseudo-elements stay out of .children, so the motions iterate only
-	   the bar cells. :global because renderBqnValue creates the elements
-	   imperatively with classList, outside Svelte's scoped-style hashing. */
-	:global(.bqn-vector)::before,
-	:global(.bqn-vector)::after {
-		color: #777;
-		font-family: 'BQN386', ui-monospace, monospace;
-		font-size: 2rem;
-		line-height: 1;
-		display: flex;
-		align-items: flex-end;
-		padding-bottom: 0.2rem;
+	/* Embossed-box decoration on array containers so the user can tell
+	   scalar (bare bar) from rank-1 (boxed row of bars) from rank-2
+	   (boxed grid of bars). The :not([data-preparing]) guard suppresses
+	   the box on the prepared afterRoot during a motion — so during
+	   animation only beforeRoot's box is visible, and the box on the
+	   new value appears the moment commit() removes the attribute.
+	   :global because renderBqnValue creates the elements imperatively
+	   outside Svelte's scoped-style hashing. */
+	:global(.bqn-vector):not([data-preparing]),
+	:global(.bqn-matrix):not([data-preparing]) {
+		border: 1px solid rgba(140, 130, 200, 0.28);
+		border-radius: 8px;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.04),
+			0 1px 2px rgba(0, 0, 0, 0.35);
+		background: rgba(40, 40, 60, 0.18);
 	}
-	:global(.bqn-vector)::before { content: '⟨'; padding-right: 4px; }
-	:global(.bqn-vector)::after  { content: '⟩'; padding-left: 4px; }
 </style>
