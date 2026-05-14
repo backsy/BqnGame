@@ -233,7 +233,9 @@
 		const entry: Entry =
 			response.kind === 'ok'
 				? { id: nextEntryId++, expr: source, kind: 'ok', value: response.value }
-				: { id: nextEntryId++, expr: source, kind: 'error', message: response.message };
+				: response.kind === 'error'
+					? { id: nextEntryId++, expr: source, kind: 'error', message: response.message }
+					: { id: nextEntryId++, expr: source, kind: 'error', message: `unexpected response: ${response.kind}` };
 
 		// Append; cap to last TRANSCRIPT_CAP entries.
 		const next = [...entries, entry];

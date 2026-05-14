@@ -1,452 +1,58 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { play, trajectoryFrom, fnExprLabel, assertNever, setAnimationSpeed, getAnimationSpeed } from '$lib/animations/v2/index.js';
 	import type { Stage, BqnValue, Trajectory, TrajectoryError, FnExpr } from '$lib/animations/v2/index.js';
 	import { motionCoverage } from '$lib/animations/v2/coverage.js';
+	import { BqnWorkerClient } from '$lib/bqn/worker-client.js';
+	import type { BqnStructuredValue } from '$lib/bqn/protocol.js';
 
 	const coverage = motionCoverage();
 
-	// ── Small in-harness evaluator ───────────────────────────────────────────
-	// NOT in v2/. Handles only the operations the harness wires up.
-	// Throws for unsupported combinations; the harness won't call those.
+	// ── BQN evaluation ───────────────────────────────────────────────────────
+	// All BQN evaluation happens in a Web Worker that runs the real,
+	// unmodified BQN interpreter (src/lib/bqn/vendor/bqn.js). There is NO
+	// hand-rolled evaluation in the harness — see CLAUDE.md invariant 3.
+	// We build a BQN source string for each op (combining the op's source
+	// template with the current value's BQN literal), ship it to the
+	// worker, and consume the structured result.
 
-	// Pick a binary op function for the operand of a fold/scan modifier.
-	// Returns null when the operand isn't one of the simple arithmetic
-	// primitives covered by the merging motion family — caller surfaces a
-	// clean error message.
-	function pickMergeBinOp(kind: string): ((a: number, b: number) => number) | null {
-		switch (kind) {
-			case 'add': return (a, b) => a + b;
-			case 'sub': return (a, b) => a - b;
-			case 'mul': return (a, b) => a * b;
-			case 'div': return (a, b) => a / b;
-			case 'mod': return (a, b) => (a === 0 ? b : ((b % a) + a) % a);
-			case 'min': return (a, b) => Math.min(a, b);
-			case 'max': return (a, b) => Math.max(a, b);
-			default:    return null;
+	let bqnWorker: BqnWorkerClient | null = null;
+
+	// Serialise a BqnValue as BQN source so it can be substituted into an
+	// op's source template. Mirrors BQN's own literal syntax:
+	//   scalar number  →  5  or  ¯5  (high-minus for negatives — BQN's
+	//                                  syntax distinct from monadic -)
+	//   length-1 vec   →  ⟨5⟩          (strand of one needs explicit list)
+	//   1D vector ≥2   →  3‿1‿4‿1‿5    (strand syntax)
+	//   2D matrix      →  R‿C⥊flat
+	// Strings / nested arrays out of scope; the harness doesn't drive those.
+	function bqnLiteral(v: BqnValue): string {
+		if (v.kind === 'number') {
+			return v.value < 0 ? `¯${Math.abs(v.value)}` : String(v.value);
 		}
+		if (v.kind === 'char') return `'${v.value}'`;
+		if (v.kind === 'array' && v.shape.length === 1) {
+			if (v.data.length === 0) return '⟨⟩';
+			if (v.data.length === 1) return `⟨${bqnLiteral(v.data[0])}⟩`;
+			return v.data.map(bqnLiteral).join('‿');
+		}
+		if (v.kind === 'array' && v.shape.length === 2) {
+			const flat = v.data.map(bqnLiteral).join('‿');
+			return `${v.shape[0]}‿${v.shape[1]}⥊${flat}`;
+		}
+		throw new Error(`bqnLiteral: cannot serialize value of kind ${v.kind} with shape ${('shape' in v ? v.shape : 'n/a')}`);
 	}
 
-	// BQN-correct sort: sorts the MAJOR-axis cells. For a vector, that's
-	// the individual elements; for a matrix, the rows (compared lex).
-	function sortMajorAxis(arr: BqnValue, ascending: boolean): BqnValue {
-		if (arr.kind !== 'array') return arr;
-		if (arr.shape.length === 1) {
-			const indexed = arr.data.map((v, i) => ({ v, i }));
-			indexed.sort((a, b) => {
-				if (a.v.kind === 'number' && b.v.kind === 'number') {
-					return ascending ? a.v.value - b.v.value : b.v.value - a.v.value;
-				}
-				return 0;
-			});
-			return { kind: 'array', shape: arr.shape, data: indexed.map(x => x.v) };
-		}
-		const [majorDim, ...subShape] = arr.shape;
-		const sliceSize = subShape.reduce((a, b) => a * b, 1);
-		const slices: BqnValue[][] = [];
-		for (let i = 0; i < majorDim; i++) {
-			slices.push(arr.data.slice(i * sliceSize, (i + 1) * sliceSize));
-		}
-		slices.sort((a, b) => {
-			for (let i = 0; i < sliceSize; i++) {
-				const aItem = a[i];
-				const bItem = b[i];
-				const av = aItem.kind === 'number' ? aItem.value : 0;
-				const bv = bItem.kind === 'number' ? bItem.value : 0;
-				if (av !== bv) return ascending ? av - bv : bv - av;
-			}
-			return 0;
-		});
-		const result: BqnValue[] = [];
-		for (const slice of slices) result.push(...slice);
-		return { kind: 'array', shape: arr.shape, data: result };
-	}
-
-	function evalStep(
-		input: BqnValue,
-		fn: FnExpr,
-		arity: 'monadic' | 'dyadic',
-		w?: BqnValue,
-	): BqnValue {
-		switch (fn.kind) {
-			case 'reverse': {
-				if (arity === 'monadic') {
-					if (input.kind !== 'array') throw new Error('reverse: expected array');
-					// BQN ⌽ on rank>=1 reverses along the MAJOR axis: for a
-					// matrix the rows swap, columns within each row stay.
-					// For a vector it is just element reversal.
-					const [majorDim, ...subShape] = input.shape;
-					const sliceSize = subShape.reduce((a, b) => a * b, 1);
-					const reversed: BqnValue[] = new Array(input.data.length);
-					for (let i = 0; i < majorDim; i++) {
-						const src = (majorDim - 1 - i) * sliceSize;
-						const dst = i * sliceSize;
-						for (let j = 0; j < sliceSize; j++) reversed[dst + j] = input.data[src + j];
-					}
-					return { kind: 'array', shape: input.shape, data: reversed };
-				}
-				// dyadic: W⌽X = rotate X by W along the major axis. Vector for now.
-				if (w === undefined || w.kind !== 'number') throw new Error('rotate: expected numeric W');
-				if (input.kind !== 'array' || input.shape.length !== 1)
-					throw new Error('rotate: expected 1D array');
-				const n = input.data.length;
-				const r = ((w.value % n) + n) % n;
-				const rotated = [...input.data.slice(r), ...input.data.slice(0, r)];
-				return { kind: 'array', shape: input.shape, data: rotated };
-			}
-			case 'rotate': {
-				if (arity === 'monadic') {
-					// monadic rotate = reverse in BQN
-					if (input.kind !== 'array') throw new Error('rotate: expected array');
-					return { kind: 'array', shape: input.shape, data: [...input.data].reverse() };
-				}
-				if (w === undefined || w.kind !== 'number') throw new Error('rotate: expected numeric W');
-				if (input.kind !== 'array' || input.shape.length !== 1)
-					throw new Error('rotate: expected 1D array');
-				const n = input.data.length;
-				const r = ((w.value % n) + n) % n;
-				const rotated = [...input.data.slice(r), ...input.data.slice(0, r)];
-				return { kind: 'array', shape: input.shape, data: rotated };
-			}
-			case 'sort-up': {
-				if (arity !== 'monadic') throw new Error('sort-up: monadic only');
-				if (input.kind !== 'array') throw new Error('sort-up: expected array');
-				return sortMajorAxis(input, true);
-			}
-			case 'sort-down': {
-				if (arity !== 'monadic') throw new Error('sort-down: monadic only');
-				if (input.kind !== 'array') throw new Error('sort-down: expected array');
-				return sortMajorAxis(input, false);
-			}
-			case 'transpose': {
-				if (arity !== 'monadic') throw new Error('transpose: monadic only');
-				if (input.kind !== 'array' || input.shape.length !== 2)
-					throw new Error('transpose: expected 2D array');
-				const [rows, cols] = input.shape;
-				const newData = new Array<BqnValue>(rows * cols);
-				for (let r = 0; r < rows; r++) {
-					for (let c = 0; c < cols; c++) {
-						newData[c * rows + r] = input.data[r * cols + c];
-					}
-				}
-				return { kind: 'array', shape: [cols, rows], data: newData };
-			}
-			// distributing group — scalar → many
-			case 'range': {
-				if (arity !== 'monadic') throw new Error('range: monadic only');
-				if (input.kind !== 'number') throw new Error('range: expected number');
-				const n = Math.floor(input.value);
-				return {
-					kind: 'array',
-					shape: [n],
-					data: Array.from({ length: n }, (_, i) => ({ kind: 'number' as const, value: i })),
-				};
-			}
-			case 'enclose': {
-				if (arity !== 'monadic') throw new Error('enclose: monadic only');
-				// <x in BQN normally wraps any value in a length-1 unit
-				// array with shape ⟨⟩ (rank 0). For the harness we render it
-				// as a single-element 1D row so the distributing motion has
-				// a measurable target cell.
-				return { kind: 'array', shape: [1], data: [input] };
-			}
-			case 'first': {
-				if (arity !== 'monadic') throw new Error('first: monadic only');
-				if (input.kind !== 'array') throw new Error('first: expected array');
-				if (input.data.length === 0) throw new Error('first: empty array');
-				// ⊑X — first major-axis cell. For 1D that's data[0]; for 2D
-				// it's the first row, returned as a 1D array of length C.
-				if (input.shape.length === 1) return input.data[0];
-				if (input.shape.length === 2) {
-					const C = input.shape[1];
-					return { kind: 'array', shape: [C], data: input.data.slice(0, C) };
-				}
-				throw new Error('first: unsupported rank');
-			}
-			case 'length': {
-				if (arity !== 'monadic') throw new Error('length: monadic only');
-				if (input.kind !== 'array') throw new Error('length: expected array');
-				// ≠X — count of major-axis cells. For 1D that's data.length;
-				// for 2D it's the row count (shape[0]).
-				return { kind: 'number', value: input.shape[0] };
-			}
-			case 'shape': {
-				if (arity !== 'monadic') throw new Error('shape: monadic only');
-				if (input.kind !== 'array') throw new Error('shape: expected array');
-				// ≢X — shape vector. Always a 1D array of axis lengths, even
-				// for a 1D input (where it's a length-1 array carrying N).
-				const dims = input.shape.map(n => ({ kind: 'number' as const, value: n }));
-				return { kind: 'array', shape: [input.shape.length], data: dims };
-			}
-			case 'rank-of': {
-				if (arity !== 'monadic') throw new Error('rank-of: monadic only');
-				if (input.kind !== 'array') throw new Error('rank-of: expected array');
-				// ≢X (rank semantics, = ≠≢X). Scalar number = number of axes.
-				return { kind: 'number', value: input.shape.length };
-			}
-			case 'solo': {
-				if (arity !== 'monadic') throw new Error('solo: monadic only');
-				// ≍X — wrap X along a new leading axis. Scalar → length-1
-				// 1D row (matches enclose's render so the structural motion
-				// gets a measurable target cell). Array input would yield a
-				// 1×N matrix; the structural motion doesn't draw that case
-				// (falls through to blackBox), but the evaluator computes it
-				// correctly so the trajectory result type is right.
-				if (input.kind === 'number') {
-					return { kind: 'array', shape: [1], data: [input] };
-				}
-				if (input.kind === 'array' && input.shape.length === 1) {
-					return { kind: 'array', shape: [1, input.data.length], data: input.data };
-				}
-				throw new Error('solo: unsupported input shape');
-			}
-			case 'pair': {
-				if (arity !== 'dyadic') throw new Error('pair: dyadic only');
-				if (w === undefined) throw new Error('pair: expected w');
-				// W⋈X — length-2 array containing W and X. The harness can
-				// render only scalar+scalar (yielding a 1D length-2 row);
-				// for non-scalar arms the result would nest, which our
-				// renderBqnValue can't draw as a flat row of bars.
-				if (w.kind !== 'number' || input.kind !== 'number') {
-					throw new Error('pair: requires scalar W and scalar X');
-				}
-				return { kind: 'array', shape: [2], data: [w, input] };
-			}
-			case 'add':
-			case 'sub':
-			case 'mul':
-			case 'div':
-			case 'pow':
-			case 'mod':
-			case 'min':
-			case 'max': {
-				if (arity !== 'dyadic') throw new Error(`${fn.kind}: dyadic only`);
-				if (w === undefined) throw new Error(`${fn.kind}: expected w`);
-				// Apply preserves BQN's W F X order — never swap operands.
-				// Modulus is W|X with the result having sign of W and lying
-				// in [0, |W|); ((x % w) + w) % w handles negative cases.
-				const apply = (wv: number, xv: number): number => {
-					switch (fn.kind) {
-						case 'add': return wv + xv;
-						case 'sub': return wv - xv;
-						case 'mul': return wv * xv;
-						case 'div': return wv / xv;
-						case 'pow': return Math.pow(wv, xv);
-						case 'mod': return wv === 0 ? xv : ((xv % wv) + wv) % wv;
-						case 'min': return Math.min(wv, xv);
-						case 'max': return Math.max(wv, xv);
-					}
-				};
-				// Scalar+array broadcast (either direction). Both directions
-				// preserve BQN's W F X ordering — only which side carries the
-				// array changes.
-				if (w.kind === 'number' && input.kind === 'array') {
-					const wv = w.value;
-					return {
-						kind: 'array',
-						shape: input.shape,
-						data: input.data.map(v =>
-							v.kind === 'number'
-								? { kind: 'number' as const, value: apply(wv, v.value) }
-								: v,
-						),
-					};
-				}
-				if (w.kind === 'array' && input.kind === 'number') {
-					const xv = input.value;
-					return {
-						kind: 'array',
-						shape: w.shape,
-						data: w.data.map(v =>
-							v.kind === 'number'
-								? { kind: 'number' as const, value: apply(v.value, xv) }
-								: v,
-						),
-					};
-				}
-				throw new Error(`${fn.kind}: expected one scalar and one array`);
-			}
-			case 'neg':
-			case 'abs':
-			case 'floor':
-			case 'ceil': {
-				if (arity !== 'monadic') throw new Error(`${fn.kind}: monadic only`);
-				if (input.kind !== 'array') throw new Error(`${fn.kind}: expected array`);
-				const apply = (xv: number): number => {
-					switch (fn.kind) {
-						case 'neg': return -xv;
-						case 'abs': return Math.abs(xv);
-						case 'floor': return Math.floor(xv);
-						case 'ceil': return Math.ceil(xv);
-					}
-				};
-				return {
-					kind: 'array',
-					shape: input.shape,
-					data: input.data.map(v =>
-						v.kind === 'number'
-							? { kind: 'number' as const, value: apply(v.value) }
-							: v,
-					),
-				};
-			}
-			case 'fold': {
-				if (arity !== 'monadic') throw new Error('fold: monadic only');
-				if (input.kind !== 'array') throw new Error('fold: expected array');
-				// Supported operand set mirrors the merging motion family:
-				// add, sub, mul, div, mod, min, max. Pow is omitted because
-				// the visual gets noisy fast.
-				const binOp = pickMergeBinOp(fn.over.kind);
-				if (binOp === null) {
-					throw new Error(`fold: unsupported operand "${fn.over.kind}" — supported: add, sub, mul, div, mod, min, max`);
-				}
-				// Right-fold semantics:
-				//   F´[a b c d] ≡ a F (b F (c F d))
-				// Computed from the right: acc = data[N-1], then for
-				// i from N-2 down to 0, acc = binOp(data[i], acc). For
-				// commutative ops (+, ×, ⌊, ⌈) this is identical to a
-				// left-fold; for non-commutative (-, ÷, |) the direction is
-				// load-bearing.
-				const nums: number[] = [];
-				for (const v of input.data) {
-					if (v.kind !== 'number') throw new Error('fold: non-numeric element');
-					nums.push(v.value);
-				}
-				if (nums.length === 0) throw new Error('fold: empty array (no identity wired)');
-				let acc = nums[nums.length - 1];
-				for (let i = nums.length - 2; i >= 0; i--) {
-					acc = binOp(nums[i], acc);
-				}
-				return { kind: 'number', value: acc };
-			}
-			case 'scan': {
-				if (arity !== 'monadic') throw new Error('scan: monadic only');
-				if (input.kind !== 'array' || input.shape.length !== 1) {
-					throw new Error('scan: expected 1D array');
-				}
-				const binOp = pickMergeBinOp(fn.over.kind);
-				if (binOp === null) {
-					throw new Error(`scan: unsupported operand "${fn.over.kind}" — supported: add, sub, mul, div, mod, min, max`);
-				}
-				const nums: number[] = [];
-				for (const v of input.data) {
-					if (v.kind !== 'number') throw new Error('scan: non-numeric element');
-					nums.push(v.value);
-				}
-				// BQN F` is LEFT-to-right associative:
-				//   result[0] = data[0]
-				//   result[i] = binOp(result[i-1], data[i])
-				const out: BqnValue[] = [];
-				if (nums.length > 0) {
-					let acc = nums[0];
-					out.push({ kind: 'number', value: acc });
-					for (let i = 1; i < nums.length; i++) {
-						acc = binOp(acc, nums[i]);
-						out.push({ kind: 'number', value: acc });
-					}
-				}
-				return { kind: 'array', shape: [nums.length], data: out };
-			}
-			case 'take': {
-				if (arity !== 'dyadic') throw new Error('take: dyadic only');
-				if (w === undefined || w.kind !== 'number') throw new Error('take: expected numeric w');
-				if (input.kind !== 'array' || input.shape.length !== 1) throw new Error('take: expected 1D array');
-				const n = w.value;
-				if (!Number.isInteger(n) || n < 0) throw new Error('take: expected non-negative integer w');
-				if (n > input.data.length) throw new Error('take: n exceeds array length (fill not modelled)');
-				return { kind: 'array', shape: [n], data: input.data.slice(0, n) };
-			}
-			case 'drop': {
-				if (arity !== 'dyadic') throw new Error('drop: dyadic only');
-				if (w === undefined || w.kind !== 'number') throw new Error('drop: expected numeric w');
-				if (input.kind !== 'array' || input.shape.length !== 1) throw new Error('drop: expected 1D array');
-				const n = w.value;
-				if (!Number.isInteger(n) || n < 0) throw new Error('drop: expected non-negative integer w');
-				if (n > input.data.length) throw new Error('drop: n exceeds array length');
-				const rest = input.data.slice(n);
-				return { kind: 'array', shape: [rest.length], data: rest };
-			}
-			case 'replicate': {
-				// M/X — w is a 0/1 mask of the same length as input.data.
-				// Each input cell whose mask entry is 1 is kept; 0 cells are
-				// discarded. (BQN's general replicate allows mask entries to
-				// be any non-negative integer for repeat counts, but the
-				// harness only exercises the 0/1 filter case.)
-				if (arity !== 'dyadic') throw new Error('replicate (M/X): dyadic only');
-				if (w === undefined || w.kind !== 'array' || w.shape.length !== 1)
-					throw new Error('replicate (M/X): expected 1D mask');
-				if (input.kind !== 'array' || input.shape.length !== 1)
-					throw new Error('replicate (M/X): expected 1D array');
-				if (w.data.length !== input.data.length)
-					throw new Error(`replicate (M/X): mask length ${w.data.length} does not match x length ${input.data.length}`);
-				const kept: BqnValue[] = [];
-				for (let i = 0; i < w.data.length; i++) {
-					const m = w.data[i];
-					if (m.kind !== 'number' || (m.value !== 0 && m.value !== 1))
-						throw new Error('replicate (M/X): mask entries must be 0 or 1');
-					if (m.value === 1) kept.push(input.data[i]);
-				}
-				return { kind: 'array', shape: [kept.length], data: kept };
-			}
-			case 'bind-left': {
-				return evalStep(input, fn.of, 'dyadic', fn.left);
-			}
-			case 'bind-right': {
-				// (F⟜N) X ≡ X F N — dyadic call with w = X, x = N.
-				return evalStep(fn.right, fn.of, 'dyadic', input);
-			}
-			case 'before': {
-				// (F⊸G) X ≡ (F X) G X — apply F monadically to X, then call G
-				// dyadically with the result as W and X as X.
-				if (arity !== 'monadic') throw new Error('before: monadic only');
-				const mask = evalStep(input, fn.f, 'monadic');
-				return evalStep(input, fn.g, 'dyadic', mask);
-			}
-			case 'eq':
-			case 'ne':
-			case 'lt':
-			case 'le':
-			case 'gt':
-			case 'ge': {
-				// Dyadic W F X with scalar-array broadcasting. Returns a 0/1
-				// array shaped like the array argument; or a 0/1 scalar when
-				// both args are scalar. Operand order is load-bearing — `2>3`
-				// is 0 while `3>2` is 1; the same applies to <, ≤, ≥.
-				if (arity !== 'dyadic') throw new Error(`${fn.kind}: dyadic only`);
-				if (w === undefined) throw new Error(`${fn.kind}: expected w`);
-				const apply = (wv: number, xv: number): number => {
-					switch (fn.kind) {
-						case 'eq': return wv === xv ? 1 : 0;
-						case 'ne': return wv !== xv ? 1 : 0;
-						case 'lt': return wv < xv ? 1 : 0;
-						case 'le': return wv <= xv ? 1 : 0;
-						case 'gt': return wv > xv ? 1 : 0;
-						case 'ge': return wv >= xv ? 1 : 0;
-					}
-				};
-				if (w.kind === 'number' && input.kind === 'number') {
-					return { kind: 'number', value: apply(w.value, input.value) };
-				}
-				if (w.kind === 'number' && input.kind === 'array') {
-					const wv = w.value;
-					const data: BqnValue[] = input.data.map(v => {
-						if (v.kind !== 'number') throw new Error(`${fn.kind}: non-numeric element`);
-						return { kind: 'number' as const, value: apply(wv, v.value) };
-					});
-					return { kind: 'array', shape: input.shape, data };
-				}
-				if (w.kind === 'array' && input.kind === 'number') {
-					const xv = input.value;
-					const data: BqnValue[] = w.data.map(v => {
-						if (v.kind !== 'number') throw new Error(`${fn.kind}: non-numeric element`);
-						return { kind: 'number' as const, value: apply(v.value, xv) };
-					});
-					return { kind: 'array', shape: w.shape, data };
-				}
-				throw new Error(`${fn.kind}: unsupported argument shapes`);
-			}
-			default:
-				throw new Error(`evalStep: unsupported fn kind "${fn.kind}" in harness`);
+	// Convert the worker's structured snapshot into v2's BqnValue. Shapes are
+	// identical for number / char / array; fn and namespace are flattened to
+	// opaque placeholders since the harness doesn't expose them interactively.
+	function fromStructured(s: BqnStructuredValue): BqnValue {
+		switch (s.kind) {
+			case 'number': return { kind: 'number', value: s.value };
+			case 'char':   return { kind: 'char',   value: s.value };
+			case 'array':  return { kind: 'array',  shape: s.shape, data: s.data.map(fromStructured) };
+			case 'fn':     return { kind: 'fn',     def: { kind: 'opaque', name: '{fn}', resolved: { kind: 'add' } } };
+			case 'namespace': return { kind: 'namespace', entries: new Map() };
 		}
 	}
 
@@ -611,6 +217,10 @@
 		arity: 'monadic' | 'dyadic';
 		w?: BqnValue;
 		family: Family;
+		// BQN source FOR THIS OP applied to the current value's literal X.
+		// The worker evaluates `source(bqnLiteral(currentValue))` and returns
+		// the structured result — the animator does NOT compute this.
+		source: (x: string) => string;
 	};
 
 	// Section ordering + accent colour per family. Buttons in each section
@@ -698,70 +308,66 @@
 	// otherwise the evaluator throws.
 	const PAIR_1: FnExpr = { kind: 'bind-left', left: { kind: 'number', value: 1 }, of: { kind: 'pair' } };
 
+	// Every op's `source` is the BQN syntax that, applied to the current
+	// value's literal, expresses the operation. The worker compiles and
+	// runs this string with the real BQN interpreter — there is no
+	// reimplementation of any operation in the harness.
+	const SCAN = '`'; // BQN scan modifier glyph (a literal backtick)
 	const OPS: OpDesc[] = [
 		// lateral group
-		{ label: fnExprLabel({ kind: 'reverse' }),   fn: { kind: 'reverse' },   arity: 'monadic', family: 'lateral' },
-		{ label: fnExprLabel({ kind: 'sort-up' }),   fn: { kind: 'sort-up' },   arity: 'monadic', family: 'lateral' },
-		{ label: fnExprLabel({ kind: 'sort-down' }), fn: { kind: 'sort-down' }, arity: 'monadic', family: 'lateral' },
-		{ label: `2${fnExprLabel({ kind: 'rotate' })}`, fn: { kind: 'rotate' }, arity: 'dyadic', w: W2, family: 'lateral' },
-		{ label: fnExprLabel({ kind: 'transpose' }), fn: { kind: 'transpose' }, arity: 'monadic', family: 'lateral' },
+		{ label: fnExprLabel({ kind: 'reverse' }),   fn: { kind: 'reverse' },   arity: 'monadic', family: 'lateral',     source: x => `⌽${x}` },
+		{ label: fnExprLabel({ kind: 'sort-up' }),   fn: { kind: 'sort-up' },   arity: 'monadic', family: 'lateral',     source: x => `∧${x}` },
+		{ label: fnExprLabel({ kind: 'sort-down' }), fn: { kind: 'sort-down' }, arity: 'monadic', family: 'lateral',     source: x => `∨${x}` },
+		{ label: `2${fnExprLabel({ kind: 'rotate' })}`, fn: { kind: 'rotate' }, arity: 'dyadic', w: W2, family: 'lateral', source: x => `2⌽${x}` },
+		{ label: fnExprLabel({ kind: 'transpose' }), fn: { kind: 'transpose' }, arity: 'monadic', family: 'lateral',     source: x => `⍉${x}` },
 		// vertical group
-		{ label: stripBindPlumbing(fnExprLabel(TAKE2)), fn: TAKE2, arity: 'monadic', family: 'vertical' },
-		{ label: stripBindPlumbing(fnExprLabel(DROP2)), fn: DROP2, arity: 'monadic', family: 'vertical' },
-		{ label: `(>2)/`, fn: FILTER_GT2, arity: 'monadic', family: 'vertical' },
+		{ label: stripBindPlumbing(fnExprLabel(TAKE2)), fn: TAKE2, arity: 'monadic', family: 'vertical', source: x => `2↑${x}` },
+		{ label: stripBindPlumbing(fnExprLabel(DROP2)), fn: DROP2, arity: 'monadic', family: 'vertical', source: x => `2↓${x}` },
+		{ label: `(>2)/`, fn: FILTER_GT2, arity: 'monadic', family: 'vertical', source: x => `(${x}>2)/${x}` },
 		// sizing group — per-cell arithmetic. Non-commutative ops appear in
 		// BOTH bind-left and bind-right forms because operand order is
 		// load-bearing in BQN: `2-X` is "two minus each cell" (flips sign
 		// when X > 2); `X-2` written `-⟜2` is "subtract 2 from each cell".
 		// Tap them back-to-back and the badge position + colour-flip make
 		// the difference visible.
-		{ label: `2${fnExprLabel({ kind: 'add' })}`, fn: { kind: 'add' }, arity: 'dyadic', w: W2, family: 'sizing' },
-		{ label: `2${fnExprLabel({ kind: 'sub' })}`, fn: { kind: 'sub' }, arity: 'dyadic', w: W2, family: 'sizing' },
-		{ label: stripBindPlumbing(fnExprLabel(SUB_BY2)), fn: SUB_BY2, arity: 'monadic', family: 'sizing' },
-		{ label: `2${fnExprLabel({ kind: 'mul' })}`, fn: { kind: 'mul' }, arity: 'dyadic', w: W2, family: 'sizing' },
-		{ label: `2${fnExprLabel({ kind: 'div' })}`, fn: { kind: 'div' }, arity: 'dyadic', w: W2, family: 'sizing' },
-		{ label: stripBindPlumbing(fnExprLabel(DIV_BY2)), fn: DIV_BY2, arity: 'monadic', family: 'sizing' },
-		{ label: `3${fnExprLabel({ kind: 'mod' })}`, fn: { kind: 'mod' }, arity: 'dyadic', w: { kind: 'number', value: 3 }, family: 'sizing' },
+		{ label: `2${fnExprLabel({ kind: 'add' })}`, fn: { kind: 'add' }, arity: 'dyadic', w: W2, family: 'sizing', source: x => `2+${x}` },
+		{ label: `2${fnExprLabel({ kind: 'sub' })}`, fn: { kind: 'sub' }, arity: 'dyadic', w: W2, family: 'sizing', source: x => `2-${x}` },
+		{ label: stripBindPlumbing(fnExprLabel(SUB_BY2)), fn: SUB_BY2, arity: 'monadic', family: 'sizing', source: x => `${x}-2` },
+		{ label: `2${fnExprLabel({ kind: 'mul' })}`, fn: { kind: 'mul' }, arity: 'dyadic', w: W2, family: 'sizing', source: x => `2×${x}` },
+		{ label: `2${fnExprLabel({ kind: 'div' })}`, fn: { kind: 'div' }, arity: 'dyadic', w: W2, family: 'sizing', source: x => `2÷${x}` },
+		{ label: stripBindPlumbing(fnExprLabel(DIV_BY2)), fn: DIV_BY2, arity: 'monadic', family: 'sizing', source: x => `${x}÷2` },
+		{ label: `3${fnExprLabel({ kind: 'mod' })}`, fn: { kind: 'mod' }, arity: 'dyadic', w: { kind: 'number', value: 3 }, family: 'sizing', source: x => `3|${x}` },
 		// monadic per-cell
-		{ label: fnExprLabel({ kind: 'neg' }), fn: { kind: 'neg' }, arity: 'monadic', family: 'sizing' },
-		{ label: fnExprLabel({ kind: 'abs' }), fn: { kind: 'abs' }, arity: 'monadic', family: 'sizing' },
-		// merging group — fold (F´) and scan (F`). The label comes straight
-		// from fnExprLabel which renders e.g. `{ kind: 'fold', over: add }`
-		// as `+´`. Right-fold direction is enforced in the evaluator and the
-		// motion; non-commutative ops show their associativity through the
-		// rightmost-pair-first merge sequence.
-		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'add' } }), fn: { kind: 'fold', over: { kind: 'add' } }, arity: 'monadic', family: 'merging' },
-		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'sub' } }), fn: { kind: 'fold', over: { kind: 'sub' } }, arity: 'monadic', family: 'merging' },
-		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'mul' } }), fn: { kind: 'fold', over: { kind: 'mul' } }, arity: 'monadic', family: 'merging' },
-		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'max' } }), fn: { kind: 'fold', over: { kind: 'max' } }, arity: 'monadic', family: 'merging' },
-		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'add' } }), fn: { kind: 'scan', over: { kind: 'add' } }, arity: 'monadic', family: 'merging' },
-		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'sub' } }), fn: { kind: 'scan', over: { kind: 'sub' } }, arity: 'monadic', family: 'merging' },
-		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'max' } }), fn: { kind: 'scan', over: { kind: 'max' } }, arity: 'monadic', family: 'merging' },
-		// distributing group — one cell spreads to many. ↕N counts out N
-		// indices (needs a scalar starter); <x wraps a scalar in a length-1
-		// array (also scalar input).
-		{ label: fnExprLabel({ kind: 'range' }),   fn: { kind: 'range' },   arity: 'monadic', family: 'distributing' },
-		{ label: fnExprLabel({ kind: 'enclose' }), fn: { kind: 'enclose' }, arity: 'monadic', family: 'distributing' },
+		{ label: fnExprLabel({ kind: 'neg' }), fn: { kind: 'neg' }, arity: 'monadic', family: 'sizing', source: x => `-${x}` },
+		{ label: fnExprLabel({ kind: 'abs' }), fn: { kind: 'abs' }, arity: 'monadic', family: 'sizing', source: x => `|${x}` },
+		// merging group — fold (F´) and scan (F`).
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'add' } }), fn: { kind: 'fold', over: { kind: 'add' } }, arity: 'monadic', family: 'merging', source: x => `+´${x}` },
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'sub' } }), fn: { kind: 'fold', over: { kind: 'sub' } }, arity: 'monadic', family: 'merging', source: x => `-´${x}` },
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'mul' } }), fn: { kind: 'fold', over: { kind: 'mul' } }, arity: 'monadic', family: 'merging', source: x => `×´${x}` },
+		{ label: fnExprLabel({ kind: 'fold', over: { kind: 'max' } }), fn: { kind: 'fold', over: { kind: 'max' } }, arity: 'monadic', family: 'merging', source: x => `⌈´${x}` },
+		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'add' } }), fn: { kind: 'scan', over: { kind: 'add' } }, arity: 'monadic', family: 'merging', source: x => `+${SCAN}${x}` },
+		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'sub' } }), fn: { kind: 'scan', over: { kind: 'sub' } }, arity: 'monadic', family: 'merging', source: x => `-${SCAN}${x}` },
+		{ label: fnExprLabel({ kind: 'scan', over: { kind: 'max' } }), fn: { kind: 'scan', over: { kind: 'max' } }, arity: 'monadic', family: 'merging', source: x => `⌈${SCAN}${x}` },
+		// distributing group — one cell spreads to many.
+		{ label: fnExprLabel({ kind: 'range' }),   fn: { kind: 'range' },   arity: 'monadic', family: 'distributing', source: x => `↕${x}` },
+		{ label: fnExprLabel({ kind: 'enclose' }), fn: { kind: 'enclose' }, arity: 'monadic', family: 'distributing', source: x => `<${x}` },
 		// comparison group — per-cell W F X with one scalar side. Bind-left
-		// (`2=`, `2>`, `2<`) reads "2 F cell"; bind-right (`=2`, `>2`, `<2`,
-		// via F⟜2) reads "cell F 2". Operand order matters: `2>X` and `X>2`
-		// produce different masks. Tap them back-to-back to see the flip.
-		{ label: `2${fnExprLabel({ kind: 'eq' })}`, fn: { kind: 'eq' }, arity: 'dyadic', w: W2, family: 'comparison' },
-		{ label: `2${fnExprLabel({ kind: 'gt' })}`, fn: { kind: 'gt' }, arity: 'dyadic', w: W2, family: 'comparison' },
-		{ label: `2${fnExprLabel({ kind: 'lt' })}`, fn: { kind: 'lt' }, arity: 'dyadic', w: W2, family: 'comparison' },
-		{ label: stripBindPlumbing(fnExprLabel(EQ_TO2)), fn: EQ_TO2, arity: 'monadic', family: 'comparison' },
-		{ label: stripBindPlumbing(fnExprLabel(GT_BY2)), fn: GT_BY2, arity: 'monadic', family: 'comparison' },
-		{ label: stripBindPlumbing(fnExprLabel(LT_BY2)), fn: LT_BY2, arity: 'monadic', family: 'comparison' },
+		// (`2=`, `2>`, `2<`) reads "2 F cell"; bind-right (`=2`, `>2`, `<2`)
+		// reads "cell F 2". Operand order matters.
+		{ label: `2${fnExprLabel({ kind: 'eq' })}`, fn: { kind: 'eq' }, arity: 'dyadic', w: W2, family: 'comparison', source: x => `2=${x}` },
+		{ label: `2${fnExprLabel({ kind: 'gt' })}`, fn: { kind: 'gt' }, arity: 'dyadic', w: W2, family: 'comparison', source: x => `2>${x}` },
+		{ label: `2${fnExprLabel({ kind: 'lt' })}`, fn: { kind: 'lt' }, arity: 'dyadic', w: W2, family: 'comparison', source: x => `2<${x}` },
+		{ label: stripBindPlumbing(fnExprLabel(EQ_TO2)), fn: EQ_TO2, arity: 'monadic', family: 'comparison', source: x => `${x}=2` },
+		{ label: stripBindPlumbing(fnExprLabel(GT_BY2)), fn: GT_BY2, arity: 'monadic', family: 'comparison', source: x => `${x}>2` },
+		{ label: stripBindPlumbing(fnExprLabel(LT_BY2)), fn: LT_BY2, arity: 'monadic', family: 'comparison', source: x => `${x}<2` },
 		// structural group — extraction (first / solo) and measurement
-		// (length / shape / rank-of). All real BQN primitives — no synthetic
-		// "last" kind since BQN has no last primitive (write `(¯1)⊑X` or
-		// `⊑⌽X` instead).
-		{ label: fnExprLabel({ kind: 'first' }),   fn: { kind: 'first' },   arity: 'monadic', family: 'structural' },
-		{ label: fnExprLabel({ kind: 'length' }),  fn: { kind: 'length' },  arity: 'monadic', family: 'structural' },
-		{ label: fnExprLabel({ kind: 'shape' }),   fn: { kind: 'shape' },   arity: 'monadic', family: 'structural' },
-		{ label: fnExprLabel({ kind: 'rank-of' }), fn: { kind: 'rank-of' }, arity: 'monadic', family: 'structural' },
-		{ label: fnExprLabel({ kind: 'solo' }),    fn: { kind: 'solo' },    arity: 'monadic', family: 'structural' },
-		{ label: stripBindPlumbing(fnExprLabel(PAIR_1)), fn: PAIR_1, arity: 'monadic', family: 'structural' },
+		// (length / shape / rank-of). All real BQN primitives.
+		{ label: fnExprLabel({ kind: 'first' }),   fn: { kind: 'first' },   arity: 'monadic', family: 'structural', source: x => `⊑${x}` },
+		{ label: fnExprLabel({ kind: 'length' }),  fn: { kind: 'length' },  arity: 'monadic', family: 'structural', source: x => `≠${x}` },
+		{ label: fnExprLabel({ kind: 'shape' }),   fn: { kind: 'shape' },   arity: 'monadic', family: 'structural', source: x => `≢${x}` },
+		{ label: fnExprLabel({ kind: 'rank-of' }), fn: { kind: 'rank-of' }, arity: 'monadic', family: 'structural', source: x => `=${x}` },
+		{ label: fnExprLabel({ kind: 'solo' }),    fn: { kind: 'solo' },    arity: 'monadic', family: 'structural', source: x => `≍${x}` },
+		{ label: stripBindPlumbing(fnExprLabel(PAIR_1)), fn: PAIR_1, arity: 'monadic', family: 'structural', source: x => `1⋈${x}` },
 		// blackBox group (currently empty — every wired op has a hand-tuned motion)
 	];
 
@@ -846,18 +452,44 @@
 	}
 
 	async function handleOp(op: OpDesc): Promise<void> {
-		if (!stage || playing) return;
+		if (!stage || playing || !bqnWorker) return;
 
+		// 1. Ship the BQN source to the worker. The current value is
+		//    serialised as a BQN literal and substituted into the op's
+		//    source template. The worker compiles and runs the source via
+		//    the real BQN interpreter and returns the structured result.
+		//    Any divergence between what the animation expects and what
+		//    BQN actually produces will surface as a Step / Trajectory
+		//    error below — there's no shadow evaluator to disagree with.
+		let xLit: string;
+		try {
+			xLit = bqnLiteral(currentValue);
+		} catch (e) {
+			statusMsg = `Cannot serialise current value: ${String(e)}`;
+			return;
+		}
+		const src = op.source(xLit);
+
+		playing = true;
+		statusMsg = '';
+
+		let result: BqnValue;
+		try {
+			const structured = await bqnWorker.evalStructured(src);
+			result = fromStructured(structured);
+		} catch (e) {
+			statusMsg = `BQN: ${e instanceof Error ? e.message : String(e)}`;
+			playing = false;
+			return;
+		}
+
+		// 2. Build the animation Step. The fn used for animation dispatch
+		//    is the unwrapped form (so animateDyadic sees `sub` etc., not
+		//    `bind-left{sub}` which routes to blackBox). bind-{left,right}
+		//    unwrap puts the bound side into the right slot:
+		//      bind-left  (N⊸F):  W = N (bound), X = currentValue.
+		//      bind-right (F⟜N):  W = currentValue, X = N (bound).
 		const fn: FnExpr = op.fn;
-
-		// Unwrap monadic bind-{left,right} wrappers to the inner dyadic
-		// operation so the v2 engine dispatches on the operation kind
-		// (take / drop / sub / div ...) rather than on the bind wrapper,
-		// which routes to blackBox. Other monadic wrappers (notably
-		// 'before') keep their outer kind so animateMonadic can route them.
-		//
-		// bind-left  (N⊸F):  W = N (bound), X = currentValue.
-		// bind-right (F⟜N):  W = currentValue, X = N (bound).
 		let arity: 'monadic' | 'dyadic' = op.arity;
 		let w: BqnValue | undefined = op.w;
 		let xForStep: BqnValue = currentValue;
@@ -873,14 +505,6 @@
 			arity = 'dyadic';
 		}
 
-		let result: BqnValue;
-		try {
-			result = evalStep(xForStep, fnForStep, arity, w);
-		} catch (e) {
-			statusMsg = `Cannot apply to current value: ${String(e)}`;
-			return;
-		}
-
 		let traj: Trajectory | TrajectoryError;
 		if (arity === 'monadic') {
 			traj = trajectoryFrom(currentValue, [
@@ -889,6 +513,7 @@
 		} else {
 			if (w === undefined) {
 				statusMsg = 'Dyadic op missing w';
+				playing = false;
 				return;
 			}
 			traj = trajectoryFrom(currentValue, [
@@ -898,11 +523,10 @@
 
 		if ('kind' in traj) {
 			statusMsg = `Trajectory error: ${traj.kind}`;
+			playing = false;
 			return;
 		}
 
-		playing = true;
-		statusMsg = '';
 		await play(traj, stage);
 		currentValue = result;
 		playing = false;
@@ -918,6 +542,12 @@
 		containerEl.appendChild(initial);
 		currentEl = initial;
 		stage = buildStage();
+		bqnWorker = new BqnWorkerClient();
+	});
+
+	onDestroy(() => {
+		bqnWorker?.destroy();
+		bqnWorker = null;
 	});
 </script>
 
