@@ -516,8 +516,14 @@
 					const row = document.createElement('div');
 					row.className = 'row';
 					row.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
+					// Build bars directly — don't recurse through renderBqnValue
+					// for items, because the scalar case wraps each bar in its
+					// own row container (needed when a scalar is the WHOLE
+					// rendered value). Recursing here would put a padded row
+					// around every bar and balloon the array's gap.
 					for (const item of value.data) {
-						row.appendChild(renderBqnValue(item));
+						const v = item.kind === 'number' ? item.value : 0;
+						row.appendChild(makeBar(v));
 					}
 					return row;
 				}
