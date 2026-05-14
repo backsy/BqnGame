@@ -64,7 +64,7 @@ const PRIM_GLYPH: Record<string, string> = {
 	transpose:            '⍉',
 	length:               '≠',
 	shape:                '≢',
-	'rank-of':            '≢',
+	'rank-of':            '=',
 	take:                 '↑',
 	drop:                 '↓',
 	select:               '⊏',
