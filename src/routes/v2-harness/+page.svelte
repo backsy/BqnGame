@@ -745,7 +745,7 @@
 	<title>v2 Animation Harness</title>
 </svelte:head>
 
-<main style="padding:1rem 1rem 140px;font-family:sans-serif;background:#0d0d1a;height:100dvh;overflow-y:auto;color:#e0e0ff;max-width:480px;margin:0 auto;">
+<main style="padding:1rem 1rem 200px;font-family:sans-serif;background:#0d0d1a;min-height:100dvh;color:#e0e0ff;max-width:480px;margin:0 auto;">
 	<div style="display:flex;align-items:baseline;justify-content:space-between;gap:0.6rem;margin-bottom:1rem;">
 		<h1 style="font-size:1.1rem;margin:0;color:#a89cf7;">v2 Animation Harness</h1>
 		<span
@@ -846,6 +846,17 @@
 </main>
 
 <style>
+	/* Override the app-wide `html, body { overflow:hidden; height:100% }`
+	   that the puzzle page uses, just while this route is mounted.
+	   Lets the document scroll naturally — far more reliable on mobile
+	   than a nested overflow:auto container inside an overflow:hidden
+	   body (iOS Safari often refuses to scroll the nested element). */
+	:global(html),
+	:global(body) {
+		overflow: auto !important;
+		height: auto !important;
+	}
+
 	/* Embossed-box decoration on array containers so the user can tell
 	   scalar (bare bar) from rank-1 (boxed row of bars) from rank-2
 	   (boxed grid of bars). The :not([data-preparing]) guard suppresses
