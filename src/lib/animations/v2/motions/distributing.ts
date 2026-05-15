@@ -197,66 +197,67 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 };
 
 // ── encloseMonadic ────────────────────────────────────────────────────────
-// <x: wrap a scalar in a length-1 array. One bar becomes one wrapped cell —
-// the degenerate distributing case (N=1, no counting needed). Visual: the
-// scalar pulses once, the single after-cell emits from the scalar's position
-// with the same trajectory as a range emission, and the scalar fades.
+// <x — wrap a value in a box (rank-0 array). The result renders as a wooden
+// crate emoji with the value written on it.
 //
-// Only handles the scalar → length-1 array path. Anything else (array input
-// nesting it deeper, etc.) falls through to blackBox.
+// Visual: the input bar pulses ("this is the thing being wrapped"), then the
+// crate appears starting at the bar's position and scales into its final
+// slot. The bar fades simultaneously — it isn't really gone, it's "inside"
+// the crate now. End state: crate alone at the centred slot.
+
+const ENCLOSE_PULSE_DURATION = 0.3;
+const ENCLOSE_PULSE_HOLD_MS = 140;
+const ENCLOSE_WRAP_DURATION = 0.5;
 
 export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'number') return blackBox(step, beforeRoot, afterRoot);
 
-	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
-	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
+	const inputCell = beforeRoot.firstElementChild as HTMLElement | null;
+	const crate = afterRoot.firstElementChild as HTMLElement | null;
+	if (!inputCell || !crate) return blackBox(step, beforeRoot, afterRoot);
 
-	const scalarRect = beforeRoot.getBoundingClientRect();
-	const scalarCx = scalarRect.left + scalarRect.width / 2;
-	const scalarCy = scalarRect.top + scalarRect.height / 2;
-
-	const cell = afterCells[0];
-	const cellRect = cell.getBoundingClientRect();
-	const cellCx = cellRect.left + cellRect.width / 2;
-	const cellCy = cellRect.top + cellRect.height / 2;
+	const inputRect = inputCell.getBoundingClientRect();
+	const crateRect = crate.getBoundingClientRect();
+	const startDx = (inputRect.left + inputRect.width / 2) - (crateRect.left + crateRect.width / 2);
+	const startDy = (inputRect.top + inputRect.height / 2) - (crateRect.top + crateRect.height / 2);
 
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
-	cell.style.visibility = 'hidden';
+	crate.style.visibility = 'hidden';
 
-	beforeRoot.style.position = beforeRoot.style.position || 'relative';
-	beforeRoot.style.zIndex = '5';
+	inputCell.style.transformOrigin = 'center';
 
-	// Phase 0 — pulse.
+	// Phase 1 — pulse the input value: "this is what's getting boxed."
 	await animate(
-		beforeRoot,
+		inputCell,
 		{ scale: [1, 1.15, 1] },
-		{ duration: scaled(SCALAR_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+		{ duration: scaled(ENCLOSE_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
 	).finished;
-	await _delayMs(scaledMs(SCALAR_PULSE_HOLD_MS));
+	await _delayMs(scaledMs(ENCLOSE_PULSE_HOLD_MS));
 
-	// Phase 1 — single emission. No counter for N=1; the emit alone is enough.
-	const startDx = scalarCx - cellCx;
-	const startDy = scalarCy - cellCy;
-	cell.style.visibility = '';
-	animate(
-		beforeRoot,
-		{ opacity: 0 },
-		{ duration: scaled(EMIT_DURATION), ease: 'linear' },
-	);
-	await animate(
-		cell,
-		{
-			x: [startDx, 0],
-			y: [startDy, 0],
-			scale: [0.35, 1.08, 1],
-			opacity: [0, 1, 1],
-		},
-		{ duration: scaled(EMIT_DURATION), ease: [0.34, 1.56, 0.64, 1] },
-	).finished;
+	// Phase 2 — crate emerges at the input's position and settles at its
+	// resting slot; input fades in parallel as it goes "inside" the crate.
+	crate.style.visibility = '';
+	await Promise.all([
+		animate(
+			crate,
+			{
+				x: [startDx, 0],
+				y: [startDy, 0],
+				scale: [0.4, 1.05, 1],
+				opacity: [0, 1, 1],
+			},
+			{ duration: scaled(ENCLOSE_WRAP_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+		).finished,
+		animate(
+			inputCell,
+			{ opacity: [1, 0], scale: [1, 0.5] },
+			{ duration: scaled(ENCLOSE_WRAP_DURATION), ease: 'easeIn' },
+		).finished,
+	]);
 
 	await _delayMs(scaledMs(POST_EMITS_HOLD_MS));
 
+	beforeRoot.style.opacity = '0';
 	afterRoot.style.pointerEvents = '';
 };

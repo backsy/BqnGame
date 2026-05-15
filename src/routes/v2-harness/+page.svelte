@@ -31,14 +31,20 @@
 			return v.value < 0 ? `¯${Math.abs(v.value)}` : String(v.value);
 		}
 		if (v.kind === 'char') return `'${v.value}'`;
-		if (v.kind === 'array' && v.shape.length === 1) {
-			if (v.data.length === 0) return '⟨⟩';
-			if (v.data.length === 1) return `⟨${bqnLiteral(v.data[0])}⟩`;
-			return v.data.map(bqnLiteral).join('‿');
-		}
-		if (v.kind === 'array' && v.shape.length === 2) {
-			const flat = v.data.map(bqnLiteral).join('‿');
-			return `${v.shape[0]}‿${v.shape[1]}⥊${flat}`;
+		if (v.kind === 'array') {
+			// Rank-0 box: `<inner` (enclose). Nests naturally for <<5 etc.
+			if (v.shape.length === 0 && v.data.length === 1) {
+				return `<${bqnLiteral(v.data[0])}`;
+			}
+			if (v.shape.length === 1) {
+				if (v.data.length === 0) return '⟨⟩';
+				if (v.data.length === 1) return `⟨${bqnLiteral(v.data[0])}⟩`;
+				return v.data.map(bqnLiteral).join('‿');
+			}
+			if (v.shape.length === 2) {
+				const flat = v.data.map(bqnLiteral).join('‿');
+				return `${v.shape[0]}‿${v.shape[1]}⥊${flat}`;
+			}
 		}
 		throw new Error(`bqnLiteral: cannot serialize value of kind ${v.kind} with shape ${('shape' in v ? v.shape : 'n/a')}`);
 	}
@@ -99,6 +105,115 @@
 		return bar;
 	}
 
+	const CHAR_BAR_HEIGHT = 32;
+	function makeCharBar(ch: string, width = 24, fontSize = '0.95rem'): HTMLElement {
+		const bar = document.createElement('div');
+		bar.className = 'bar';
+		bar.style.cssText = [
+			`height:${CHAR_BAR_HEIGHT}px`,
+			`width:${width}px`,
+			'background:#7c6af7',
+			'border-radius:3px',
+			'display:grid',
+			'place-items:center',
+			'box-shadow:0 0 8px rgba(124, 106, 247, 0.22)',
+		].join(';');
+		const span = document.createElement('span');
+		span.style.cssText = [
+			'color:#f0fff0',
+			`font-size:${fontSize}`,
+			'font-weight:600',
+			'text-shadow:0 0 4px rgba(0, 0, 0, 0.6)',
+			"font-family:'BQN386', ui-monospace, monospace",
+			'line-height:1',
+		].join(';');
+		span.textContent = ch;
+		bar.appendChild(span);
+		return bar;
+	}
+
+	// Crate (rank-0 box). A wooden-crate emoji with the contents written ON it.
+	// Atoms appear as their number/char text overlaid. Nested boxes appear as
+	// a smaller crate inside. Arrays (vectors/matrices) inside a box appear as
+	// their normal rendering, scaled down to fit on the crate face.
+	function makeCrate(inner: BqnValue, size = 64): HTMLElement {
+		const crate = document.createElement('div');
+		crate.className = 'bqn-box';
+		crate.style.cssText = [
+			'position:relative',
+			`width:${size}px`,
+			`height:${size}px`,
+			'display:grid',
+			'place-items:center',
+			'user-select:none',
+		].join(';');
+
+		const emoji = document.createElement('span');
+		emoji.textContent = '📦';
+		emoji.style.cssText = [
+			'position:absolute',
+			'inset:0',
+			'display:grid',
+			'place-items:center',
+			`font-size:${size}px`,
+			'line-height:1',
+			'pointer-events:none',
+		].join(';');
+		crate.appendChild(emoji);
+
+		const overlay = document.createElement('div');
+		overlay.style.cssText = [
+			'position:relative',
+			'z-index:1',
+			'display:grid',
+			'place-items:center',
+			'color:#fff',
+			'font-weight:700',
+			'text-shadow:0 1px 0 rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.8)',
+			'font-family:system-ui, -apple-system, sans-serif',
+			'line-height:1',
+			// Pull slightly down so the text sits on the crate's front face,
+			// not the lid. Calibrated to the 📦 emoji's geometry at size 64.
+			'transform:translateY(15%)',
+		].join(';');
+
+		if (inner.kind === 'number') {
+			overlay.textContent = String(inner.value);
+			overlay.style.fontSize = `${Math.max(12, size * 0.3)}px`;
+		} else if (inner.kind === 'char') {
+			overlay.textContent = inner.value;
+			overlay.style.fontSize = `${Math.max(12, size * 0.32)}px`;
+			overlay.style.fontFamily = "'BQN386', ui-monospace, monospace";
+		} else if (inner.kind === 'array' && inner.shape.length === 0 && inner.data.length === 1) {
+			// Nested crate
+			overlay.appendChild(makeCrate(inner.data[0], Math.round(size * 0.55)));
+		} else {
+			// Vector or matrix inside the box: render normally, scale down.
+			const innerEl = renderBqnValue(inner);
+			innerEl.style.transform = 'scale(0.42)';
+			innerEl.style.transformOrigin = 'center';
+			overlay.appendChild(innerEl);
+		}
+
+		crate.appendChild(overlay);
+		return crate;
+	}
+
+	// Render one cell of a rank-≥1 array. Atoms become bars, boxes become small
+	// crates, etc. Used as the per-cell dispatcher in the 1D and 2D paths.
+	function renderCell(item: BqnValue, barWidth = 24, fontSize = '0.85rem'): HTMLElement {
+		if (item.kind === 'number') return makeBar(item.value, barWidth, fontSize);
+		if (item.kind === 'char') return makeCharBar(item.value, barWidth, fontSize);
+		if (item.kind === 'array' && item.shape.length === 0 && item.data.length === 1) {
+			return makeCrate(item.data[0], 36);
+		}
+		// Fallback for unexpected shapes — small grey bar.
+		const ph = document.createElement('div');
+		ph.className = 'bar';
+		ph.style.cssText = `height:24px;width:${barWidth}px;background:#555;border-radius:3px;`;
+		return ph;
+	}
+
 	function renderBqnValue(value: BqnValue): HTMLElement {
 		switch (value.kind) {
 			case 'number': {
@@ -114,38 +229,56 @@
 				row.appendChild(makeBar(value.value));
 				return row;
 			}
+			case 'char': {
+				// Same row-wrapping rationale as number — keep the scalar
+				// rendering structurally consistent so motions iterate cells.
+				const row = document.createElement('div');
+				row.className = 'row';
+				row.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
+				row.appendChild(makeCharBar(value.value));
+				return row;
+			}
 			case 'array': {
-				const is1D = value.shape.length === 1 && value.data.every(v => v.kind === 'number');
-				const is2D = value.shape.length === 2 && value.data.every(v => v.kind === 'number');
+				// Rank-0 array (a "box" / unit): wrap the one inner value in a
+				// wooden-crate visual. Nested boxes render as nested crates.
+				if (value.shape.length === 0) {
+					if (value.data.length !== 1) {
+						const ph = document.createElement('div');
+						ph.className = 'placeholder';
+						ph.style.cssText = 'padding:8px;color:#888;font-family:monospace;';
+						ph.textContent = `[malformed rank-0]`;
+						return ph;
+					}
+					// Wrap the crate in a row so motions have a consistent
+					// .children iteration target (one cell, the crate).
+					const row = document.createElement('div');
+					row.className = 'row';
+					row.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
+					row.appendChild(makeCrate(value.data[0]));
+					return row;
+				}
 
-				if (is1D) {
+				// Rank-1 vectors: row of cells. Cells dispatch per-type so
+				// vectors can mix numbers, chars, and boxes.
+				if (value.shape.length === 1) {
 					const row = document.createElement('div');
 					row.className = 'row bqn-vector';
-					row.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
-					// Build bars directly — don't recurse through renderBqnValue
-					// for items, because the scalar case wraps each bar in its
-					// own row container (needed when a scalar is the WHOLE
-					// rendered value). Recursing here would put a padded row
-					// around every bar and balloon the array's gap.
+					row.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;min-width:24px;min-height:24px;';
 					for (const item of value.data) {
-						const v = item.kind === 'number' ? item.value : 0;
-						row.appendChild(makeBar(v));
+						row.appendChild(renderCell(item));
 					}
 					return row;
 				}
 
-				if (is2D) {
+				// Rank-2 matrices: 2D grid, same per-cell dispatch.
+				if (value.shape.length === 2) {
 					const [rows, cols] = value.shape;
 					const grid = document.createElement('div');
 					grid.className = 'row bqn-matrix';
-					// align-items:end so bars sit on a baseline within each row
-					// instead of stretching to the top of their grid cell.
 					grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},28px);gap:4px;padding:8px;align-items:end;`;
 					for (let r = 0; r < rows; r++) {
 						for (let c = 0; c < cols; c++) {
-							const v = value.data[r * cols + c];
-							const val = v.kind === 'number' ? v.value : 0;
-							grid.appendChild(makeBar(val, 24, '0.75rem'));
+							grid.appendChild(renderCell(value.data[r * cols + c], 24, '0.75rem'));
 						}
 					}
 					return grid;
@@ -157,15 +290,12 @@
 				ph.textContent = `[array shape=${value.shape.join('×')}]`;
 				return ph;
 			}
-			case 'char': {
-				const ch = document.createElement('div');
-				ch.className = 'placeholder';
-				ch.style.cssText = 'padding:8px;color:#888;font-family:monospace;';
-				ch.textContent = `'${value.value}'`;
-				return ch;
-			}
 			case 'fn':
 			case 'namespace': {
+				// Not used interactively in the harness (no functions or
+				// namespaces in scope per CLAUDE.md). Fall back to a small
+				// text placeholder in case some BQN expression unexpectedly
+				// returns one.
 				const ph = document.createElement('div');
 				ph.className = 'placeholder';
 				ph.style.cssText = 'padding:8px;color:#888;font-family:monospace;';
