@@ -109,8 +109,10 @@ async function extractRunner(
 	afterRoot: HTMLElement,
 	survivorIndices: number[],
 ): Promise<void> {
-	const beforeCells = beforeCellsOf(beforeRoot);
-	const afterCells = beforeCellsOf(afterRoot);
+	// querySelectorAll('.bar') so nested rank-3+ renderings expose all
+	// leaf bars regardless of how many crate-wrapping levels sit above.
+	const beforeCells = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.querySelectorAll('.bar')) as HTMLElement[];
 	if (beforeCells.length === 0 || afterCells.length === 0) {
 		afterRoot.style.opacity = '';
 		return;
@@ -288,20 +290,16 @@ export const firstMonadic: AnimateStep = (step, beforeRoot, afterRoot) => {
 	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
 	if (step.x.data.length === 0) return blackBox(step, beforeRoot, afterRoot);
 
-	const rank = step.x.shape.length;
-	if (rank === 1) {
-		// Single cell at index 0 survives.
-		return extractRunner(step, beforeRoot, afterRoot, [0]);
-	}
-	if (rank === 2) {
-		// First major-axis cell = entire first row. survivorIndices is
-		// [0, 1, …, C-1] in row-major order.
-		const C = step.x.shape[1];
-		const surv: number[] = [];
-		for (let c = 0; c < C; c++) surv.push(c);
-		return extractRunner(step, beforeRoot, afterRoot, surv);
-	}
-	return blackBox(step, beforeRoot, afterRoot);
+	// The first major-axis cell of a rank-N array is the rank-(N-1)
+	// sub-array at index 0 along axis 0 — its size is ∏shape[1..]. The
+	// survivors are the first that-many leaf cells (data is row-major
+	// flattened, so leading-axis index 0 ⇒ flat indices 0..sliceSize-1).
+	// One formula for every rank, including 1 (sliceSize = 1, one cell).
+	const shape = step.x.shape;
+	const sliceSize = shape.slice(1).reduce((a, b) => a * b, 1);
+	const surv: number[] = [];
+	for (let i = 0; i < sliceSize; i++) surv.push(i);
+	return extractRunner(step, beforeRoot, afterRoot, surv);
 };
 
 // ── soloMonadic ───────────────────────────────────────────────────────────
@@ -612,12 +610,10 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 const AXIS_PULSE_DURATION = 0.32;
 const AXIS_PULSE_HOLD_MS = 80;
 
-// The cell-group for index `i` along `axis` of a value `x`:
-//   - rank 1: the i-th cell of the row.
-//   - rank 2, axis 0: the i-th row (all C columns).
-//   - rank 2, axis 1: the i-th column (all R rows).
-// Higher ranks fall back to the empty group; callers should already
-// have rejected those via blackBox before reaching here.
+// The cell-group for index `i` along `axis` of a value `x`: every leaf
+// cell whose `axis`-th coordinate equals `i`. Works for any rank.
+// Row-major flattening: cell index = Σ_d (coord_d × stride_d) where
+// stride_d = ∏_{e>d} shape_e.
 function axisGroupCells(
 	cells: HTMLElement[],
 	x: BqnValue,
@@ -625,18 +621,29 @@ function axisGroupCells(
 	i: number,
 ): HTMLElement[] {
 	if (x.kind !== 'array') return [];
-	if (x.shape.length === 1) return [cells[i]];
-	if (x.shape.length === 2) {
-		const [R, C] = x.shape;
-		const group: HTMLElement[] = [];
-		if (axis === 0) {
-			for (let c = 0; c < C; c++) group.push(cells[i * C + c]);
-		} else {
-			for (let r = 0; r < R; r++) group.push(cells[r * C + i]);
-		}
-		return group;
+	const shape = x.shape;
+	if (axis < 0 || axis >= shape.length) return [];
+	if (shape.length === 1) return [cells[i]];
+	const strides = new Array<number>(shape.length).fill(1);
+	for (let k = shape.length - 2; k >= 0; k--) {
+		strides[k] = strides[k + 1] * shape[k + 1];
 	}
-	return [];
+	const out: HTMLElement[] = [];
+	function recurse(d: number, flat: number): void {
+		if (d === shape.length) {
+			if (cells[flat]) out.push(cells[flat]);
+			return;
+		}
+		if (d === axis) {
+			recurse(d + 1, flat + i * strides[d]);
+		} else {
+			for (let k = 0; k < shape[d]; k++) {
+				recurse(d + 1, flat + k * strides[d]);
+			}
+		}
+	}
+	recurse(0, 0);
+	return out;
 }
 
 async function pulseAxisCells(cells: HTMLElement[]): Promise<void> {
@@ -653,11 +660,11 @@ async function pulseAxisCells(cells: HTMLElement[]): Promise<void> {
 export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 
-	// Shape works on ANY input (≢5 = ⟨⟩, ≢⟨a b c⟩ = ⟨3⟩, etc.). The motion
-	// is one gesture: counter ticks once per axis; for scalars (rank 0)
-	// that's zero ticks and the empty-vector result reveals.
+	// Shape works on ANY input (≢5 = ⟨⟩, ≢⟨a b c⟩ = ⟨3⟩, ≢2‿3‿4⥊… = ⟨2 3 4⟩,
+	// etc.). The motion is one gesture: counter ticks once per axis-length;
+	// for scalars (rank 0) that's zero ticks and the empty-vector result
+	// reveals. No rank ceiling.
 	const axisLengths: number[] = step.x.kind === 'array' ? [...step.x.shape] : [];
-	if (axisLengths.length > 2) return blackBox(step, beforeRoot, afterRoot);
 	const rank = axisLengths.length;
 
 	const afterCells = beforeCellsOf(afterRoot);
@@ -692,10 +699,10 @@ export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 	// One uniform counting gesture across all ranks: for each axis, walk
 	// its cells one-by-one, pulse each cell-group and tick the counter
 	// 1..len. Same beat shape for ⟨3 1 4⟩ (one axis, three ticks) as for
-	// a 2×3 matrix (axis 0: 2 ticks over rows; axis 1: 3 ticks over
-	// columns). No "all-at-once for vectors, one-at-a-time for matrices"
-	// inconsistency — the counter is always counting OUT what it counts.
-	const beforeCells = beforeCellsOf(beforeRoot);
+	// a 2×3 matrix or any higher rank.
+	// querySelectorAll('.bar') walks the nested DOM to find leaf cells —
+	// rank-3+ rendering uses outer rows → crates → inner grids → bars.
+	const beforeCells = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
 	for (let axis = 0; axis < rank; axis++) {
 		const len = axisLengths[axis];
 		for (let i = 0; i < len; i++) {
@@ -748,11 +755,10 @@ export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 export const rankOfMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 
-	// `=` returns the count of axes — scalar = 0, vector = 1, matrix = 2.
-	// One uniform gesture: counter ticks once per axis. Scalars do zero
-	// ticks and the result `0` reveals. No per-rank custom branches.
+	// `=` returns the count of axes — scalar = 0, vector = 1, matrix = 2,
+	// rank-3 = 3, etc. One uniform gesture: counter ticks once per axis,
+	// no rank ceiling. Scalars do zero ticks and the result `0` reveals.
 	const rank: number = step.x.kind === 'array' ? step.x.shape.length : 0;
-	if (rank > 2) return blackBox(step, beforeRoot, afterRoot);
 
 	const afterCells = beforeCellsOf(afterRoot);
 	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
@@ -770,28 +776,27 @@ export const rankOfMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 
 	await counterIn(counter);
 
-	// Per-axis visual: highlight the cells participating in that axis as
-	// the counter ticks. Deliberately per-rank — same input cells get
-	// reached from different "indexing directions," which is what rank
-	// measures.
-	//
-	//   rank 0 (scalar): 0 ticks, counter stays at "0".
-	//   rank 1 vector:   one tick, pulse all cells.
-	//   rank 2 matrix:   two ticks; first pulses the spine of axis 0
-	//                    (one cell per row), second pulses the spine of
-	//                    axis 1 (one cell per col).
-	const beforeCells = beforeCellsOf(beforeRoot);
+	// Per-axis visual: highlight a representative spine of the cells
+	// participating in that axis. For any rank, the spine of axis a is
+	// "the i=0 line along a" — i.e., for each axis other than a, fix
+	// the coordinate to 0; let axis a's coordinate vary. That gives
+	// shape[a] cells, one per major step along the axis. The same gesture
+	// works for rank 1 (single tick: one cell), rank 2 (two ticks: row 0
+	// spine, then col 0 spine), rank 3+ (one tick per axis).
+	const beforeCells = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
 	for (let axis = 0; axis < rank; axis++) {
-		if (rank === 1) {
-			await pulseAxisCells(beforeCells);
-		} else if (rank === 2 && step.x.kind === 'array' && step.x.shape.length === 2) {
-			const R = step.x.shape[0];
-			const C = step.x.shape[1];
+		if (step.x.kind === 'array') {
+			const shape = step.x.shape;
+			const strides = new Array<number>(shape.length).fill(1);
+			for (let k = shape.length - 2; k >= 0; k--) {
+				strides[k] = strides[k + 1] * shape[k + 1];
+			}
 			const spine: HTMLElement[] = [];
-			if (axis === 0) {
-				for (let r = 0; r < R; r++) spine.push(beforeCells[r * C]);
-			} else {
-				for (let c = 0; c < C; c++) spine.push(beforeCells[c]);
+			for (let i = 0; i < shape[axis]; i++) {
+				// Fix all axes ≠ `axis` to 0; the only varying coordinate
+				// is `axis = i`. Flat index = i * strides[axis].
+				const cell = beforeCells[i * strides[axis]];
+				if (cell) spine.push(cell);
 			}
 			await pulseAxisCells(spine);
 		}
