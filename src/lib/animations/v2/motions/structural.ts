@@ -186,13 +186,15 @@ async function extractRunner(
 	await _delayMs(scaledMs(EXTRACT_POST_EXIT_HOLD_MS));
 
 	// Phase 4a: reparent survivors out of beforeRoot so they don't
-	// inherit its opacity drop. We use fixed-position with inline
-	// left/top matching the cell's PRE-transform viewport position
-	// (beforeRect.left/top) and KEEP the inline transform that
-	// motion-lib set in phase 3 — so the rendered position
-	// (left + transform.x, top + transform.y) is identical to where
-	// the cell already sits at park, and motion-lib's next animate
-	// can continue tweening from the same x state.
+	// inherit its opacity drop. BEFORE we move them, freeze
+	// beforeRoot's current dimensions inline — otherwise removing the
+	// survivor children from its flex layout causes the row to reflow
+	// (visibly shrink) the moment they leave, which reads as the box
+	// "resizing" right before the fade. With width/height locked, the
+	// box keeps the same footprint right up to the moment its opacity
+	// hits zero.
+	beforeRoot.style.width = `${beforeBoxRect.width}px`;
+	beforeRoot.style.height = `${beforeBoxRect.height}px`;
 	for (const i of survivorIndices) {
 		const cell = beforeCells[i];
 		const beforeRect = beforeRects[i];
