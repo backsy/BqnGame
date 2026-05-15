@@ -20,117 +20,63 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 }
 
 // ── reverseMonadic ────────────────────────────────────────────────────────
-// The row rotates 180° around its centre as a rigid wheel: each bar's centre
-// traces a half-circle around the row's midpoint. Bars right of centre arc
-// UP-and-over; bars left of centre arc DOWN-and-under; they meet on the
-// opposite side. Bars stay upright (translation only — they do NOT rotate
-// around their own axes), so the visual is "wheel turning," not "bars
-// tumbling."
+// Whole-unit visual: the input — frame, cells, labels — rotates 180°
+// around its own centre as a single rigid block (like flipping a sign).
+// End of Phase 1: everything is upside-down, labels backwards, bars at
+// the top of their cells. The cells are at MIRRORED screen positions
+// (= the reversed order).
 //
-// Identity preserved by animating the before-cells. On completion they fade
-// out and the after-cells (visibility:hidden during flight) take their place.
+// Phase 2 then hands off to afterRoot, which has the cells in the
+// reversed order at NATURAL orientation. Because the rotated
+// before-cells and the natural after-cells share the same screen
+// positions (rotation around the centre is the same as data-reversal
+// at the layout level), a cross-fade reads as "values drop to the
+// bottom and numbers turn upright" — the upside-down bars fade out
+// and the right-side-up bars fade in at the same spot.
 
-const REVERSE_DURATION = 0.95;
-const REVERSE_SAMPLES = 28;
+const REVERSE_ROTATE_DURATION = 0.85;
+const REVERSE_HANDOFF_DURATION = 0.32;
 
-export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
+export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
 
-	const beforeCells = Array.from(beforeRoot.children) as HTMLElement[];
 	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
-	if (beforeCells.length === 0 || afterCells.length === 0) {
-		afterRoot.style.opacity = '';
-		return Promise.resolve();
-	}
-
-	const rank = step.x.shape.length;
-	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
-
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
-	afterRoot.style.opacity = '1';
+	afterRoot.style.opacity = '0';
 	afterRoot.style.pointerEvents = 'none';
 
-	const tasks: Promise<unknown>[] = [];
+	// Phase 1 — rotate the whole input 180°. transform-origin defaults
+	// to centre, so the row spins around its own midpoint and lands
+	// upside-down at the same screen footprint.
+	await animate(
+		beforeRoot,
+		{ rotate: [0, 180] },
+		{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
+	).finished;
 
-	if (rank === 1) {
-		// 1D row: wheel rotates clockwise around vertical axis through row
-		// centre. Bars right of centre arc DOWN through the bottom of the
-		// wheel; bars left of centre arc UP through the top. Pivot is the
-		// bars' SHARED BASELINE so translation is height-independent —
-		// no handoff jump regardless of bar heights.
-		const first = beforeRects[0];
-		const last = beforeRects[beforeRects.length - 1];
-		const cx = (first.left + first.width / 2 + last.left + last.width / 2) / 2;
+	// Phase 2 — reveal afterRoot (data-preparing dropped so the box
+	// frame paints back in alongside the cells) and cross-fade. The
+	// after-cells live at the same screen positions as the rotated
+	// before-cells but are right-side-up — the cross-fade IS the
+	// "values drop to bottom and numbers go upright" beat.
+	for (const cell of afterCells) cell.style.visibility = '';
+	delete afterRoot.dataset.preparing;
+	await Promise.all([
+		animate(
+			beforeRoot,
+			{ opacity: [1, 0] },
+			{ duration: scaled(REVERSE_HANDOFF_DURATION), ease: 'easeIn' },
+		).finished,
+		animate(
+			afterRoot,
+			{ opacity: [0, 1] },
+			{ duration: scaled(REVERSE_HANDOFF_DURATION), ease: 'easeOut' },
+		).finished,
+	]);
 
-		for (let i = 0; i < beforeCells.length; i++) {
-			const cell = beforeCells[i];
-			const rect = beforeRects[i];
-			const bx = rect.left + rect.width / 2;
-			const dx = bx - cx;
-			const xs: number[] = [];
-			const ys: number[] = [];
-			for (let s = 0; s <= REVERSE_SAMPLES; s++) {
-				const t = s / REVERSE_SAMPLES;
-				const theta = Math.PI * t;
-				xs.push(dx * (Math.cos(theta) - 1));
-				ys.push(dx * Math.sin(theta));
-			}
-			cell.style.position = 'relative';
-			cell.style.zIndex = '5';
-			tasks.push(
-				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
-			);
-		}
-	} else {
-		// Rank ≥ 2: BQN ⌽ swaps along the MAJOR axis — for a matrix, rows
-		// swap and columns within rows stay put. Visual: wheel rotates
-		// around the HORIZONTAL axis through the grid's vertical centre.
-		// Top-row cells arc DOWN through the right side of the wheel;
-		// bottom-row cells arc UP through the left.
-		//
-		// We compute the destination position from AFTER rects, not by
-		// mirroring BEFORE positions. The AFTER grid may have different row
-		// heights than BEFORE (each row auto-sizes to its tallest bar, and
-		// reverse swaps those heights along with the rows). Without
-		// destination measurement we'd land where the BEFORE-mirror was,
-		// then teleport at handoff to the actual post-commit y.
-		const majorDim = step.x.shape[0];
-		const sliceSize = step.x.shape.slice(1).reduce((a, b) => a * b, 1);
-		const afterRects = afterCells.map(c => c.getBoundingClientRect());
-
-		for (let i = 0; i < beforeCells.length; i++) {
-			const cell = beforeCells[i];
-			const r = Math.floor(i / sliceSize);
-			const c = i % sliceSize;
-			const destIndex = (majorDim - 1 - r) * sliceSize + c;
-			const startRect = beforeRects[i];
-			const endRect = afterRects[destIndex];
-
-			const startCy = startRect.top + startRect.height / 2;
-			const endCy = endRect.top + endRect.height / 2;
-			const dyTotal = endCy - startCy;
-			const xs: number[] = [];
-			const ys: number[] = [];
-			for (let s = 0; s <= REVERSE_SAMPLES; s++) {
-				const t = s / REVERSE_SAMPLES;
-				const theta = Math.PI * t;
-				xs.push((dyTotal / 2) * Math.sin(theta));
-				ys.push((dyTotal * (1 - Math.cos(theta))) / 2);
-			}
-			cell.style.position = 'relative';
-			cell.style.zIndex = '5';
-			tasks.push(
-				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
-			);
-		}
-	}
-
-	return Promise.all(tasks).then(() => {
-		for (const cell of afterCells) cell.style.visibility = '';
-		afterRoot.style.pointerEvents = '';
-		beforeRoot.style.opacity = '0';
-	});
+	afterRoot.style.pointerEvents = '';
+	afterRoot.style.opacity = '';
 };
 
 // ── sortUp/sortDownMonadic ────────────────────────────────────────────────
