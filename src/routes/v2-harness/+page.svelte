@@ -132,15 +132,13 @@
 		return bar;
 	}
 
-	// Crate (rank-0 box). A wooden-crate emoji with the contents written ON it.
-	// Atoms appear as their number/char text overlaid. Nested boxes appear as
-	// a smaller crate inside. Arrays (vectors/matrices) inside a box appear as
-	// their normal rendering, scaled down to fit on the crate face.
-	function makeCrate(inner: BqnValue, size = 64): HTMLElement {
+	// Crate (rank-0 box). Flat 2D wooden-plank visual drawn in CSS — no
+	// emoji perspective to fight against. Contents sit on the crate's face
+	// (a number, character, nested crate, or a scaled-down inner array).
+	function makeCrate(inner: BqnValue, size = 56): HTMLElement {
 		const crate = document.createElement('div');
 		crate.className = 'bqn-box';
 		crate.style.cssText = [
-			'position:relative',
 			`width:${size}px`,
 			`height:${size}px`,
 			'display:grid',
@@ -148,54 +146,28 @@
 			'user-select:none',
 		].join(';');
 
-		const emoji = document.createElement('span');
-		emoji.textContent = '📦';
-		emoji.style.cssText = [
-			'position:absolute',
-			'inset:0',
-			'display:grid',
-			'place-items:center',
-			`font-size:${size}px`,
-			'line-height:1',
-			'pointer-events:none',
-		].join(';');
-		crate.appendChild(emoji);
-
-		const overlay = document.createElement('div');
-		overlay.style.cssText = [
-			'position:relative',
-			'z-index:1',
-			'display:grid',
-			'place-items:center',
-			'color:#fff',
-			'font-weight:700',
-			'text-shadow:0 1px 0 rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.8)',
-			'font-family:system-ui, -apple-system, sans-serif',
-			'line-height:1',
-			// Pull slightly down so the text sits on the crate's front face,
-			// not the lid. Calibrated to the 📦 emoji's geometry at size 64.
-			'transform:translateY(15%)',
-		].join(';');
-
 		if (inner.kind === 'number') {
-			overlay.textContent = String(inner.value);
-			overlay.style.fontSize = `${Math.max(12, size * 0.3)}px`;
+			const label = document.createElement('span');
+			label.className = 'bqn-box-label';
+			label.style.fontSize = `${Math.max(14, size * 0.36)}px`;
+			label.textContent = String(inner.value);
+			crate.appendChild(label);
 		} else if (inner.kind === 'char') {
-			overlay.textContent = inner.value;
-			overlay.style.fontSize = `${Math.max(12, size * 0.32)}px`;
-			overlay.style.fontFamily = "'BQN386', ui-monospace, monospace";
+			const label = document.createElement('span');
+			label.className = 'bqn-box-label';
+			label.style.fontSize = `${Math.max(14, size * 0.4)}px`;
+			label.style.fontFamily = "'BQN386', ui-monospace, monospace";
+			label.textContent = inner.value;
+			crate.appendChild(label);
 		} else if (inner.kind === 'array' && inner.shape.length === 0 && inner.data.length === 1) {
-			// Nested crate
-			overlay.appendChild(makeCrate(inner.data[0], Math.round(size * 0.55)));
+			crate.appendChild(makeCrate(inner.data[0], Math.round(size * 0.6)));
 		} else {
-			// Vector or matrix inside the box: render normally, scale down.
 			const innerEl = renderBqnValue(inner);
-			innerEl.style.transform = 'scale(0.42)';
+			innerEl.style.transform = 'scale(0.5)';
 			innerEl.style.transformOrigin = 'center';
-			overlay.appendChild(innerEl);
+			crate.appendChild(innerEl);
 		}
 
-		crate.appendChild(overlay);
 		return crate;
 	}
 
@@ -802,5 +774,51 @@
 			inset 0 1px 0 rgba(255, 255, 255, 0.04),
 			0 1px 2px rgba(0, 0, 0, 0.35);
 		background: rgba(40, 40, 60, 0.18);
+	}
+
+	/* Flat wooden-crate visual for rank-0 boxes. Drawn entirely in CSS so the
+	   contents (number, char, nested crate, scaled inner array) overlay
+	   cleanly on a head-on face — no emoji perspective fighting for space.
+	   Two horizontal dark lines suggest plank seams; inset light/dark edges
+	   give the cratey woodish read. */
+	:global(.bqn-box) {
+		position: relative;
+		background:
+			linear-gradient(
+				180deg,
+				#b07f48 0%,
+				#9b6a39 50%,
+				#7d5226 100%
+			);
+		border: 1.5px solid #4a2f15;
+		border-radius: 3px;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 240, 200, 0.18),
+			inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+			0 2px 4px rgba(0, 0, 0, 0.4);
+		overflow: hidden;
+	}
+	:global(.bqn-box)::before,
+	:global(.bqn-box)::after {
+		content: '';
+		position: absolute;
+		left: 6%;
+		right: 6%;
+		height: 1px;
+		background: rgba(60, 36, 14, 0.55);
+		box-shadow: 0 1px 0 rgba(255, 240, 200, 0.08);
+		pointer-events: none;
+	}
+	:global(.bqn-box)::before { top: 30%; }
+	:global(.bqn-box)::after  { top: 70%; }
+	:global(.bqn-box-label) {
+		color: #fff8e1;
+		font-weight: 700;
+		font-family: system-ui, -apple-system, sans-serif;
+		text-shadow:
+			0 1px 1px rgba(0, 0, 0, 0.9),
+			0 0 3px rgba(0, 0, 0, 0.6);
+		line-height: 1;
+		z-index: 1;
 	}
 </style>

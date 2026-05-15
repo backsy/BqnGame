@@ -205,58 +205,40 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 // slot. The bar fades simultaneously — it isn't really gone, it's "inside"
 // the crate now. End state: crate alone at the centred slot.
 
-const ENCLOSE_PULSE_DURATION = 0.3;
-const ENCLOSE_PULSE_HOLD_MS = 140;
-const ENCLOSE_WRAP_DURATION = 0.5;
+const ENCLOSE_WRAP_DURATION = 0.45;
+const ENCLOSE_HOLD_MS = 200;
 
 export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 
-	const inputCell = beforeRoot.firstElementChild as HTMLElement | null;
 	const crate = afterRoot.firstElementChild as HTMLElement | null;
-	if (!inputCell || !crate) return blackBox(step, beforeRoot, afterRoot);
+	if (!crate) return blackBox(step, beforeRoot, afterRoot);
 
-	const inputRect = inputCell.getBoundingClientRect();
-	const crateRect = crate.getBoundingClientRect();
-	const startDx = (inputRect.left + inputRect.width / 2) - (crateRect.left + crateRect.width / 2);
-	const startDy = (inputRect.top + inputRect.height / 2) - (crateRect.top + crateRect.height / 2);
-
+	// Crate appears at its resting slot (which sits at the stage centre,
+	// same place as the input). Scale it in from 0 so it visually "grows
+	// around" the input. Input bar fades concurrently — by the time the
+	// crate is at full size the bar is gone, leaving only the crate with
+	// the value on its face. No translation, no separate pulse: one beat,
+	// in place. The afterRoot's data-preparing flag stays set throughout
+	// (its embossed-vector CSS doesn't apply to .bqn-box anyway), so no
+	// container outline leaks.
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
-	crate.style.visibility = 'hidden';
 
-	inputCell.style.transformOrigin = 'center';
-
-	// Phase 1 — pulse the input value: "this is what's getting boxed."
-	await animate(
-		inputCell,
-		{ scale: [1, 1.15, 1] },
-		{ duration: scaled(ENCLOSE_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
-	).finished;
-	await _delayMs(scaledMs(ENCLOSE_PULSE_HOLD_MS));
-
-	// Phase 2 — crate emerges at the input's position and settles at its
-	// resting slot; input fades in parallel as it goes "inside" the crate.
-	crate.style.visibility = '';
 	await Promise.all([
 		animate(
 			crate,
-			{
-				x: [startDx, 0],
-				y: [startDy, 0],
-				scale: [0.4, 1.05, 1],
-				opacity: [0, 1, 1],
-			},
+			{ scale: [0, 1.06, 1], opacity: [0, 1, 1] },
 			{ duration: scaled(ENCLOSE_WRAP_DURATION), ease: [0.34, 1.56, 0.64, 1] },
 		).finished,
 		animate(
-			inputCell,
-			{ opacity: [1, 0], scale: [1, 0.5] },
+			beforeRoot,
+			{ opacity: [1, 0] },
 			{ duration: scaled(ENCLOSE_WRAP_DURATION), ease: 'easeIn' },
 		).finished,
 	]);
 
-	await _delayMs(scaledMs(POST_EMITS_HOLD_MS));
+	await _delayMs(scaledMs(ENCLOSE_HOLD_MS));
 
 	beforeRoot.style.opacity = '0';
 	afterRoot.style.pointerEvents = '';
