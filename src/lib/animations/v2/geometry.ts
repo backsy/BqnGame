@@ -1,13 +1,18 @@
-// Geometric helpers + invariant checks for motions. Every "in-place" motion
-// (one where the result should sit at the input's screen position) can use
-// `assertCellsAlign` at start time to verify the renderer didn't drift —
-// if before- and after- cell centres don't agree, the user sees the result
-// pop into a different location than the input occupied. That's the
-// continuity rule, and it's something we want LOUD, not silent.
+// Geometric helpers + invariant checks for motions.
 //
-// Motions that intentionally move things (lateral, distributing, etc.)
-// don't need this check. It's for the family where the static post-commit
-// position is supposed to equal the pre-commit position.
+// THE CORE INVARIANT: no two visible elements may have overlapping screen
+// areas at the same time. Centres aligning isn't enough; AREAS aligning
+// isn't enough; we need areas STRICTLY DISJOINT (or strictly identical,
+// for in-place transformations).
+//
+// `assertNoOverlap` verifies two rects don't share any pixels.
+// `assertCellsAlign` verifies two rects share the same centre (for the
+// "input transforms in place" family).
+//
+// Motions that move elements through space (distributing, lateral) should
+// call assertNoOverlap at key beats — start position, park position, etc. —
+// to make sure their geometric reasoning hasn't put two boxes on top of
+// each other.
 
 const ALIGN_TOLERANCE_PX = 2;
 
@@ -18,14 +23,61 @@ export function centerOf(el: HTMLElement): RectCenter {
 	return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
 }
 
+/** Axis-aligned rectangle. */
+export type Rect = { left: number; top: number; right: number; bottom: number };
+
+export function rectOf(el: HTMLElement): Rect {
+	const r = el.getBoundingClientRect();
+	return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+}
+
+/**
+ * Rect of an element with a hypothetical (x, y) translation applied. Use to
+ * verify a target position BEFORE actually animating the element there.
+ */
+export function rectAtTranslate(el: HTMLElement, dx: number, dy: number): Rect {
+	const r = el.getBoundingClientRect();
+	return {
+		left: r.left + dx,
+		top: r.top + dy,
+		right: r.right + dx,
+		bottom: r.bottom + dy,
+	};
+}
+
+/** True if two rects share any interior pixel. Edge touching counts as no overlap. */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+	return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+}
+
+/**
+ * Throw if two elements occupy overlapping screen rectangles. Use to verify
+ * that placing an element at a target position won't cover another element.
+ *
+ * Example:
+ *   const targetRect = rectAtTranslate(crate, parkXOff, parkYOff);
+ *   assertNoOverlap(targetRect, rectOf(inputCell), 'enclose Phase 1 park');
+ *
+ * `name` shows up in the error so the failing motion phase is identifiable.
+ */
+export function assertNoOverlap(a: Rect, b: Rect, name: string): void {
+	if (rectsOverlap(a, b)) {
+		throw new Error(
+			`${name}: rectangles overlap on screen. ` +
+				`A = [${a.left.toFixed(1)},${a.top.toFixed(1)} → ${a.right.toFixed(1)},${a.bottom.toFixed(1)}]; ` +
+				`B = [${b.left.toFixed(1)},${b.top.toFixed(1)} → ${b.right.toFixed(1)},${b.bottom.toFixed(1)}]. ` +
+				`Two visible elements MUST NOT share screen area — adjust the motion's ` +
+				`positions so the rectangles are strictly disjoint at this phase.`,
+		);
+	}
+}
+
 /**
  * For a motion where the result cell is supposed to occupy the same screen
  * slot as the input cell, verify that the rendered positions actually
  * agree. If they don't, throw with concrete coordinates — the renderer
  * has put the after-cell somewhere unexpected and the motion would
  * otherwise quietly produce an off-screen-correct end state.
- *
- * `name` shows up in the error so the failing motion is identifiable.
  */
 export function assertCellsAlign(
 	before: HTMLElement,

@@ -2,6 +2,7 @@ import { animate } from 'motion';
 import type { AnimateStep } from '../stage.js';
 import { blackBox } from './black-box.js';
 import { scaled, scaledMs } from '../speed.js';
+import { assertNoOverlap, rectOf, rectAtTranslate } from '../geometry.js';
 
 // Distributing motion family. One cell spreads to many — visually the inverse
 // of merging (merging collapses many to one, distributing emits many from one).
@@ -205,12 +206,14 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 // slot. The bar fades simultaneously — it isn't really gone, it's "inside"
 // the crate now. End state: crate alone at the centred slot.
 
-const CRATE_SLIDE_DURATION = 0.45;
-const CRATE_OFFSCREEN_GAP_PX = 320;    // crate's start position offset from its final slot
-const ARC_DURATION = 0.7;
-const ARC_PEAK_PX = 90;                // arc apex above the higher of the two cell centres
+const CRATE_SLIDE_IN_DURATION = 0.45;
+const CRATE_OFFSCREEN_GAP_PX = 320;    // start position offset from park slot
+const PARK_GAP_PX = 24;                // px between crate's right edge and bar's left edge
+const ARC_DURATION = 0.65;
+const ARC_PEAK_PX = 90;                // arc apex above the midpoint
 const ARC_SAMPLES = 26;
-const POST_ARC_HOLD_MS = 220;
+const SETTLE_DURATION = 0.4;
+const POST_HOLD_MS = 180;
 
 export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -221,61 +224,71 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 
 	const crateContent = crate.querySelector('.bqn-box-content') as HTMLElement | null;
 
-	// MEASURE BOTH at their static natural positions before we touch
-	// anything. These are the ground truths for the motion:
-	//   inputRect    — where the input bar actually sits on screen
-	//   crateRectNat — where the crate sits in afterRoot's centred slot
-	// The input ends INSIDE the crate; the crate ends at its natural slot.
+	// Measure positions before any styles are touched.
 	const inputRect = inputCell.getBoundingClientRect();
 	const crateRectNat = crate.getBoundingClientRect();
 	const inputCx = inputRect.left + inputRect.width / 2;
 	const inputCy = inputRect.top + inputRect.height / 2;
-	const crateCx = crateRectNat.left + crateRectNat.width / 2;
-	const crateCy = crateRectNat.top + crateRectNat.height / 2;
-	// Delta from where the input naturally is to where the crate will land.
-	// The arc goes from inputCx,inputCy → crateCx,crateCy along an arch.
-	// Constant within the motion regardless of whether they happen to share
-	// the same X (which they sometimes don't due to row width differences).
-	const dx = crateCx - inputCx;
-	const dy = crateCy - inputCy;
+	const crateNatCx = crateRectNat.left + crateRectNat.width / 2;
+	const crateNatCy = crateRectNat.top + crateRectNat.height / 2;
+
+	// PARK position: crate's right edge sits PARK_GAP_PX to the left of the
+	// input bar's left edge. Strictly no overlap with the input area. The
+	// crate's PARKED centre is computed from that constraint, then expressed
+	// as a translation delta from the crate's NATURAL slot (since the motion
+	// transforms relative to natural position).
+	const parkRightEdge = inputRect.left - PARK_GAP_PX;
+	const parkCx = parkRightEdge - crateRectNat.width / 2;
+	const parkCy = inputCy;                      // vertical match with the bar
+	const parkXOff = parkCx - crateNatCx;        // crate.translate.x at PARK
+	const parkYOff = parkCy - crateNatCy;        // crate.translate.y at PARK
+	const startXOff = parkXOff - CRATE_OFFSCREEN_GAP_PX;
+
+	// INVARIANT: the crate at PARK must not overlap the input area.
+	// We computed parkX such that the crate's right edge is PARK_GAP_PX
+	// left of the input's left edge — verify with the actual rects.
+	assertNoOverlap(
+		rectAtTranslate(crate, parkXOff, parkYOff),
+		rectOf(inputCell),
+		'enclose Phase 1 park',
+	);
 
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
 	crate.style.visibility = 'hidden';
 	if (crateContent) crateContent.style.opacity = '0';
-
 	inputCell.style.transformOrigin = 'center';
 
-	// ── Phase 1: crate slides in from off-stage left into its natural
-	// resting slot. Start position is computed relative to the crate's
-	// natural rect — translate(-CRATE_OFFSCREEN_GAP_PX, 0) puts the crate
-	// CRATE_OFFSCREEN_GAP_PX to the left of its slot, with end x=0 landing
-	// at the slot. After Phase 1 the crate sits at crateCx, crateCy.
+	// ── Phase 1: crate slides from off-stage left to its PARK position
+	// (strictly left of the input — no overlap possible because we placed
+	// the park slot with a positive gap, asserted above).
 	crate.style.visibility = '';
 	await animate(
 		crate,
-		{ x: [-CRATE_OFFSCREEN_GAP_PX, 0], opacity: [0, 1] },
-		{ duration: scaled(CRATE_SLIDE_DURATION), ease: [0.22, 1, 0.36, 1] },
+		{
+			x: [startXOff, parkXOff],
+			y: [parkYOff, parkYOff],
+			opacity: [0, 1],
+		},
+		{ duration: scaled(CRATE_SLIDE_IN_DURATION), ease: [0.22, 1, 0.36, 1] },
 	).finished;
 
-	// ── Phase 2: input arcs from its natural position (inputCx, inputCy)
-	// to the crate's centre (crateCx, crateCy), peaking ARC_PEAK_PX above
-	// the midpoint. Whichever direction the crate is in (left, right,
-	// same X), the bar ends inside the crate. While descending the bar
-	// shrinks; the crate's label fades in to take over the visual identity.
+	// ── Phase 2: bar arcs LEFTWARD into the parked crate. End position is
+	// the crate's parked centre; mid-arc peaks above the line connecting
+	// input → park. Bar shrinks during descent and fades at the very end.
 	inputCell.style.position = inputCell.style.position || 'relative';
 	inputCell.style.zIndex = '10';
 
+	const arcDx = parkCx - inputCx;              // leftward (negative)
+	const arcDy = parkCy - inputCy;              // typically ~0
 	const xs: number[] = [];
 	const ys: number[] = [];
 	const scales: number[] = [];
 	const opacities: number[] = [];
 	for (let i = 0; i <= ARC_SAMPLES; i++) {
 		const t = i / ARC_SAMPLES;
-		// Linear interp from 0 to dx,dy along x,y axes — straight line in
-		// pixel space — overlaid with a vertical sine bump for the arch.
-		xs.push(dx * t);
-		ys.push(dy * t - ARC_PEAK_PX * Math.sin(Math.PI * t));
+		xs.push(arcDx * t);
+		ys.push(arcDy * t - ARC_PEAK_PX * Math.sin(Math.PI * t));
 		scales.push(1 - t * 0.78);
 		opacities.push(t < 0.85 ? 1 : Math.max(0, 1 - (t - 0.85) / 0.15));
 	}
@@ -298,8 +311,21 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		{ duration: scaled(ARC_DURATION), ease: 'linear' },
 	).finished;
 
-	await _delayMs(scaledMs(POST_ARC_HOLD_MS));
-
+	// Input is gone now (faded + collapsed at the crate's park). Mark
+	// beforeRoot invisible so the slot it occupied is visually empty for
+	// Phase 3.
 	beforeRoot.style.opacity = '0';
+
+	// ── Phase 3: crate settles from PARK to its natural slot at centre.
+	// Nothing to cover — input is dead. The crate ends with transform=0,
+	// matching the static afterRoot rect, so handoff is pixel-exact.
+	await animate(
+		crate,
+		{ x: [parkXOff, 0], y: [parkYOff, 0] },
+		{ duration: scaled(SETTLE_DURATION), ease: [0.22, 1, 0.36, 1] },
+	).finished;
+
+	await _delayMs(scaledMs(POST_HOLD_MS));
+
 	afterRoot.style.pointerEvents = '';
 };
