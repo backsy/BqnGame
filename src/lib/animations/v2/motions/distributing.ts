@@ -290,7 +290,10 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		xs.push(arcDx * t);
 		ys.push(arcDy * t - ARC_PEAK_PX * Math.sin(Math.PI * t));
 		scales.push(1 - t * 0.78);
-		opacities.push(t < 0.85 ? 1 : Math.max(0, 1 - (t - 0.85) / 0.15));
+		// Bar must be fully faded BEFORE its rect crosses into the crate
+		// (which happens around t≈0.85 of the arc — see the overlap test).
+		// Fade from t=0.55 to t=0.8: opacity 1 → 0 over that window.
+		opacities.push(t < 0.55 ? 1 : Math.max(0, 1 - (t - 0.55) / 0.25));
 	}
 
 	if (crateContent) {
