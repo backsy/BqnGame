@@ -745,7 +745,7 @@
 	<title>v2 Animation Harness</title>
 </svelte:head>
 
-<main style="padding:1rem;font-family:sans-serif;background:#0d0d1a;min-height:100vh;color:#e0e0ff;max-width:480px;margin:0 auto;">
+<main style="padding:1rem;font-family:sans-serif;background:#0d0d1a;height:100vh;overflow-y:auto;color:#e0e0ff;max-width:480px;margin:0 auto;">
 	<div style="display:flex;align-items:baseline;justify-content:space-between;gap:0.6rem;margin-bottom:1rem;">
 		<h1 style="font-size:1.1rem;margin:0;color:#a89cf7;">v2 Animation Harness</h1>
 		<span
