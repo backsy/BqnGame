@@ -111,26 +111,49 @@ function renderValue(
 		}
 		if (value.shape.length === 2) {
 			const [R, C] = value.shape;
-			const cellW = 28;
-			const cellH = BAR_MAX_HEIGHT; // simplest: every grid cell sized large
-			const gridW = C * cellW + (C - 1) * ROW_GAP + 2 * ROW_PADDING;
-			const gridH = R * cellH + (R - 1) * ROW_GAP + 2 * ROW_PADDING;
+			// Each row of the matrix is its own rank-1 vector container
+			// (.bqn-vector — same bracket/outline decoration as a plain
+			// vector). Rows stack vertically inside the outer .bqn-matrix
+			// frame. Cells within a row are bars at their natural heights;
+			// uniform cell widths keep column alignment across rows.
+			const cellH = Math.max(
+				...value.data.map(v =>
+					v.kind === 'number' ? barHeight(v.value) :
+					(v.kind === 'array' && v.shape.length === 0) ? CRATE_SIZE :
+					BAR_BASE_HEIGHT,
+				),
+				BAR_BASE_HEIGHT,
+			);
+			const innerRowW = C * BAR_WIDTH + (C - 1) * ROW_GAP + 2 * ROW_PADDING;
+			const innerRowH = cellH + 2 * ROW_PADDING;
+			const gridW = innerRowW + 2 * ROW_PADDING;
+			const gridH = R * innerRowH + (R - 1) * ROW_GAP + 2 * ROW_PADDING;
 			const grid = document.createElement('div');
-			grid.className = `row bqn-matrix`;
+			grid.className = 'row bqn-matrix';
 			setRect(grid, rect(cx, cy, gridW, gridH));
-			const topEdge = cy - gridH / 2 + ROW_PADDING;
-			const leftEdge = cx - gridW / 2 + ROW_PADDING;
+			const outerTopEdge = cy - gridH / 2 + ROW_PADDING;
+			const outerLeftEdge = cx - gridW / 2 + ROW_PADDING;
 			for (let r = 0; r < R; r++) {
+				const rowCx = outerLeftEdge + innerRowW / 2;
+				const rowCy = outerTopEdge + innerRowH / 2 + r * (innerRowH + ROW_GAP);
+				const innerRow = document.createElement('div');
+				innerRow.className = 'row bqn-vector';
+				setRect(innerRow, rect(rowCx, rowCy, innerRowW, innerRowH));
+				grid.appendChild(innerRow);
+
+				const cellsLeftEdge = rowCx - innerRowW / 2 + ROW_PADDING;
+				const cellsBaselineY = rowCy + cellH / 2; // flex-end bottom
 				for (let c = 0; c < C; c++) {
 					const item = value.data[r * C + c];
-					const cellH_i = item.kind === 'number' ? barHeight(item.value) : BAR_BASE_HEIGHT;
-					const cellCx = leftEdge + cellW / 2 + c * (cellW + ROW_GAP);
-					const cellBaselineY = topEdge + (r + 1) * cellH + r * ROW_GAP;
-					const cellCy = cellBaselineY - cellH_i / 2;
+					const cellH_i = item.kind === 'number' ? barHeight(item.value) :
+						(item.kind === 'array' && item.shape.length === 0) ? CRATE_SIZE :
+						BAR_BASE_HEIGHT;
+					const cellCx = cellsLeftEdge + BAR_WIDTH / 2 + c * (BAR_WIDTH + ROW_GAP);
+					const cellCy = cellsBaselineY - cellH_i / 2;
 					const cellRect = rect(cellCx, cellCy, BAR_WIDTH, cellH_i);
 					const el = makeMockElement(`${prefix}.cell${r}_${c}`, cellRect).el;
 					el.className = 'bar';
-					grid.appendChild(el);
+					innerRow.appendChild(el);
 					cellsOut.push({ id: `${prefix}.cell${r}_${c}`, el, naturalRect: cellRect });
 				}
 			}

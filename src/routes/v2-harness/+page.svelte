@@ -275,16 +275,24 @@
 					return row;
 				}
 
-				// Rank-2 matrices: 2D grid, same per-cell dispatch.
+				// Rank-2 matrices: each row is its own rank-1 vector
+				// container — same .bqn-vector outline as a plain vector —
+				// stacked vertically inside the .bqn-matrix frame. Reads as
+				// "array of arrays": you see the whole matrix outlined
+				// AND every row outlined as its own array.
 				if (value.shape.length === 2) {
 					const [rows, cols] = value.shape;
 					const grid = document.createElement('div');
 					grid.className = 'row bqn-matrix';
-					grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},28px);gap:4px;padding:8px;align-items:end;`;
+					grid.style.cssText = 'display:flex;flex-direction:column;gap:4px;padding:8px;align-items:start;';
 					for (let r = 0; r < rows; r++) {
+						const rowEl = document.createElement('div');
+						rowEl.className = 'row bqn-vector';
+						rowEl.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
 						for (let c = 0; c < cols; c++) {
-							grid.appendChild(renderCell(value.data[r * cols + c], 24, '0.75rem'));
+							rowEl.appendChild(renderCell(value.data[r * cols + c], 24, '0.75rem'));
 						}
+						grid.appendChild(rowEl);
 					}
 					return grid;
 				}
