@@ -289,6 +289,44 @@
 					return grid;
 				}
 
+				// Rank ≥ 3: row of D crates along the major axis, each
+				// crate containing a rank-(N-1) sub-render. Mirrors the
+				// "array of arrays inside boxes" structure — the crate
+				// visual matches < (enclose), the same primitive that
+				// already wraps single values.
+				if (value.shape.length >= 3) {
+					const [D, ...innerShape] = value.shape;
+					const innerSize = innerShape.reduce((a, b) => a * b, 1);
+					const outer = document.createElement('div');
+					outer.className = 'row bqn-vector';
+					outer.style.cssText = 'display:flex;align-items:flex-end;gap:4px;padding:8px;';
+					for (let d = 0; d < D; d++) {
+						const sub: BqnValue = {
+							kind: 'array',
+							shape: innerShape,
+							data: value.data.slice(d * innerSize, (d + 1) * innerSize),
+						};
+						const subEl = renderBqnValue(sub);
+						const crate = document.createElement('div');
+						crate.className = 'bqn-box';
+						crate.style.cssText = [
+							'position:relative',
+							'display:grid',
+							'place-items:center',
+							'padding:14px',
+							'user-select:none',
+						].join(';');
+						crate.insertAdjacentHTML('afterbegin', CRATE_SVG);
+						const labelHolder = document.createElement('div');
+						labelHolder.className = 'bqn-box-content';
+						labelHolder.style.cssText = 'position:relative;z-index:1;display:grid;place-items:center;';
+						labelHolder.appendChild(subEl);
+						crate.appendChild(labelHolder);
+						outer.appendChild(crate);
+					}
+					return outer;
+				}
+
 				const ph = document.createElement('div');
 				ph.className = 'placeholder';
 				ph.style.cssText = 'padding:8px;color:#888;font-family:monospace;';

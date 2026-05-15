@@ -97,7 +97,7 @@ const MOTIONS: MotionCase[] = [
 	{ name: 'length',    fn: { kind: 'length' },  arity: 'monadic', source: x => `≠${x}`, inputs: [SCALAR, VEC_SM, VEC_5, MATRIX] },
 	{ name: 'shape',     fn: { kind: 'shape' },   arity: 'monadic', source: x => `≢${x}`, inputs: [SCALAR, VEC_SM, VEC_5, MATRIX] },
 	{ name: 'rank-of',   fn: { kind: 'rank-of' }, arity: 'monadic', source: x => `=${x}`, inputs: [SCALAR, VEC_SM, VEC_5, MATRIX] },
-	{ name: 'solo',      fn: { kind: 'solo' },    arity: 'monadic', source: x => `≍${x}`, inputs: [SCALAR, VEC_SM] },
+	{ name: 'solo',      fn: { kind: 'solo' },    arity: 'monadic', source: x => `≍${x}`, inputs: [SCALAR, VEC_SM, MATRIX] },
 ];
 
 function bqnLiteral(v: BqnValue): string {

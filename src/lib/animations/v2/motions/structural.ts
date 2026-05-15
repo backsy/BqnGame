@@ -326,20 +326,17 @@ const SOLO_FADE_DURATION = 0.28;
 export const soloMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 
-	// Source cells = the visible input elements. For a scalar, beforeRoot
-	// IS the single bar (wrapped in a row); for a vector, the children
-	// are the bars. We always operate on the row's children — the
-	// scalar's row has exactly one bar, the vector's has N.
-	const beforeCells = beforeCellsOf(beforeRoot);
-	const afterCells = beforeCellsOf(afterRoot);
+	// Find leaf bars on both sides. `beforeRoot.children` works for
+	// scalar/vector/matrix where bars are direct children, but breaks
+	// for the nested rank-≥3 output rendering (row > crate > inner
+	// grid > bars). Walking by class is uniform — every leaf bar is
+	// marked with class 'bar' so it can be found at any nesting depth.
+	const beforeCells = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.querySelectorAll('.bar')) as HTMLElement[];
 	if (beforeCells.length === 0 || afterCells.length === 0) {
 		return blackBox(step, beforeRoot, afterRoot);
 	}
 	if (beforeCells.length !== afterCells.length) {
-		return blackBox(step, beforeRoot, afterRoot);
-	}
-	// Rank ≥ 2 input → rank ≥ 3 output, no rendering.
-	if (step.x.kind === 'array' && step.x.shape.length >= 2) {
 		return blackBox(step, beforeRoot, afterRoot);
 	}
 

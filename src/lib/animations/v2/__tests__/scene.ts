@@ -55,6 +55,7 @@ function renderValue(
 		setRect(row, rect(cx, cy, rowW, rowH));
 		// Bar inside, aligned to row centre.
 		const bar = makeMockElement(`${prefix}.bar`, rect(cx, cy, BAR_WIDTH, h)).el;
+		bar.className = 'bar';
 		row.appendChild(bar);
 		cellsOut.push({ id: `${prefix}.bar`, el: bar, naturalRect: rect(cx, cy, BAR_WIDTH, h) });
 		return row;
@@ -102,6 +103,7 @@ function renderValue(
 				const cellCy = baseline - cellH_i / 2;
 				const cellRect = rect(cellCx, cellCy, BAR_WIDTH, cellH_i);
 				const el = makeMockElement(`${prefix}.cell${i}`, cellRect).el;
+				el.className = 'bar';
 				row.appendChild(el);
 				cellsOut.push({ id: `${prefix}.cell${i}`, el, naturalRect: cellRect });
 			}
@@ -127,11 +129,67 @@ function renderValue(
 					const cellCy = cellBaselineY - cellH_i / 2;
 					const cellRect = rect(cellCx, cellCy, BAR_WIDTH, cellH_i);
 					const el = makeMockElement(`${prefix}.cell${r}_${c}`, cellRect).el;
+					el.className = 'bar';
 					grid.appendChild(el);
 					cellsOut.push({ id: `${prefix}.cell${r}_${c}`, el, naturalRect: cellRect });
 				}
 			}
 			return grid;
+		}
+		// Rank ≥ 3 — render as a row of D crates along the major axis,
+		// each crate containing a rank-(N-1) sub-rendering. This is the
+		// "array of arrays inside boxes" structure the user asked for —
+		// the box visual is the same crate as < (enclose). Cells (bars)
+		// remain leaves at the bottom level, marked with class 'bar' so
+		// leafBars walkers can find them across the nested DOM.
+		if (value.shape.length >= 3) {
+			const [D, ...innerShape] = value.shape;
+			const innerSize = innerShape.reduce((a, b) => a * b, 1);
+			// Lay out D inner-shape sub-values side by side.
+			// Each sub-value is rendered recursively at a temporary
+			// centre; we then size the outer container to fit them all.
+			const subs: { el: HTMLElement; w: number; h: number }[] = [];
+			for (let d = 0; d < D; d++) {
+				const sub: BqnValue = {
+					kind: 'array',
+					shape: innerShape,
+					data: value.data.slice(d * innerSize, (d + 1) * innerSize),
+				};
+				// Render the sub at origin; we'll reposition by setting
+				// inline styles when we know the layout.
+				const subEl = renderValue(sub, 0, 0, `${prefix}.${d}`, [], depth + 1);
+				const r = subEl.getBoundingClientRect();
+				subs.push({ el: subEl, w: r.width, h: r.height });
+			}
+			const CRATE_PAD = 14;
+			const maxSubW = subs.reduce((m, s) => Math.max(m, s.w), 0);
+			const maxSubH = subs.reduce((m, s) => Math.max(m, s.h), 0);
+			const crateW = maxSubW + 2 * CRATE_PAD;
+			const crateH = maxSubH + 2 * CRATE_PAD;
+			const outerW = D * crateW + (D - 1) * ROW_GAP + 2 * ROW_PADDING;
+			const outerH = crateH + 2 * ROW_PADDING;
+			const outer = document.createElement('div');
+			outer.className = 'row bqn-vector';
+			setRect(outer, rect(cx, cy, outerW, outerH));
+			const leftEdge = cx - outerW / 2 + ROW_PADDING;
+			for (let d = 0; d < D; d++) {
+				const crateCx = leftEdge + crateW / 2 + d * (crateW + ROW_GAP);
+				const crateCy = cy;
+				const crate = document.createElement('div');
+				crate.className = 'bqn-box';
+				setRect(crate, rect(crateCx, crateCy, crateW, crateH));
+				outer.appendChild(crate);
+				// Re-render the d-th sub at the crate's centre and append.
+				const sub: BqnValue = {
+					kind: 'array',
+					shape: innerShape,
+					data: value.data.slice(d * innerSize, (d + 1) * innerSize),
+				};
+				const subEl = renderValue(sub, crateCx, crateCy, `${prefix}.${d}`, cellsOut, depth + 1);
+				crate.appendChild(subEl);
+			}
+			void subs; // first pass only used for sizing
+			return outer;
 		}
 	}
 	// Placeholder for unsupported (fn, namespace).
