@@ -241,19 +241,22 @@ async function extractRunner(
 	}
 	await Promise.all(glideTasks);
 
-	// Hide the reparented survivors on the motion timeline (duration-0
-	// opacity drop is tracked by the harness) and remove the orphaned
-	// nodes from <body>. The afterCells reveal at the same viewport
-	// position, so the handoff is clean — what the user sees as "the
-	// element settles into the result slot" is the afterCell.
+	// Hold the survivor at the result slot for a beat so the user
+	// registers "this is the result," BEFORE swapping it for the
+	// afterCell. Doing the hold here (with the reparented survivor
+	// still visible) avoids any gap between "survivor disappears" and
+	// "afterCell appears."
+	await _delayMs(scaledMs(EXTRACT_POST_HOLD_MS));
+
+	// Handoff: reveal afterCells at the same viewport position the
+	// survivor occupies, then hide & remove the survivors in the same
+	// tick. The before→after pixel swap is instantaneous; the user
+	// sees one bar at the result slot the whole time.
+	for (const cell of afterCells) cell.style.visibility = '';
 	for (const i of survivorIndices) {
 		animate(beforeCells[i], { opacity: 0 }, { duration: 0 });
 		beforeCells[i].remove();
 	}
-
-	await _delayMs(scaledMs(EXTRACT_POST_HOLD_MS));
-
-	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
 	beforeRoot.style.opacity = '0';
 }
