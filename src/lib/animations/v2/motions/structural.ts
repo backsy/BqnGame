@@ -1,6 +1,7 @@
 import { animate } from 'motion';
 import type { AnimateStep } from '../stage.js';
 import type { Step } from '../step.js';
+import type { BqnValue } from '../value.js';
 import { blackBox } from './black-box.js';
 import { scaled, scaledMs } from '../speed.js';
 
@@ -611,6 +612,33 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 const AXIS_PULSE_DURATION = 0.32;
 const AXIS_PULSE_HOLD_MS = 80;
 
+// The cell-group for index `i` along `axis` of a value `x`:
+//   - rank 1: the i-th cell of the row.
+//   - rank 2, axis 0: the i-th row (all C columns).
+//   - rank 2, axis 1: the i-th column (all R rows).
+// Higher ranks fall back to the empty group; callers should already
+// have rejected those via blackBox before reaching here.
+function axisGroupCells(
+	cells: HTMLElement[],
+	x: BqnValue,
+	axis: number,
+	i: number,
+): HTMLElement[] {
+	if (x.kind !== 'array') return [];
+	if (x.shape.length === 1) return [cells[i]];
+	if (x.shape.length === 2) {
+		const [R, C] = x.shape;
+		const group: HTMLElement[] = [];
+		if (axis === 0) {
+			for (let c = 0; c < C; c++) group.push(cells[i * C + c]);
+		} else {
+			for (let r = 0; r < R; r++) group.push(cells[r * C + i]);
+		}
+		return group;
+	}
+	return [];
+}
+
 async function pulseAxisCells(cells: HTMLElement[]): Promise<void> {
 	const tasks = cells.map(c =>
 		animate(
@@ -661,27 +689,20 @@ export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 	//                    column-by-column (C pulses ticking 1..C). Lets
 	//                    the user SEE that R counts rows and C counts
 	//                    columns rather than just reading the answer.
+	// One uniform counting gesture across all ranks: for each axis, walk
+	// its cells one-by-one, pulse each cell-group and tick the counter
+	// 1..len. Same beat shape for ⟨3 1 4⟩ (one axis, three ticks) as for
+	// a 2×3 matrix (axis 0: 2 ticks over rows; axis 1: 3 ticks over
+	// columns). No "all-at-once for vectors, one-at-a-time for matrices"
+	// inconsistency — the counter is always counting OUT what it counts.
 	const beforeCells = beforeCellsOf(beforeRoot);
 	for (let axis = 0; axis < rank; axis++) {
 		const len = axisLengths[axis];
-		if (rank === 1) {
-			await pulseAxisCells(beforeCells);
-			await tickCounter(counter, String(len));
-			await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
-		} else if (rank === 2 && step.x.kind === 'array' && step.x.shape.length === 2) {
-			const C = step.x.shape[1];
-			const R = step.x.shape[0];
-			for (let i = 0; i < len; i++) {
-				const groupCells: HTMLElement[] = [];
-				if (axis === 0) {
-					for (let c = 0; c < C; c++) groupCells.push(beforeCells[i * C + c]);
-				} else {
-					for (let r = 0; r < R; r++) groupCells.push(beforeCells[r * C + i]);
-				}
-				await pulseAxisCells(groupCells);
-				await tickCounter(counter, String(i + 1));
-				if (i < len - 1) await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
-			}
+		for (let i = 0; i < len; i++) {
+			const groupCells = axisGroupCells(beforeCells, step.x, axis, i);
+			await pulseAxisCells(groupCells);
+			await tickCounter(counter, String(i + 1));
+			if (i < len - 1) await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
 		}
 		if (axis < rank - 1) {
 			await _delayMs(scaledMs(MEASURE_BETWEEN_EMITS_MS));
