@@ -423,17 +423,40 @@ const LENGTH_PRE_COUNTER_FADE_MS = 150;
 
 export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
-	const rank = step.x.shape.length;
-	if (rank < 1 || rank > 2) return blackBox(step, beforeRoot, afterRoot);
 
 	const beforeCells = beforeCellsOf(beforeRoot);
 	const afterCells = beforeCellsOf(afterRoot);
 	if (beforeCells.length === 0) return blackBox(step, beforeRoot, afterRoot);
 	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
 
-	const majorDim = step.x.shape[0];
-	const sliceSize = rank === 1 ? 1 : step.x.shape[1];
+	// Derive (majorDim, sliceSize) from the input shape regardless of kind.
+	// A scalar (atom or rank-0 array) is "one major-axis cell of one slot"
+	// — the gesture is identical to a 1-cell vector: tick once, drop the
+	// single cell, fade the result in. Rank ≥ 3 is the only case where the
+	// per-row dim count doesn't make sense, so fall through there.
+	let majorDim: number;
+	let sliceSize: number;
+	if (step.x.kind === 'array') {
+		const rank = step.x.shape.length;
+		if (rank === 0) {
+			majorDim = 1;
+			sliceSize = 1;
+		} else if (rank === 1) {
+			majorDim = step.x.shape[0];
+			sliceSize = 1;
+		} else if (rank === 2) {
+			majorDim = step.x.shape[0];
+			sliceSize = step.x.shape[1];
+		} else {
+			return blackBox(step, beforeRoot, afterRoot);
+		}
+	} else {
+		majorDim = 1;
+		sliceSize = 1;
+	}
+	if (majorDim * sliceSize !== beforeCells.length) {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
 
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
