@@ -20,6 +20,7 @@ import type { Step } from '../step';
 import type { BqnValue } from '../value';
 import {
 	assertNoOverlapAcross,
+	assertSmoothMotion,
 	getTotalMotionMs,
 	installAnimateMock,
 	makeScene,
@@ -153,6 +154,7 @@ describe('all motions — no-overlap invariant across input shapes', () => {
 
 				const scene = makeScene([...beforeCells, ...afterCells]);
 				assertNoOverlapAcross(scene, SAMPLES);
+				assertSmoothMotion(scene);
 			});
 		}
 	}

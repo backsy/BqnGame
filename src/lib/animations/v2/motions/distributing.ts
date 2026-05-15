@@ -322,12 +322,12 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		{ duration: scaled(ARC_DURATION), ease: 'linear' },
 	).finished;
 
-	// Input is gone now (faded + collapsed at the crate's park). Mark
-	// beforeRoot invisible so the slot it occupied is visually empty for
-	// Phase 3. Use animate (not direct style mutation) so the opacity
-	// transition is on the motion timeline and observable to tests via
-	// ancestor-opacity propagation onto the child cells.
-	animate(beforeRoot, { opacity: 0 }, { duration: 0 });
+	// Input is gone now (faded + collapsed at the crate's park). Fade
+	// beforeRoot smoothly during Phase 3 — the box and any leftover
+	// children (cells 1+ for non-scalar inputs) wind down on the
+	// motion timeline rather than blinking out, which the smooth-motion
+	// invariant test would catch.
+	animate(beforeRoot, { opacity: [1, 0] }, { duration: scaled(0.2), ease: 'easeIn' });
 
 	// ── Phase 3: crate settles from PARK to its natural slot at centre.
 	// Nothing to cover — input is dead. The crate ends with transform=0,

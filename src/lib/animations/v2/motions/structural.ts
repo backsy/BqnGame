@@ -249,16 +249,17 @@ async function extractRunner(
 	await _delayMs(scaledMs(EXTRACT_POST_HOLD_MS));
 
 	// Handoff: reveal afterCells at the same viewport position the
-	// survivor occupies, then hide & remove the survivors in the same
-	// tick. The before→after pixel swap is instantaneous; the user
-	// sees one bar at the result slot the whole time.
+	// survivor occupies, then remove the orphaned survivor nodes from
+	// <body>. Both render the same value at the same rect, so the
+	// before→after swap is a clean pixel handoff with no visible
+	// transition. No opacity tween needed — and a tracked opacity
+	// drop here would BE a teleport (instant fade), which the
+	// smooth-motion test correctly rejects.
 	for (const cell of afterCells) cell.style.visibility = '';
 	for (const i of survivorIndices) {
-		animate(beforeCells[i], { opacity: 0 }, { duration: 0 });
 		beforeCells[i].remove();
 	}
 	afterRoot.style.pointerEvents = '';
-	beforeRoot.style.opacity = '0';
 }
 
 export const firstMonadic: AnimateStep = (step, beforeRoot, afterRoot) => {
@@ -337,17 +338,22 @@ export const soloMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pro
 	).finished;
 	await _delayMs(scaledMs(SOLO_PULSE_HOLD_MS));
 
-	// Phase 1 — single emission. The after-cell pre-offsets to the scalar's
+	// Phase 1 — scalar fades out FIRST, so the result emission has
+	// clear screen space to emerge into. Cross-fading the scalar and
+	// the after-cell at the same viewport position would put two
+	// visible rectangles at the same pixels (no-overlap violation).
+	await animate(
+		beforeRoot,
+		{ opacity: [1, 0] },
+		{ duration: scaled(SOLO_FADE_DURATION), ease: 'easeIn' },
+	).finished;
+
+	// Phase 2 — single emission. The after-cell pre-offsets to the scalar's
 	// viewport centre then animates back to its measured final position
 	// (translate = 0). End state is no transform — pixel-exact final layout.
 	const startDx = scalarCx - cellCx;
 	const startDy = scalarCy - cellCy;
 	cell.style.visibility = '';
-	animate(
-		beforeRoot,
-		{ opacity: 0 },
-		{ duration: scaled(SOLO_EMIT_DURATION), ease: 'linear' },
-	);
 	await animate(
 		cell,
 		{
@@ -360,12 +366,6 @@ export const soloMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pro
 	).finished;
 
 	await _delayMs(scaledMs(SOLO_POST_HOLD_MS));
-
-	// Belt-and-braces fade for the scalar — the parallel opacity animation
-	// above is timed to land near 0 already; this guarantees a clean 0 at
-	// the handoff moment.
-	beforeRoot.style.opacity = '0';
-	void SOLO_FADE_DURATION;
 
 	afterRoot.style.pointerEvents = '';
 };

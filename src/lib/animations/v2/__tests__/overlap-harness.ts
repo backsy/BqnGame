@@ -188,21 +188,25 @@ function elementRectAt(el: SceneElement, t: number): Rect {
 }
 
 // Compute the opacity contribution of one element at time t, from
-// animate calls only. Ignores inline style.opacity (which is live-read
-// post-motion and can't be time-correlated). Returns null when no
-// opacity animation is tracked for this element.
+// animate calls only. Walks every opacity-changing call in start-order
+// (matching elementStateAt's logic) so scalar keyframes ease from the
+// running prior value over their duration — the same way motion-lib
+// would. Returns null when no opacity animation is tracked for this
+// element. Ignores inline style.opacity, which can't be time-correlated.
 function trackedOpacityAt(el: Element, t: number): number | null {
-	const animations = calls.filter(
-		c => c.el === el && c.startMs <= t && 'opacity' in c.keyframes,
-	);
-	if (animations.length === 0) return null;
-	animations.sort((a, b) => a.startMs - b.startMs);
-	const latest = animations[animations.length - 1];
-	const localT = latest.endMs > latest.startMs
-		? Math.min(1, (t - latest.startMs) / (latest.endMs - latest.startMs))
-		: 1;
-	const v = keyframeValueAt(latest.keyframes.opacity, localT);
-	return v ?? null;
+	const sorted = calls
+		.filter(c => c.el === el && c.startMs <= t && 'opacity' in c.keyframes)
+		.sort((a, b) => a.startMs - b.startMs);
+	if (sorted.length === 0) return null;
+	let opacity = 1; // implicit prior before any tracked opacity animation
+	for (const call of sorted) {
+		const localT = call.endMs > call.startMs
+			? Math.min(1, (t - call.startMs) / (call.endMs - call.startMs))
+			: 1;
+		const v = mixKf(call.keyframes.opacity, opacity, localT);
+		if (v !== null) opacity = v;
+	}
+	return opacity;
 }
 
 // Effective opacity of an element at time t: own contribution × ancestor
@@ -261,6 +265,80 @@ export function assertNoOverlapAcross(
 
 function rectStr(r: Rect): string {
 	return `[${r.left.toFixed(1)},${r.top.toFixed(1)} → ${r.right.toFixed(1)},${r.bottom.toFixed(1)}]`;
+}
+
+// Smooth-motion invariant: no scene element may "teleport." Sample at
+// fine resolution and assert that between adjacent samples each
+// element's opacity changes by less than MAX_OPACITY_DELTA, and its
+// rect centre moves by less than MAX_POSITION_DELTA_PX (only checked
+// when the element is visible at both samples — a fade-in/out is a
+// visibility change, not a position change).
+//
+// Catches:
+//   - duration-0 opacity tweens (e.g. animate(el, { opacity: 0 },
+//     { duration: 0 })) which instantly hide an element.
+//   - animation chains where a later array-keyframe starts at a
+//     different value than the previous animation ended at, causing
+//     a transform jump at the seam.
+//   - direct style.opacity / style.visibility flips that the harness
+//     happens to observe (visibility flips are read live; opacity
+//     flips via animate() are tracked here).
+//
+// Sweeps s ∈ [0, samples] INCLUSIVE so the very-end-of-motion jumps
+// (e.g. a duration-0 hide at totalMotionMs that the user sees as the
+// motion's last visual moment) get compared against the prior sample.
+const SMOOTH_DEFAULT_SAMPLES = 360;
+const SMOOTH_MAX_OPACITY_DELTA = 0.5;     // ~catches duration < 12ms full fades
+const SMOOTH_MAX_POSITION_DELTA_PX = 60;  // ~5000px/s at 240 samples on 1500ms
+
+export function assertSmoothMotion(
+	scene: Scene,
+	samples: number = SMOOTH_DEFAULT_SAMPLES,
+	opts: { maxOpacityDelta?: number; maxPositionDeltaPx?: number } = {},
+): void {
+	const maxOpacityDelta = opts.maxOpacityDelta ?? SMOOTH_MAX_OPACITY_DELTA;
+	const maxPositionDeltaPx = opts.maxPositionDeltaPx ?? SMOOTH_MAX_POSITION_DELTA_PX;
+	const total = totalMotionMs > 0 ? totalMotionMs : 1;
+	type State = { opacity: number; cx: number; cy: number };
+	let prev: State[] | null = null;
+	for (let s = 0; s <= samples; s++) {
+		const t = (s / samples) * total;
+		const states: State[] = scene.elements.map(el => {
+			const opacity = elementOpacityAt(el, t);
+			const r = elementRectAt(el, t);
+			return { opacity, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2 };
+		});
+		if (prev) {
+			const prevT = ((s - 1) / samples) * total;
+			for (let i = 0; i < scene.elements.length; i++) {
+				const el = scene.elements[i];
+				const cur = states[i];
+				const old = prev[i];
+				const dOp = Math.abs(cur.opacity - old.opacity);
+				if (dOp > maxOpacityDelta) {
+					throw new Error(
+						`Smooth-motion: '${el.id}' opacity jumped ${old.opacity.toFixed(2)} → ${cur.opacity.toFixed(2)} ` +
+							`(Δ=${dOp.toFixed(2)} > ${maxOpacityDelta}) ` +
+							`between t=${prevT.toFixed(1)}ms and t=${t.toFixed(1)}ms (sample ${s - 1}→${s}/${samples}, total=${total.toFixed(0)}ms). ` +
+							`That's an instant fade — use a tracked tween with non-zero duration.`,
+					);
+				}
+				if (cur.opacity > INVISIBLE_THRESHOLD && old.opacity > INVISIBLE_THRESHOLD) {
+					const dPos = Math.hypot(cur.cx - old.cx, cur.cy - old.cy);
+					if (dPos > maxPositionDeltaPx) {
+						throw new Error(
+							`Smooth-motion: '${el.id}' centre jumped ${dPos.toFixed(1)}px ` +
+								`(${old.cx.toFixed(1)},${old.cy.toFixed(1)} → ${cur.cx.toFixed(1)},${cur.cy.toFixed(1)}) ` +
+								`(> ${maxPositionDeltaPx}px) ` +
+								`between t=${prevT.toFixed(1)}ms and t=${t.toFixed(1)}ms (sample ${s - 1}→${s}/${samples}, total=${total.toFixed(0)}ms). ` +
+								`That's a teleport — animate transforms continuously across phase seams.`,
+						);
+					}
+				}
+			}
+		}
+		prev = states;
+	}
 }
 
 // Helpers for scene setup.
