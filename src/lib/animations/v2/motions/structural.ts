@@ -553,13 +553,15 @@ async function pulseAxisCells(cells: HTMLElement[]): Promise<void> {
 
 export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
-	const rank = step.x.shape.length;
-	if (rank < 1 || rank > 2) return blackBox(step, beforeRoot, afterRoot);
 
-	const beforeCells = beforeCellsOf(beforeRoot);
+	// Shape works on ANY input (≢5 = ⟨⟩, ≢⟨a b c⟩ = ⟨3⟩, etc.). The motion
+	// is one gesture: counter ticks once per axis; for scalars (rank 0)
+	// that's zero ticks and the empty-vector result reveals.
+	const axisLengths: number[] = step.x.kind === 'array' ? [...step.x.shape] : [];
+	if (axisLengths.length > 2) return blackBox(step, beforeRoot, afterRoot);
+	const rank = axisLengths.length;
+
 	const afterCells = beforeCellsOf(afterRoot);
-	if (beforeCells.length === 0) return blackBox(step, beforeRoot, afterRoot);
 	if (afterCells.length !== rank) return blackBox(step, beforeRoot, afterRoot);
 
 	afterRoot.style.opacity = '1';
@@ -580,35 +582,11 @@ export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 	// pulses are legible.
 	//
 	//   1D: axis 0 = the whole row. Length = N.
-	//   2D: axis 0 = the rows (group by row). Length = R.
-	//        axis 1 = the columns (group by column). Length = C.
-	const axisLengths: number[] = [];
+	// Counter ticks once per axis, displaying the length of that axis.
+	// One gesture, regardless of input rank — zero iterations for a scalar.
 	for (let axis = 0; axis < rank; axis++) {
-		const len = step.x.shape[axis];
-		axisLengths.push(len);
-		if (rank === 1) {
-			await pulseAxisCells(beforeCells);
-			await tickCounter(counter, String(len));
-			await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
-		} else {
-			const C = step.x.shape[1];
-			for (let i = 0; i < len; i++) {
-				const groupCells: HTMLElement[] = [];
-				if (axis === 0) {
-					for (let c = 0; c < C; c++) groupCells.push(beforeCells[i * C + c]);
-				} else {
-					const R = step.x.shape[0];
-					for (let r = 0; r < R; r++) groupCells.push(beforeCells[r * C + i]);
-				}
-				await pulseAxisCells(groupCells);
-				await tickCounter(counter, String(i + 1));
-				if (i < len - 1) await _delayMs(scaledMs(AXIS_PULSE_HOLD_MS));
-			}
-		}
-		if (axis < rank - 1) {
-			await _delayMs(scaledMs(MEASURE_BETWEEN_EMITS_MS));
-			counter.textContent = '0';
-		}
+		await tickCounter(counter, String(axisLengths[axis]));
+		if (axis < rank - 1) await _delayMs(scaledMs(MEASURE_BETWEEN_EMITS_MS));
 	}
 	await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
 
@@ -648,13 +626,14 @@ export const shapeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 
 export const rankOfMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
-	const rank = step.x.shape.length;
-	if (rank < 1 || rank > 2) return blackBox(step, beforeRoot, afterRoot);
 
-	const beforeCells = beforeCellsOf(beforeRoot);
+	// `=` returns the count of axes — scalar = 0, vector = 1, matrix = 2.
+	// One uniform gesture: counter ticks once per axis. Scalars do zero
+	// ticks and the result `0` reveals. No per-rank custom branches.
+	const rank: number = step.x.kind === 'array' ? step.x.shape.length : 0;
+	if (rank > 2) return blackBox(step, beforeRoot, afterRoot);
+
 	const afterCells = beforeCellsOf(afterRoot);
-	if (beforeCells.length === 0) return blackBox(step, beforeRoot, afterRoot);
 	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
 
 	afterRoot.style.opacity = '1';
@@ -670,34 +649,7 @@ export const rankOfMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 
 	await counterIn(counter);
 
-	// Tick once per axis. Each tick pulses the cells participating in that
-	// axis — for rank 1 that's the whole row (one axis); for rank 2 the
-	// first tick pulses the row group (axis 0 = rows), the second pulses
-	// the column group (axis 1 = cols). Visually the same cells get
-	// re-highlighted per axis — that's the point: the same cells are
-	// reached by N different indexing directions, which is exactly what
-	// rank measures.
 	for (let axis = 0; axis < rank; axis++) {
-		if (rank === 1) {
-			await pulseAxisCells(beforeCells);
-		} else {
-			// rank 2 — pulse the relevant "spine" of one row (axis 0) or
-			// one column (axis 1), not every cell along that axis. The
-			// spine highlights the dimension while keeping the other
-			// dimension dimmer, so the user sees the shape-of-thought
-			// rather than just "everything pulses again."
-			const C = step.x.shape[1];
-			const R = step.x.shape[0];
-			const spine: HTMLElement[] = [];
-			if (axis === 0) {
-				// Spine of axis 0 = the first column (one element per row).
-				for (let r = 0; r < R; r++) spine.push(beforeCells[r * C]);
-			} else {
-				// Spine of axis 1 = the first row (one element per col).
-				for (let c = 0; c < C; c++) spine.push(beforeCells[c]);
-			}
-			await pulseAxisCells(spine);
-		}
 		await tickCounter(counter, String(axis + 1));
 		if (axis < rank - 1) await _delayMs(scaledMs(MEASURE_TICK_BETWEEN_MS));
 	}
