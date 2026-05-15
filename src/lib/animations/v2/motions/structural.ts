@@ -485,15 +485,15 @@ function dimCell(cell: HTMLElement): Promise<unknown> {
 // ≠X — count of cells along the major axis. For a 1D array that's the
 // number of elements; for a 2D array it's the number of rows.
 //
-// Visual (matches the old engine's length animation):
+// Visual (matches shape / rank-of: every structural "measure" motion
+// ends with the count FALLING OUT of the counter ball):
 //   1. Counter scales in above the input row's centre.
 //   2. For each major-axis cell, pulse the cell(s) and tick the counter
 //      — pulse and tick fire in parallel so they read as one beat.
-//   3. After the last tick, all input cells fade and DROP (translate down,
-//      opacity → 0). With the input gone, the area is clear.
-//   4. The after-cell (the result scalar) fades in at its post-commit slot.
-//      Rectangles strictly disjoint with the input throughout: the input
-//      cells drop downward out of the area before the result appears.
+//   3. Input fades.
+//   4. The after-cell (the result scalar) emits FROM the counter via
+//      emitFromPoint — pre-offset to the counter's centre, then tween
+//      back to its measured post-commit slot.
 //   5. Counter fades out.
 //
 // Falls through to blackBox for: non-array input, rank > 2.
@@ -501,9 +501,6 @@ function dimCell(cell: HTMLElement): Promise<unknown> {
 const LENGTH_PULSE_DURATION = 0.3;
 const LENGTH_PULSE_STAGGER_MS = 130;
 const LENGTH_POST_TICKS_HOLD_MS = 220;
-const LENGTH_DROP_DURATION = 0.4;
-const LENGTH_DROP_DISTANCE = 30;
-const LENGTH_RESULT_FADE_DURATION = 0.32;
 const LENGTH_PRE_COUNTER_FADE_MS = 150;
 
 export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
@@ -550,6 +547,7 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 	// Counter sits above the row's horizontal centre.
 	const rowRect = beforeRoot.getBoundingClientRect();
 	const counterCx = rowRect.left + rowRect.width / 2;
+	const counterCy = rowRect.top - COUNTER_OFFSET + COUNTER_SIZE / 2;
 	const counter = createCounter(counterCx, rowRect.top - COUNTER_OFFSET);
 	counter.textContent = '0';
 	document.body.appendChild(counter);
@@ -577,32 +575,20 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 	}
 	await _delayMs(scaledMs(LENGTH_POST_TICKS_HOLD_MS));
 
-	// Phase 3: all input cells fade and drop downward. Strictly disjoint
-	// with the after-cell's slot — input moves AWAY from the centre, the
-	// result will appear AT the centre after they're gone.
-	await Promise.all(
-		beforeCells.map((cell, i) =>
-			animate(
-				cell,
-				{ opacity: [1, 0], y: [0, LENGTH_DROP_DISTANCE] },
-				{
-					duration: scaled(LENGTH_DROP_DURATION),
-					delay: scaled(i * 0.04),
-					ease: [0.4, 0, 0.6, 1],
-				},
-			).finished,
-		),
-	);
-	beforeRoot.style.opacity = '0';
-
-	// Phase 4: the result scalar fades in at its natural post-commit slot.
-	// Empty space underneath, no overlap with anything.
-	afterCells[0].style.visibility = '';
+	// Phase 3: fade the input smoothly — beforeRoot's opacity tween
+	// (children inherit) gives one continuous "input is gone" beat,
+	// no per-cell drop motion.
 	await animate(
-		afterCells[0],
-		{ opacity: [0, 1] },
-		{ duration: scaled(LENGTH_RESULT_FADE_DURATION), ease: 'easeOut' },
+		beforeRoot,
+		{ opacity: [1, 0] },
+		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
 	).finished;
+
+	// Phase 4: the result scalar emits FROM the counter ball. Same
+	// gesture as shape/rank-of — every structural measurement ends
+	// with the count falling out of the counter into the result slot.
+	const afterRect = afterCells[0].getBoundingClientRect();
+	await emitFromPoint(afterCells[0], afterRect, counterCx, counterCy);
 
 	// Phase 5: counter retreats up and out.
 	await _delayMs(scaledMs(LENGTH_PRE_COUNTER_FADE_MS));
