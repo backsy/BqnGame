@@ -400,12 +400,26 @@ function dimCell(cell: HTMLElement): Promise<unknown> {
 // ≠X — count of cells along the major axis. For a 1D array that's the
 // number of elements; for a 2D array it's the number of rows.
 //
-// Visual: counter scales in above the input row's centre; for i = 1..N,
-// dim the i-th major-axis cell (a 2D "cell" is a whole row dimmed in
-// unison) and tick the counter to i. After the final tick, emit a single
-// after-cell carrying the count from the counter's position.
+// Visual (matches the old engine's length animation):
+//   1. Counter scales in above the input row's centre.
+//   2. For each major-axis cell, pulse the cell(s) and tick the counter
+//      — pulse and tick fire in parallel so they read as one beat.
+//   3. After the last tick, all input cells fade and DROP (translate down,
+//      opacity → 0). With the input gone, the area is clear.
+//   4. The after-cell (the result scalar) fades in at its post-commit slot.
+//      Rectangles strictly disjoint with the input throughout: the input
+//      cells drop downward out of the area before the result appears.
+//   5. Counter fades out.
 //
-// Falls through to blackBox for: non-array input, rank > 2 (no grid render).
+// Falls through to blackBox for: non-array input, rank > 2.
+
+const LENGTH_PULSE_DURATION = 0.3;
+const LENGTH_PULSE_STAGGER_MS = 130;
+const LENGTH_POST_TICKS_HOLD_MS = 220;
+const LENGTH_DROP_DURATION = 0.4;
+const LENGTH_DROP_DISTANCE = 30;
+const LENGTH_RESULT_FADE_DURATION = 0.32;
+const LENGTH_PRE_COUNTER_FADE_MS = 150;
 
 export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -416,7 +430,6 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 	const beforeCells = beforeCellsOf(beforeRoot);
 	const afterCells = beforeCellsOf(afterRoot);
 	if (beforeCells.length === 0) return blackBox(step, beforeRoot, afterRoot);
-	// length result is a single scalar bar, rendered as one cell.
 	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
 
 	const majorDim = step.x.shape[0];
@@ -426,57 +439,68 @@ export const lengthMonadic: AnimateStep = async (step, beforeRoot, afterRoot): P
 	afterRoot.style.pointerEvents = 'none';
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
 
-	// Counter sits above the row centre — for a 2D grid that's the grid's
-	// horizontal centre. Use beforeRoot's bounding rect rather than the
-	// individual cells so the counter is centred over the whole input.
+	// Counter sits above the row's horizontal centre.
 	const rowRect = beforeRoot.getBoundingClientRect();
 	const counterCx = rowRect.left + rowRect.width / 2;
-	const counterCy = rowRect.top - COUNTER_OFFSET + COUNTER_SIZE / 2;
 	const counter = createCounter(counterCx, rowRect.top - COUNTER_OFFSET);
 	counter.textContent = '0';
 	document.body.appendChild(counter);
 
 	await counterIn(counter);
 
-	// Tick once per major-axis cell. For rank 1 each tick dims one bar;
-	// for rank 2 each tick dims one row (sliceSize bars in unison).
+	// Phase 2: pulse each major-axis cell while the counter ticks. Both
+	// fire in parallel (not awaited together) so the pulse plays as the
+	// counter changes — one beat per major-axis cell.
 	for (let i = 0; i < majorDim; i++) {
-		const dimTasks: Promise<unknown>[] = [];
+		counter.textContent = String(i + 1);
+		animate(
+			counter,
+			{ transform: ['scale(1)', 'scale(1.3)', 'scale(1)'] },
+			{ duration: scaled(0.28) },
+		);
 		for (let j = 0; j < sliceSize; j++) {
-			const cellIdx = i * sliceSize + j;
-			dimTasks.push(dimCell(beforeCells[cellIdx]));
+			animate(
+				beforeCells[i * sliceSize + j],
+				{ scale: [1, 1.15, 1] },
+				{ duration: scaled(LENGTH_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+			);
 		}
-		// Run the dim concurrent with the tick — the user reads them as
-		// "this cell counts" + "the counter goes up" together.
-		const tick = tickCounter(counter, String(i + 1));
-		await Promise.all([...dimTasks, tick]);
-		if (i < majorDim - 1) await _delayMs(scaledMs(MEASURE_TICK_BETWEEN_MS));
+		if (i < majorDim - 1) await _delayMs(scaledMs(LENGTH_PULSE_STAGGER_MS));
 	}
-	await _delayMs(scaledMs(MEASURE_PRE_EMIT_MS));
+	await _delayMs(scaledMs(LENGTH_POST_TICKS_HOLD_MS));
 
-	// Fade the input BEFORE emitting the result so they don't overlap.
-	// The result cell lands at the centred afterRoot position, which is the
-	// same space the input row occupies — without this fade, the count
-	// would visibly sit on top of the dimmed input.
+	// Phase 3: all input cells fade and drop downward. Strictly disjoint
+	// with the after-cell's slot — input moves AWAY from the centre, the
+	// result will appear AT the centre after they're gone.
+	await Promise.all(
+		beforeCells.map((cell, i) =>
+			animate(
+				cell,
+				{ opacity: [1, 0], y: [0, LENGTH_DROP_DISTANCE] },
+				{
+					duration: scaled(LENGTH_DROP_DURATION),
+					delay: scaled(i * 0.04),
+					ease: [0.4, 0, 0.6, 1],
+				},
+			).finished,
+		),
+	);
+	beforeRoot.style.opacity = '0';
+
+	// Phase 4: the result scalar fades in at its natural post-commit slot.
+	// Empty space underneath, no overlap with anything.
+	afterCells[0].style.visibility = '';
 	await animate(
-		beforeRoot,
-		{ opacity: [parseFloat(beforeRoot.style.opacity || '1'), 0] },
-		{ duration: scaled(MEASURE_CELL_DIM_DURATION), ease: 'easeIn' },
+		afterCells[0],
+		{ opacity: [0, 1] },
+		{ duration: scaled(LENGTH_RESULT_FADE_DURATION), ease: 'easeOut' },
 	).finished;
 
-	// Emit the result cell from the counter's centre into cleared space.
-	const afterRect = afterCells[0].getBoundingClientRect();
-	await emitFromPoint(afterCells[0], afterRect, counterCx, counterCy);
-
-	await _delayMs(scaledMs(MEASURE_POST_HOLD_MS));
-
-	void MEASURE_TICK_FADE_MS;
-
+	// Phase 5: counter retreats up and out.
+	await _delayMs(scaledMs(LENGTH_PRE_COUNTER_FADE_MS));
 	await counterOutAndRemove(counter);
 
-	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
-	beforeRoot.style.opacity = '0';
 };
 
 // ── shapeMonadic ──────────────────────────────────────────────────────────
