@@ -185,16 +185,34 @@ async function extractRunner(
 	await Promise.all(exitTasks);
 	await _delayMs(scaledMs(EXTRACT_POST_EXIT_HOLD_MS));
 
-	// Phase 4a: reparent survivors out of beforeRoot so they don't
-	// inherit its opacity drop. BEFORE we move them, freeze
-	// beforeRoot's current dimensions inline — otherwise removing the
-	// survivor children from its flex layout causes the row to reflow
-	// (visibly shrink) the moment they leave, which reads as the box
-	// "resizing" right before the fade. With width/height locked, the
-	// box keeps the same footprint right up to the moment its opacity
-	// hits zero.
+	// Phase 4a: freeze the entire box layout before the survivor leaves.
+	// Two reasons it must be fully static:
+	//   (1) Without locking, removing the survivor from a flex parent
+	//       lets the remaining (dimmed) cells slide to fill the gap.
+	//       That counts as motion the user didn't ask for.
+	//   (2) Locking only the parent's width/height leaves the child
+	//       flex flow free to reshuffle — the cells re-justify within
+	//       the locked box.
+	// So: pin beforeRoot's dimensions AND pin every child cell with
+	// `position: absolute` + inline left/top derived from its
+	// pre-transform rect. Once everything is absolutely positioned,
+	// the flex flow has nothing to lay out — reparenting the survivors
+	// or any later DOM change cannot shift the remaining cells.
+	beforeRoot.style.position = 'relative';
 	beforeRoot.style.width = `${beforeBoxRect.width}px`;
 	beforeRoot.style.height = `${beforeBoxRect.height}px`;
+	for (let i = 0; i < beforeCells.length; i++) {
+		if (survivorSet.has(i)) continue;
+		const r = beforeRects[i];
+		beforeCells[i].style.position = 'absolute';
+		beforeCells[i].style.left = `${r.left - beforeBoxRect.left}px`;
+		beforeCells[i].style.top = `${r.top - beforeBoxRect.top}px`;
+		beforeCells[i].style.margin = '0';
+	}
+	// Reparent survivors out of beforeRoot so they don't inherit its
+	// opacity drop. Fixed positioning anchors them to the viewport at
+	// their current pre-transform rect; the transform that's already
+	// applied (parkDx from phase 3) keeps them visually where they sit.
 	for (const i of survivorIndices) {
 		const cell = beforeCells[i];
 		const beforeRect = beforeRects[i];
