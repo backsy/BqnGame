@@ -5,18 +5,23 @@ import type { BqnValue } from '../value.js';
 import { blackBox } from './black-box.js';
 import { scaled, scaledMs } from '../speed.js';
 
-// Comparison motion family. Per-cell dyadic comparison against a scalar —
-// `W = X`, `W < X`, … broadcast over the array side. The output is a 0/1
-// array, so each bar resizes to the height of a 0-or-1 bar and its label
-// cross-fades to "0" or "1".
+// Comparison motion family. Per-cell dyadic comparison against a
+// scalar — `W = X`, `W < X`, … broadcast over the array side. The
+// output is a 0/1 array, so each bar resizes to the height of a
+// 0-or-1 bar and its label cross-fades to "0" or "1".
 //
-// Phase 1: a predicate badge (e.g. ">2") appears above each cell. The
-//          cell value is already on the bar below — the badge shows what
-//          each cell is being compared against, not the cell value itself.
-// Phase 2: each badge flips per-cell to "✓" (green, true) or "✗" (red,
-//          false). Stagger conveys the per-cell decision sequence.
-// Phase 3: bars resize to the 0/1 height, labels cross-fade to "0"/"1".
-// Phase 4: badges fade and afterRoot's cells are revealed.
+// Phase 1: one predicate badge appears above the row's centre,
+//          showing the operation being performed (e.g. "2<" or
+//          "<2"). It's a single overlay — not per-cell — so the
+//          row's silhouette stays clean and the badge can't form a
+//          sawtooth above unequal-height bars.
+// Phase 2: every cell transitions in parallel: a verdict-coloured
+//          background pulse (green for pass, red for fail), the bar
+//          height tweens to the result height, and the numeric
+//          label cross-fades to "0" or "1". No per-cell ✓/✗ swap —
+//          the colour pulse carries the truth value, the new label
+//          carries the result.
+// Phase 3: the badge fades and the afterRoot cells are revealed.
 
 const _delayMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -31,36 +36,35 @@ const VERDICT_FAIL_GLOW = 'rgba(226, 85, 85, 0.55)';
 const POSITIVE_BAR = '#7c6af7';
 const NEGATIVE_BAR = '#f76a6a';
 
-const BADGE_IN_DURATION = 0.4;
-const BADGE_IN_STAGGER = 0.04;
-const PRE_HOLD_MS = 200;
-const FLIP_DURATION = 0.3;
-const FLIP_STAGGER = 0.06;
-const VERDICT_HOLD_MS = 280;
+const BADGE_IN_DURATION = 0.32;
+const BADGE_OFFSET_PX = 44;        // px above the row for the badge
+const PRE_HOLD_MS = 220;
 const SIZE_DURATION = 0.5;
+const VERDICT_PULSE_DURATION = 0.42;
 const LABEL_FADE_DURATION = 0.32;
+const POST_HOLD_MS = 180;
 const BADGE_FADE_DURATION = 0.28;
 
-function createComparisonBadge(label: string): HTMLElement {
+function createComparisonBadge(label: string, cx: number, top: number): HTMLElement {
 	const badge = document.createElement('div');
 	badge.textContent = label;
 	Object.assign(badge.style, {
-		position: 'absolute',
-		top: '-30px',
-		left: '50%',
+		position: 'fixed',
+		top: `${top}px`,
+		left: `${cx}px`,
 		transform: 'translate(-50%, 0) scale(0)',
-		padding: '0.18rem 0.5rem',
+		padding: '0.22rem 0.6rem',
 		background: COMPARISON_ACCENT,
 		color: '#0a0a0a',
-		borderRadius: '12px',
+		borderRadius: '14px',
 		fontFamily: "'BQN386', ui-monospace, monospace",
-		fontSize: '0.85rem',
+		fontSize: '0.95rem',
 		fontWeight: '700',
 		lineHeight: '1',
 		opacity: '0',
-		zIndex: '5',
+		zIndex: '10',
 		pointerEvents: 'none',
-		boxShadow: `0 0 12px ${COMPARISON_ACCENT_GLOW}`,
+		boxShadow: `0 0 14px ${COMPARISON_ACCENT_GLOW}`,
 		whiteSpace: 'nowrap',
 	});
 	return badge;
@@ -124,89 +128,65 @@ async function runComparisonMotion(
 	if (beforeCells.length !== afterCells.length) return blackBox(step, beforeRoot, afterRoot);
 	if (beforeCells.length !== beforeNums.length) return blackBox(step, beforeRoot, afterRoot);
 
-	// Measure post-commit heights for pixel-exact resize endpoints.
+	// Measure post-commit heights for pixel-exact resize endpoints, and
+	// the row's viewport rect so the central badge can be placed above
+	// it in fixed coords.
 	const afterRects = afterCells.map(c => c.getBoundingClientRect());
+	const rowRect = beforeRoot.getBoundingClientRect();
 
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
 
-	for (const cell of beforeCells) {
-		if (!cell.style.position) cell.style.position = 'relative';
-	}
-
-	// Phase 1: stagger predicate badges in above each cell. Every cell gets
-	// the same predicate label — the verdict comes in Phase 2.
-	const badges: HTMLElement[] = [];
-	for (const cell of beforeCells) {
-		const badge = createComparisonBadge(badgeLabel);
-		cell.appendChild(badge);
-		badges.push(badge);
-	}
-
-	await Promise.all(
-		badges.map((b, i) =>
-			animate(
-				b,
-				{
-					opacity: [0, 1],
-					transform: [
-						'translate(-50%, 0) scale(0)',
-						'translate(-50%, 0) scale(1.2)',
-						'translate(-50%, 0) scale(1)',
-					],
-				},
-				{
-					duration: scaled(BADGE_IN_DURATION),
-					ease: [0.34, 1.56, 0.64, 1],
-					delay: scaled(i * BADGE_IN_STAGGER),
-				},
-			).finished,
-		),
+	// Phase 1: a single predicate badge appears above the row's centre.
+	const badge = createComparisonBadge(
+		badgeLabel,
+		rowRect.left + rowRect.width / 2,
+		rowRect.top - BADGE_OFFSET_PX,
 	);
+	document.body.appendChild(badge);
+	await animate(
+		badge,
+		{
+			opacity: [0, 1],
+			transform: [
+				'translate(-50%, 0) scale(0)',
+				'translate(-50%, 0) scale(1.15)',
+				'translate(-50%, 0) scale(1)',
+			],
+		},
+		{ duration: scaled(BADGE_IN_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+	).finished;
 	await _delayMs(scaledMs(PRE_HOLD_MS));
 
-	// Phase 2: each badge pulses and flips to its verdict (✓ pass / ✗ fail).
-	// Colour carries the truth value — green for true (=1), red for false
-	// (=0) — matching filter's convention so the user's mental model is
-	// consistent across motions.
-	await Promise.all(
-		badges.map(async (b, i) => {
-			const passes = afterNums[i] === 1;
-			await animate(
-				b,
-				{ scale: [1, 1.35, 1] },
-				{
-					duration: scaled(FLIP_DURATION),
-					ease: [0.34, 1.56, 0.64, 1],
-					delay: scaled(i * FLIP_STAGGER),
-				},
-			).finished;
-			b.textContent = passes ? '✓' : '✗';
-			if (passes) {
-				b.style.background = VERDICT_PASS_BG;
-				b.style.boxShadow = `0 0 12px ${VERDICT_PASS_GLOW}`;
-			} else {
-				b.style.background = VERDICT_FAIL_BG;
-				b.style.boxShadow = `0 0 12px ${VERDICT_FAIL_GLOW}`;
-			}
-		}),
-	);
-	await _delayMs(scaledMs(VERDICT_HOLD_MS));
-
-	// Phase 3: bars resize in place to the measured after-cell heights, the
-	// numeric labels cross-fade to the new value, and colour flips when the
-	// sign changes (will not normally happen for 0/1 results but kept so the
-	// math stays correct if a starter ever contains negative inputs).
-	const sizeTasks: Promise<unknown>[] = [];
+	// Phase 2: every cell transitions in parallel. The bar's background
+	// pulses to the verdict colour and settles back; height tweens to
+	// the result height; numeric label cross-fades to "0" or "1".
+	// Verdict colour carries the truth value (green for pass, red for
+	// fail), matching filter's convention — so the user's mental model
+	// stays consistent across motions.
+	const tasks: Promise<unknown>[] = [];
 	for (let i = 0; i < beforeCells.length; i++) {
 		const bar = beforeCells[i];
 		const oldH = bar.getBoundingClientRect().height;
 		const newH = afterRects[i].height;
 		const oldVal = beforeNums[i];
 		const newVal = afterNums[i];
+		const passes = newVal === 1;
+		const baseColor = oldVal < 0 ? NEGATIVE_BAR : POSITIVE_BAR;
+		const verdictColor = passes ? VERDICT_PASS_BG : VERDICT_FAIL_BG;
 
-		sizeTasks.push(
+		// Verdict pulse: base → verdict → base (smooth round-trip).
+		tasks.push(
+			animate(
+				bar,
+				{ background: [baseColor, verdictColor, baseColor] },
+				{ duration: scaled(VERDICT_PULSE_DURATION), ease: 'easeInOut' },
+			).finished,
+		);
+
+		// Height resize to result.
+		tasks.push(
 			animate(
 				bar,
 				{ height: [`${oldH}px`, `${newH}px`] },
@@ -214,23 +194,10 @@ async function runComparisonMotion(
 			).finished,
 		);
 
-		const oldSign = Math.sign(oldVal);
-		const newSign = Math.sign(newVal);
-		if (oldSign !== newSign && (oldSign < 0 || newSign < 0)) {
-			const fromColor = oldVal < 0 ? NEGATIVE_BAR : POSITIVE_BAR;
-			const toColor = newVal < 0 ? NEGATIVE_BAR : POSITIVE_BAR;
-			sizeTasks.push(
-				animate(
-					bar,
-					{ background: [fromColor, toColor] },
-					{ duration: scaled(SIZE_DURATION), ease: 'linear' },
-				).finished,
-			);
-		}
-
+		// Label cross-fade: opacity 1 → 0 (swap text while invisible) → 1.
 		const span = labelSpan(bar);
 		if (span && oldVal !== newVal) {
-			sizeTasks.push((async () => {
+			tasks.push((async () => {
 				await animate(
 					span,
 					{ opacity: [1, 0] },
@@ -245,33 +212,27 @@ async function runComparisonMotion(
 			})());
 		}
 	}
-	await Promise.all(sizeTasks);
+	await Promise.all(tasks);
+	await _delayMs(scaledMs(POST_HOLD_MS));
 
-	// Phase 4: fade the verdict badges, then hand off to the after-cells.
-	await Promise.all(
-		badges.map(b =>
-			animate(
-				b,
-				{ opacity: 0, transform: 'translate(-50%, -8px) scale(0.9)' },
-				{ duration: scaled(BADGE_FADE_DURATION), ease: 'easeIn' },
-			).finished,
-		),
-	);
-	for (const b of badges) b.remove();
+	// Phase 3: badge fades out and the afterRoot cells reveal.
+	await animate(
+		badge,
+		{ opacity: 0, transform: 'translate(-50%, -10px) scale(0.9)' },
+		{ duration: scaled(BADGE_FADE_DURATION), ease: 'easeIn' },
+	).finished;
+	badge.remove();
 
 	for (const cell of afterCells) cell.style.visibility = '';
 	afterRoot.style.pointerEvents = '';
 	beforeRoot.style.opacity = '0';
+	void VERDICT_PASS_GLOW;
+	void VERDICT_FAIL_GLOW;
 }
 
-// Comparison motions are currently disabled — the choreography
-// is broken and falls back to blackBox until rewritten. The runtime
-// keeps the underlying machinery (runComparisonMotion, badges, etc.)
-// so re-enabling is a one-line swap.
-function comparisonDyadic(_glyph: string): AnimateStep {
-	void runComparisonMotion;
-	void _glyph;
-	return (step, beforeRoot, afterRoot) => blackBox(step, beforeRoot, afterRoot);
+function comparisonDyadic(glyph: string): AnimateStep {
+	return (step, beforeRoot, afterRoot) =>
+		runComparisonMotion(step, beforeRoot, afterRoot, glyph);
 }
 
 export const eqDyadic: AnimateStep = comparisonDyadic('=');
