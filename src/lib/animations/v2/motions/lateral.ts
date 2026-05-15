@@ -20,7 +20,7 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 }
 
 // ── reverseMonadic ────────────────────────────────────────────────────────
-// Two phases, no teleport at the seam:
+// Two phases with full continuity (no teleport between or at the seam):
 //
 //   1. beforeRoot rotates 180° around its own centre as one rigid
 //      unit — frame, cells, bars, labels all turn together. End
@@ -28,21 +28,24 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 //      (= the reversed order).
 //
 //   2. beforeRoot STAYS at rotate(180°). Per-bar:
-//        - Translate y by -(max_bar_h - this_bar_h) in beforeRoot's
-//          LOCAL frame. Because the parent is rotated, that local-up
-//          translation comes out as a screen-DOWN drop — the bar
-//          falls from its rotated-mirrored y to the y its
-//          corresponding after-cell sits at naturally. Tallest bar
-//          drops 0px (already at the right height); shorter bars
-//          drop more.
-//        - Label span (the numeric text) rotates 0° → 180° in its
-//          OWN frame. Net screen rotation = beforeRoot 180° + own
-//          180° = 360° = 0°, i.e. the text becomes upright.
+//        - Translate y by -(max_bar_h - this_bar_h) in the parent's
+//          LOCAL frame. The 180° inherited rotation flips that into
+//          a screen DOWNWARD drop — the bar falls from its rotated y
+//          to the y its corresponding after-cell sits at naturally.
+//          Tallest bar drops 0px (already at the right height);
+//          shorter bars drop more.
+//        - Rotate the bar 0° → 180° in its own frame. The bar itself
+//          is a rectangle — rotating a rectangle is visually
+//          invisible — but the numeric label inside RIDES the bar's
+//          transform. Net screen rotation for the label =
+//          beforeRoot(180°) + bar(180°) = 360° = 0°, so the text
+//          turns from upside-down to upright. Because the label's
+//          POSITION relative to the bar (CSS top-aligned) never
+//          changes, there's nothing to teleport: the label lives at
+//          the bar's local-top throughout, which IS the bar's
+//          screen-top once the net rotation reaches 0.
 //      A short cross-fade hands off to afterRoot at the end so the
 //      static post-commit render takes over without a visible swap.
-//      Bars themselves never rotate (they're rectangles, the
-//      rotation would be invisible anyway); only the numeric labels
-//      rotate.
 
 const REVERSE_ROTATE_DURATION = 0.85;
 const REVERSE_FALL_DURATION = 0.6;
@@ -71,7 +74,7 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 	// its before-position) and figure out the per-bar drop. Group bars
 	// by their parent row so a matrix's inner rows each have their own
 	// max_h baseline.
-	type BarInfo = { bar: HTMLElement; drop: number; label: HTMLElement | null };
+	type BarInfo = { bar: HTMLElement; drop: number };
 	const barInfos: BarInfo[] = [];
 	const rowMax = new Map<HTMLElement, number>();
 	for (const bar of beforeBars) {
@@ -87,36 +90,36 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		const h = bar.getBoundingClientRect().height;
 		const maxH = rowMax.get(parent) ?? h;
 		const drop = maxH - h; // px to fall in screen
-		const label = bar.querySelector('span') as HTMLElement | null;
-		barInfos.push({ bar, drop, label });
+		barInfos.push({ bar, drop });
 	}
 
 	delete afterRoot.dataset.preparing;
 	for (const cell of afterCells) cell.style.visibility = '';
 
-	// Phase 2 animations — bars fall, labels rotate, then cross-fade.
+	// Phase 2 animations — every bar drops AND rotates 180° in its own
+	// frame (continuity: the label inside the bar inherits the rotation
+	// and gradually rotates with the bar; bar itself is a rectangle so
+	// the rotation is invisible). Then cross-fade to afterRoot.
 	const tasks: Promise<unknown>[] = [];
-	for (const { bar, drop, label } of barInfos) {
-		if (drop > 0) {
-			// Negative y in local frame; beforeRoot's 180° rotation
-			// flips that into a positive (downward) screen translation.
-			tasks.push(
-				animate(
-					bar,
-					{ y: [0, -drop] },
-					{ duration: scaled(REVERSE_FALL_DURATION), ease: [0.55, 0, 0.45, 1] },
-				).finished,
-			);
-		}
-		if (label) {
-			tasks.push(
-				animate(
-					label,
-					{ rotate: [0, 180] },
-					{ duration: scaled(REVERSE_FALL_DURATION), ease: 'easeOut' },
-				).finished,
-			);
-		}
+	for (const { bar, drop } of barInfos) {
+		tasks.push(
+			animate(
+				bar,
+				{
+					// y: negative in local frame ⇒ positive in screen
+					// (drops downward) because beforeRoot is rotated.
+					y: [0, -drop],
+					// 180° in own frame ⇒ net screen rotation goes from
+					// 180° (inherited) to 360°=0° (upright). The label
+					// inside rides along and ends right-side-up at the
+					// bar's local-top, which is now the bar's
+					// screen-top — pixel-exact match with afterRoot's
+					// natural rendering, no teleport at the seam.
+					rotate: [0, 180],
+				},
+				{ duration: scaled(REVERSE_FALL_DURATION), ease: [0.55, 0, 0.45, 1] },
+			).finished,
+		);
 	}
 	// Cross-fade beforeRoot → afterRoot. Delayed slightly past the
 	// fall's start so the user reads the fall as the leading beat.
