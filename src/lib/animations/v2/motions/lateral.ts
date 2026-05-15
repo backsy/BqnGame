@@ -32,15 +32,6 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 
 const REVERSE_DURATION = 0.95;
 const REVERSE_SAMPLES = 28;
-// y-amplitude multiplier for the wheel arc. The geometric problem: bars
-// are baseline-aligned, so taller bars (higher value) have centres higher
-// than shorter bars. With amp=1 the arc radius equals horizontal spacing
-// (24+4=28px), which puts a moving bar's centre at exactly the stationary
-// neighbour's spacing distance — and the moving bar's HEIGHT still pokes
-// back into the neighbour. Stretching y by 1.5× lifts the arc clear of
-// the largest bar at mid-rotation regardless of bar heights, without
-// touching the start/end positions (sin(0)=sin(π)=0).
-const REVERSE_Y_AMP = 1.5;
 
 export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -72,15 +63,6 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		const last = beforeRects[beforeRects.length - 1];
 		const cx = (first.left + first.width / 2 + last.left + last.width / 2) / 2;
 
-		// Scale: bars shrink to ~45% at mid-wheel so they don't bump into
-		// adjacent bars during the cross-over, and restore to full size as
-		// they land at their mirrored slot. Same sine shape as the wheel
-		// itself — keeps the squish coupled to the rotation moment.
-		const scales: number[] = [];
-		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
-			const t = s / REVERSE_SAMPLES;
-			scales.push(1 - 0.55 * Math.sin(Math.PI * t));
-		}
 		for (let i = 0; i < beforeCells.length; i++) {
 			const cell = beforeCells[i];
 			const rect = beforeRects[i];
@@ -92,12 +74,12 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 				const t = s / REVERSE_SAMPLES;
 				const theta = Math.PI * t;
 				xs.push(dx * (Math.cos(theta) - 1));
-				ys.push(dx * REVERSE_Y_AMP * Math.sin(theta));
+				ys.push(dx * Math.sin(theta));
 			}
 			cell.style.position = 'relative';
 			cell.style.zIndex = '5';
 			tasks.push(
-				animate(cell, { x: xs, y: ys, scale: scales }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
+				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
 			);
 		}
 	} else {
@@ -117,13 +99,6 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		const sliceSize = step.x.shape.slice(1).reduce((a, b) => a * b, 1);
 		const afterRects = afterCells.map(c => c.getBoundingClientRect());
 
-		// Rows pass each other vertically as they swap; squish keeps them
-		// from clipping into adjacent rows mid-swap.
-		const scales2: number[] = [];
-		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
-			const t = s / REVERSE_SAMPLES;
-			scales2.push(1 - 0.55 * Math.sin(Math.PI * t));
-		}
 		for (let i = 0; i < beforeCells.length; i++) {
 			const cell = beforeCells[i];
 			const r = Math.floor(i / sliceSize);
@@ -146,7 +121,7 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 			cell.style.position = 'relative';
 			cell.style.zIndex = '5';
 			tasks.push(
-				animate(cell, { x: xs, y: ys, scale: scales2 }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
+				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
 			);
 		}
 	}
