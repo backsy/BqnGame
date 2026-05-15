@@ -179,31 +179,58 @@ function elementRectAt(el: SceneElement, t: number): Rect {
 	};
 }
 
-function elementOpacityAt(el: SceneElement, t: number): number {
-	const inline = el.el.style.opacity;
-	const inlineN = inline === '' ? null : parseFloat(inline);
-	const base = el.initialOpacity ?? 1;
-	const { opacity } = elementStateAt(el.el, t);
-	// Inline-set opacity (e.g. crate set to visibility:hidden via inline)
-	// takes precedence at the start. If the motion later animates it,
-	// the interpolated value wins.
-	let val = opacity;
-	if (inlineN !== null && !calls.some(c => c.el === el.el && 'opacity' in c.keyframes)) {
-		val = inlineN;
-	}
-	const vis = el.el.style.visibility;
-	if (vis === 'hidden') return 0;
-	return val * base;
+// Compute the opacity contribution of one element at time t, from
+// animate calls only. Ignores inline style.opacity (which is live-read
+// post-motion and can't be time-correlated). Returns null when no
+// opacity animation is tracked for this element.
+function trackedOpacityAt(el: Element, t: number): number | null {
+	const animations = calls.filter(
+		c => c.el === el && c.startMs <= t && 'opacity' in c.keyframes,
+	);
+	if (animations.length === 0) return null;
+	animations.sort((a, b) => a.startMs - b.startMs);
+	const latest = animations[animations.length - 1];
+	const localT = latest.endMs > latest.startMs
+		? Math.min(1, (t - latest.startMs) / (latest.endMs - latest.startMs))
+		: 1;
+	const v = keyframeValueAt(latest.keyframes.opacity, localT);
+	return v ?? null;
 }
 
-// Sample N timesteps evenly across the motion's duration. Returns any
-// overlap detected, with the offender pair and the timestep.
+// Effective opacity of an element at time t: own contribution × ancestor
+// contributions. An element with style.visibility = 'hidden' (read live)
+// is treated as 0 — many motions toggle visibility imperatively to hide
+// after-cells until handoff, and the live read of that is the most
+// reliable signal available without intercepting style mutations.
+//
+// `initialOpacity` on the SceneElement is the starting value for an
+// element with NO tracked opacity animation. After-cells should set
+// this to 0 in tests so they stay invisible unless a motion explicitly
+// fades them in.
+function elementOpacityAt(el: SceneElement, t: number): number {
+	if (el.el.style.visibility === 'hidden') return 0;
+	let own = trackedOpacityAt(el.el, t);
+	if (own === null) own = el.initialOpacity ?? 1;
+	let parent: Element | null = el.el.parentElement;
+	while (parent) {
+		if ((parent as HTMLElement).style.visibility === 'hidden') return 0;
+		const p = trackedOpacityAt(parent, t);
+		if (p !== null) own *= p;
+		parent = parent.parentElement;
+	}
+	return own;
+}
+
+// Sample N timesteps evenly across the motion's interior (exclusive of
+// the endpoints, since t=0 is pre-motion setup and t=total is post-motion
+// handoff — neither represents what the user sees during the animation).
+// Returns any overlap detected, with the offender pair and the timestep.
 export function assertNoOverlapAcross(
 	scene: Scene,
 	samples: number,
 ): void {
 	const total = totalMotionMs > 0 ? totalMotionMs : 1;
-	for (let s = 0; s <= samples; s++) {
+	for (let s = 1; s < samples; s++) {
 		const t = (s / samples) * total;
 		const visible = scene.elements.filter(el => elementOpacityAt(el, t) > INVISIBLE_THRESHOLD);
 		for (let i = 0; i < visible.length; i++) {
