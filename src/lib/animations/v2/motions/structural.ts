@@ -305,86 +305,89 @@ export const firstMonadic: AnimateStep = (step, beforeRoot, afterRoot) => {
 };
 
 // ── soloMonadic ───────────────────────────────────────────────────────────
-// ≍X — wrap X in a length-1 array along a new leading axis. For our render,
-// solo of a scalar produces a length-1 1D row (one cell); solo of a 1D array
-// produces a 1×N matrix.
+// ≍X — wrap X in a length-1 array along a new leading axis.
+//   - scalar X    → length-1 vector ⟨X⟩.
+//   - vector X    → 1×N matrix (X becomes the first row of a new grid).
+//   - matrix X    → 1×R×C rank-3 (no renderer; falls to blackBox).
 //
-// For the scalar case, the choreography is exactly enclose's: pulse the
-// input bar, emit a single after-cell from its position. We inline the same
-// gesture here instead of re-exporting enclose so the structural-family
-// accent (yellow rather than magenta) and timings can diverge if we tune
-// solo later — the visual stories happen to coincide today but the
-// operations aren't the same primitive.
-//
-// For an array input solo produces a 1×N matrix. We fall through to blackBox
-// rather than draw that — the grid-rendered output isn't a single emit, and
-// the harness's existing distributing visuals don't generalise to "wrap
-// whole row in a new outer axis."
+// One gesture for every rank that we can render: pulse the input to
+// acknowledge it, fade the input out, then emit EVERY after-cell from
+// its corresponding before-cell's viewport position back to its measured
+// natural slot. Scalar is just the N=1 instance — same code path.
+// The "wrap in a new outer box" reads visually because the after-cells
+// arrive inside the next-rank container (vector → matrix), whose CSS
+// frame paints itself once data-preparing is removed by commit.
 
 const SOLO_PULSE_DURATION = 0.35;
 const SOLO_PULSE_HOLD_MS = 80;
-const SOLO_EMIT_DURATION = 0.42;
 const SOLO_POST_HOLD_MS = 240;
 const SOLO_FADE_DURATION = 0.28;
 
 export const soloMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
-	if (step.x.kind !== 'number') return blackBox(step, beforeRoot, afterRoot);
 
+	// Source cells = the visible input elements. For a scalar, beforeRoot
+	// IS the single bar (wrapped in a row); for a vector, the children
+	// are the bars. We always operate on the row's children — the
+	// scalar's row has exactly one bar, the vector's has N.
+	const beforeCells = beforeCellsOf(beforeRoot);
 	const afterCells = beforeCellsOf(afterRoot);
-	if (afterCells.length !== 1) return blackBox(step, beforeRoot, afterRoot);
+	if (beforeCells.length === 0 || afterCells.length === 0) {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
+	if (beforeCells.length !== afterCells.length) {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
+	// Rank ≥ 2 input → rank ≥ 3 output, no rendering.
+	if (step.x.kind === 'array' && step.x.shape.length >= 2) {
+		return blackBox(step, beforeRoot, afterRoot);
+	}
 
-	const scalarRect = beforeRoot.getBoundingClientRect();
-	const scalarCx = scalarRect.left + scalarRect.width / 2;
-	const scalarCy = scalarRect.top + scalarRect.height / 2;
-
-	const cell = afterCells[0];
-	const cellRect = cell.getBoundingClientRect();
-	const cellCx = cellRect.left + cellRect.width / 2;
-	const cellCy = cellRect.top + cellRect.height / 2;
+	const beforeRects = beforeCells.map(c => c.getBoundingClientRect());
+	const afterRects = afterCells.map(c => c.getBoundingClientRect());
 
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
-	cell.style.visibility = 'hidden';
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
 
 	beforeRoot.style.position = beforeRoot.style.position || 'relative';
 	beforeRoot.style.zIndex = '5';
 
-	// Phase 0 — pulse the scalar. Same neutral entry as enclose so the
-	// "something is happening to this single value" cue is identical.
-	await animate(
-		beforeRoot,
-		{ scale: [1, 1.15, 1] },
-		{ duration: scaled(SOLO_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
-	).finished;
+	// Phase 0 — pulse every input cell once, in lock-step. Reads as
+	// "this whole thing is what's being wrapped." Scalar input has
+	// a single cell, vector has N — same code path either way.
+	await Promise.all(
+		beforeCells.map(cell =>
+			animate(
+				cell,
+				{ scale: [1, 1.15, 1] },
+				{ duration: scaled(SOLO_PULSE_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+			).finished,
+		),
+	);
 	await _delayMs(scaledMs(SOLO_PULSE_HOLD_MS));
 
-	// Phase 1 — scalar fades out FIRST, so the result emission has
-	// clear screen space to emerge into. Cross-fading the scalar and
-	// the after-cell at the same viewport position would put two
-	// visible rectangles at the same pixels (no-overlap violation).
+	// Phase 1 — fade the input out so the emission has clear screen
+	// space to land in. Cross-fading would put before and after at the
+	// same pixels (no-overlap violation).
 	await animate(
 		beforeRoot,
 		{ opacity: [1, 0] },
 		{ duration: scaled(SOLO_FADE_DURATION), ease: 'easeIn' },
 	).finished;
 
-	// Phase 2 — single emission. The after-cell pre-offsets to the scalar's
-	// viewport centre then animates back to its measured final position
-	// (translate = 0). End state is no transform — pixel-exact final layout.
-	const startDx = scalarCx - cellCx;
-	const startDy = scalarCy - cellCy;
-	cell.style.visibility = '';
-	await animate(
-		cell,
-		{
-			x: [startDx, 0],
-			y: [startDy, 0],
-			scale: [0.35, 1.08, 1],
-			opacity: [0, 1, 1],
-		},
-		{ duration: scaled(SOLO_EMIT_DURATION), ease: [0.34, 1.56, 0.64, 1] },
-	).finished;
+	// Phase 2 — every after-cell emits from its corresponding
+	// before-cell's pre-fade viewport centre back to its measured
+	// final slot. Parallel for the whole row so the visual reads as
+	// "the array reforms inside the new outer box."
+	await Promise.all(
+		beforeCells.map((_, i) => {
+			const bRect = beforeRects[i];
+			const srcCx = bRect.left + bRect.width / 2;
+			const srcCy = bRect.top + bRect.height / 2;
+			return emitFromPoint(afterCells[i], afterRects[i], srcCx, srcCy);
+		}),
+	);
 
 	await _delayMs(scaledMs(SOLO_POST_HOLD_MS));
 
