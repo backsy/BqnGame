@@ -134,6 +134,13 @@ function elementStateAt(el: HTMLElement, t: number): { tx: number; ty: number; s
 		.filter(c => c.el === el && c.startMs <= t)
 		.sort((a, b) => a.startMs - b.startMs);
 
+	// Apply each animate call in start-order. For ARRAY keyframes we
+	// interpolate within the array. For SCALAR keyframes (e.g.
+	// `animate(el, { x: 100 }, { duration })`) motion-library tweens from
+	// the element's prior value to the scalar — so we must do the same
+	// here: ease from the running tx to the target scalar across the
+	// call's duration. Treating a scalar as an instant teleport hides
+	// real-time overlaps that motion would otherwise show.
 	for (const call of sorted) {
 		const localT = call.endMs > call.startMs
 			? Math.min(1, (t - call.startMs) / (call.endMs - call.startMs))
@@ -143,25 +150,26 @@ function elementStateAt(el: HTMLElement, t: number): { tx: number; ty: number; s
 		const yKf = kf.y ?? (kf as Record<string, unknown>).translateY;
 		const sKf = kf.scale ?? (kf as Record<string, unknown>).scaleX;
 		const oKf = kf.opacity;
-		if (xKf !== undefined) {
-			const v = keyframeValueAt(xKf, localT);
-			if (v !== null) tx = v;
-		}
-		if (yKf !== undefined) {
-			const v = keyframeValueAt(yKf, localT);
-			if (v !== null) ty = v;
-		}
-		if (sKf !== undefined) {
-			const v = keyframeValueAt(sKf, localT);
-			if (v !== null) scale = v;
-		}
-		if (oKf !== undefined) {
-			const v = keyframeValueAt(oKf, localT);
-			if (v !== null) opacity = v;
-		}
+		tx = mixKf(xKf, tx, localT) ?? tx;
+		ty = mixKf(yKf, ty, localT) ?? ty;
+		scale = mixKf(sKf, scale, localT) ?? scale;
+		opacity = mixKf(oKf, opacity, localT) ?? opacity;
 	}
 
 	return { tx, ty, scale, opacity };
+}
+
+// Resolve one keyframe specification against the prior accumulated value.
+// Arrays interpolate among themselves (existing behaviour). Scalars tween
+// from `prior` to the scalar — matching motion's "animate to value" mode.
+function mixKf(kf: unknown, prior: number, localT: number): number | null {
+	if (kf === undefined) return null;
+	if (Array.isArray(kf)) {
+		return keyframeValueAt(kf, localT);
+	}
+	const target = asNumber(kf);
+	if (target === null) return null;
+	return prior + (target - prior) * localT;
 }
 
 function elementRectAt(el: SceneElement, t: number): Rect {

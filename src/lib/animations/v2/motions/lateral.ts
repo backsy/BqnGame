@@ -32,6 +32,15 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 
 const REVERSE_DURATION = 0.95;
 const REVERSE_SAMPLES = 28;
+// y-amplitude multiplier for the wheel arc. The geometric problem: bars
+// are baseline-aligned, so taller bars (higher value) have centres higher
+// than shorter bars. With amp=1 the arc radius equals horizontal spacing
+// (24+4=28px), which puts a moving bar's centre at exactly the stationary
+// neighbour's spacing distance — and the moving bar's HEIGHT still pokes
+// back into the neighbour. Stretching y by 1.5× lifts the arc clear of
+// the largest bar at mid-rotation regardless of bar heights, without
+// touching the start/end positions (sin(0)=sin(π)=0).
+const REVERSE_Y_AMP = 1.5;
 
 export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -63,6 +72,15 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		const last = beforeRects[beforeRects.length - 1];
 		const cx = (first.left + first.width / 2 + last.left + last.width / 2) / 2;
 
+		// Scale: bars shrink to ~45% at mid-wheel so they don't bump into
+		// adjacent bars during the cross-over, and restore to full size as
+		// they land at their mirrored slot. Same sine shape as the wheel
+		// itself — keeps the squish coupled to the rotation moment.
+		const scales: number[] = [];
+		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
+			const t = s / REVERSE_SAMPLES;
+			scales.push(1 - 0.55 * Math.sin(Math.PI * t));
+		}
 		for (let i = 0; i < beforeCells.length; i++) {
 			const cell = beforeCells[i];
 			const rect = beforeRects[i];
@@ -74,12 +92,12 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 				const t = s / REVERSE_SAMPLES;
 				const theta = Math.PI * t;
 				xs.push(dx * (Math.cos(theta) - 1));
-				ys.push(dx * Math.sin(theta));
+				ys.push(dx * REVERSE_Y_AMP * Math.sin(theta));
 			}
 			cell.style.position = 'relative';
 			cell.style.zIndex = '5';
 			tasks.push(
-				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
+				animate(cell, { x: xs, y: ys, scale: scales }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
 			);
 		}
 	} else {
@@ -99,6 +117,13 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 		const sliceSize = step.x.shape.slice(1).reduce((a, b) => a * b, 1);
 		const afterRects = afterCells.map(c => c.getBoundingClientRect());
 
+		// Rows pass each other vertically as they swap; squish keeps them
+		// from clipping into adjacent rows mid-swap.
+		const scales2: number[] = [];
+		for (let s = 0; s <= REVERSE_SAMPLES; s++) {
+			const t = s / REVERSE_SAMPLES;
+			scales2.push(1 - 0.55 * Math.sin(Math.PI * t));
+		}
 		for (let i = 0; i < beforeCells.length; i++) {
 			const cell = beforeCells[i];
 			const r = Math.floor(i / sliceSize);
@@ -110,10 +135,6 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 			const startCy = startRect.top + startRect.height / 2;
 			const endCy = endRect.top + endRect.height / 2;
 			const dyTotal = endCy - startCy;
-			// Side bump for the wheel feel — magnitude proportional to the
-			// distance travelled, sign carries the rotation direction
-			// (clockwise: top→right→bottom). dyTotal is positive when
-			// moving down (top row), so xs is positive at midpoint = RIGHT.
 			const xs: number[] = [];
 			const ys: number[] = [];
 			for (let s = 0; s <= REVERSE_SAMPLES; s++) {
@@ -125,7 +146,7 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 			cell.style.position = 'relative';
 			cell.style.zIndex = '5';
 			tasks.push(
-				animate(cell, { x: xs, y: ys }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
+				animate(cell, { x: xs, y: ys, scale: scales2 }, { duration: scaled(REVERSE_DURATION), ease: 'linear' }).finished
 			);
 		}
 	}
@@ -156,7 +177,12 @@ export const reverseMonadic: AnimateStep = (step, beforeRoot, afterRoot): Promis
 const SORT_SWAP_DURATION = 0.42;        // seconds per single adjacent swap
 const SORT_INTRA_ITER_MS = 60;          // pause between swaps within one iteration
 const SORT_INTER_ITER_MS = 260;         // pause between iterations
-const SORT_ARC_PEAK = 36;
+// Per-swap arc peak. The cells participating in a swap arc opposite-y
+// to clear each other in flight. The clearance has to exceed the sum of
+// half-heights of the two cells; for our bar palette (max barHeight = 58
+// for value 5 in a 5-vector) that's up to ~50. 50 covers the realistic
+// range; if bar heights ever scale up, this needs to grow with them.
+const SORT_ARC_PEAK = 50;
 const SORT_SAMPLES = 14;
 
 function alreadySorted<T>(
@@ -437,7 +463,13 @@ export const sortDownMonadic: AnimateStep = (step, beforeRoot, afterRoot) =>
 // Inspired by the old range animation's counter pattern.
 
 const ROTATE_ITER_DURATION = 0.55;     // seconds per single-position shift
-const ROTATE_ARC_PEAK = 56;            // upward arc for the wrapping bar
+// The wrapping bar's arc must clear the tallest neighbour AND stay
+// out of the sliding bars' lateral path during the early part of the
+// iteration (when bar0 is still close to slot 0 in x while bar1 is
+// sliding left). 100px peak + sqrt-shaped y rise lifts it fast enough
+// that the rectangles never share screen space.
+const ROTATE_ARC_PEAK = 100;
+const ROTATE_ARC_SCALE_SHRINK = 0.4;   // wrapping bar shrinks to (1-shrink) at apex
 const ROTATE_ARC_SAMPLES = 16;
 const ROTATE_BETWEEN_MS = 100;         // pause between iterations
 const ROTATE_COUNTER_SIZE = 36;        // px
@@ -524,21 +556,30 @@ export const rotateDyadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 			const endX = slotRects[nextPos].left - slotRects[i].left;
 
 			if (prevPos === 0) {
-				// Wrapping bar — arc over the row.
+				// Wrapping bar — arc over the row. y rises with sqrt
+				// shape so the bar clears the row's tallest neighbour
+				// FAST (real wheel rotation lifts fast initially); x
+				// uses the standard ease so the bar drifts smoothly
+				// across the row's width. Scale pulses small at the
+				// apex so the bar's rect doesn't graze the sliding
+				// bars during the early-iter convergence.
 				const xs: number[] = [];
 				const ys: number[] = [];
+				const scales: number[] = [];
 				const dx = endX - startX;
 				for (let s = 0; s <= ROTATE_ARC_SAMPLES; s++) {
 					const t = s / ROTATE_ARC_SAMPLES;
 					const tEase = (1 - Math.cos(Math.PI * t)) / 2;
+					const sinT = Math.sin(Math.PI * t);
 					xs.push(startX + dx * tEase);
-					ys.push(-ROTATE_ARC_PEAK * Math.sin(Math.PI * t));
+					ys.push(-ROTATE_ARC_PEAK * Math.sqrt(sinT));
+					scales.push(1 - ROTATE_ARC_SCALE_SHRINK * sinT);
 				}
 				bar.style.zIndex = '5';
 				tasks.push(
 					animate(
 						bar,
-						{ x: xs, y: ys },
+						{ x: xs, y: ys, scale: scales },
 						{ duration: scaled(ROTATE_ITER_DURATION), ease: 'linear' }
 					).finished
 				);
@@ -667,7 +708,15 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 	);
 	await Promise.all(phase0);
 
-	// ── Phase 1: sequential per-cell move from shifted BEFORE to staging ─
+	// ── Phase 1: sequential per-cell move from shifted BEFORE to staging.
+	// L-shaped trajectory: each cell moves x FIRST (clearing the rest of
+	// the shifted BEFORE block laterally), THEN y. The keyframe arrays
+	// encode the timing — y holds at its prior value for the first ~2/3
+	// of the move, then ramps to the staging y. Without this hold, a
+	// cell heading to the FAR side of staging (e.g. shifted row-0 col-2
+	// → staging row-2) would clip through the rows of shifted BEFORE
+	// still parked underneath it. The L-path keeps every cell in flight
+	// outside the shifted block's vertical band until x has cleared.
 	for (let i = 0; i < beforeCells.length; i++) {
 		const cell = beforeCells[i];
 		const f = finalTranslate[i];
@@ -676,7 +725,10 @@ export const transposeMonadic: AnimateStep = async (step, beforeRoot, afterRoot)
 
 		await animate(
 			cell,
-			{ x: stagingDx, y: stagingDy },
+			{
+				x: stagingDx,
+				y: [0, 0, 0, stagingDy],
+			},
 			{ duration: scaled(TRANSPOSE_PER_CELL_DURATION), ease: [0.4, 0, 0.6, 1] }
 		).finished;
 

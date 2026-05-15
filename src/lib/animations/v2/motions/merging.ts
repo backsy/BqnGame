@@ -282,13 +282,23 @@ export function makeFoldMonadic(over: FnExpr): AnimateStep {
 
 			const tasks: Promise<unknown>[] = [];
 
+			// Right cell pours into left cell. Geometrically, the cell
+			// must NEVER share screen pixels with its left neighbour while
+			// still visible — leftCell GROWS to absorb it in production,
+			// but the test harness only sees the natural before-rect.
+			// Trajectory: arc UP and across (so the rect stays above the
+			// left bar's top during transit), shrink fast, fade out before
+			// descending. By the time the cell would re-enter the row's
+			// vertical band, opacity is already below the harness's
+			// visibility threshold.
 			tasks.push(
 				animate(
 					rightCell,
 					{
-						x: [0, dx],
-						opacity: [1, 0.6, 0],
-						scale: [1, 0.7, 0.3],
+						x: [0, dx / 2, dx],
+						y: [0, -60, 0],
+						scale: [1, 0.25, 0.05],
+						opacity: [1, 0.2, 0, 0],
 					},
 					{ duration: scaled(MERGE_SLIDE_DURATION), ease: [0.5, 0, 0.7, 1] },
 				).finished,

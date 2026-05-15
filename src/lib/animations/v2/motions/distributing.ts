@@ -167,11 +167,19 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 		);
 
 		cell.style.visibility = '';
+		// y holds high (at counter level) until the cell has slid almost
+		// to its destination x; only THEN drops vertically into its slot.
+		// Necessary because adjacent slots may already be filled — a
+		// diagonal descent would clip through them. The "hover then drop"
+		// shape uses repeated keyframes (10× startDy + 1× 0) so the
+		// transition lands in the last 10% of the emit, after lateral
+		// motion has cleared the filled neighbours.
+		const yHold = Array(10).fill(startDy).concat([0]);
 		await animate(
 			cell,
 			{
 				x: [startDx, 0],
-				y: [startDy, 0],
+				y: yHold,
 				scale: [0.35, 1.08, 1],
 				opacity: [0, 1, 1],
 			},
@@ -316,8 +324,10 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 
 	// Input is gone now (faded + collapsed at the crate's park). Mark
 	// beforeRoot invisible so the slot it occupied is visually empty for
-	// Phase 3.
-	beforeRoot.style.opacity = '0';
+	// Phase 3. Use animate (not direct style mutation) so the opacity
+	// transition is on the motion timeline and observable to tests via
+	// ancestor-opacity propagation onto the child cells.
+	animate(beforeRoot, { opacity: 0 }, { duration: 0 });
 
 	// ── Phase 3: crate settles from PARK to its natural slot at centre.
 	// Nothing to cover — input is dead. The crate ends with transform=0,

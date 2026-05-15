@@ -90,6 +90,9 @@ function beforeCellsOf(root: HTMLElement): HTMLElement[] {
 const EXTRACT_DIM_DURATION = 0.32;
 const EXTRACT_PULSE_DURATION = 0.36;
 const EXTRACT_PULSE_HOLD_MS = 120;
+// Fade-out of the discarded cells before the survivor glides — kept
+// short so the survivor's move starts promptly after the area clears.
+const EXTRACT_FADE_DURATION = 0.18;
 const EXTRACT_GLIDE_DURATION = 0.55;
 const EXTRACT_POST_HOLD_MS = 180;
 
@@ -153,7 +156,26 @@ async function extractRunner(
 	if (pulseTasks.length > 0) await Promise.all(pulseTasks);
 	await _delayMs(scaledMs(EXTRACT_PULSE_HOLD_MS));
 
-	// Phase 3: survivors glide from their beforeRoot positions to the
+	// Phase 3a: fade the dimmed cells the rest of the way out FIRST, before
+	// the survivor moves. The survivor's path to the result slot crosses
+	// the dimmed cells' rects, so they must be visually gone (opacity
+	// below the harness's visibility threshold) before the glide starts —
+	// otherwise the moving survivor briefly shares pixels with the
+	// stationary, still-visible dimmed cells.
+	const fadeTasks: Promise<unknown>[] = [];
+	for (let i = 0; i < beforeCells.length; i++) {
+		if (survivorSet.has(i)) continue;
+		fadeTasks.push(
+			animate(
+				beforeCells[i],
+				{ opacity: [0.22, 0] },
+				{ duration: scaled(EXTRACT_FADE_DURATION), ease: 'easeIn' },
+			).finished,
+		);
+	}
+	if (fadeTasks.length > 0) await Promise.all(fadeTasks);
+
+	// Phase 3b: survivors glide from their beforeRoot positions to the
 	// measured afterRoot child positions. Each survivor i targets
 	// afterRects[k] where k is its index within survivorIndices — that's
 	// the order they're laid out in the post-commit row. (For first there's
@@ -172,18 +194,6 @@ async function extractRunner(
 				cell,
 				{ x: dx, y: dy },
 				{ duration: scaled(EXTRACT_GLIDE_DURATION), ease: [0.22, 1, 0.36, 1] },
-			).finished,
-		);
-	}
-
-	// In parallel, fade the dimmed cells out completely.
-	for (let i = 0; i < beforeCells.length; i++) {
-		if (survivorSet.has(i)) continue;
-		glideTasks.push(
-			animate(
-				beforeCells[i],
-				{ opacity: [0.22, 0] },
-				{ duration: scaled(EXTRACT_GLIDE_DURATION), ease: 'easeIn' },
 			).finished,
 		);
 	}
