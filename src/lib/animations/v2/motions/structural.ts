@@ -90,9 +90,15 @@ function beforeCellsOf(root: HTMLElement): HTMLElement[] {
 const EXTRACT_DIM_DURATION = 0.32;
 const EXTRACT_PULSE_DURATION = 0.36;
 const EXTRACT_PULSE_HOLD_MS = 120;
-// Fade-out of the discarded cells before the survivor glides — kept
-// short so the survivor's move starts promptly after the area clears.
-const EXTRACT_FADE_DURATION = 0.18;
+// Survivor "exits the box" by translating LEFT past beforeRoot's left
+// edge, parking in clear space while the box and remaining contents
+// fade. PARK_GAP is the px of empty space between the survivor's right
+// edge at park and beforeRoot's left edge.
+const EXTRACT_EXIT_DURATION = 0.42;
+const EXTRACT_PARK_GAP_PX = 30;
+const EXTRACT_POST_EXIT_HOLD_MS = 80;
+// Fade-out of the dimmed cells once the survivor is parked left.
+const EXTRACT_FADE_DURATION = 0.28;
 const EXTRACT_GLIDE_DURATION = 0.55;
 const EXTRACT_POST_HOLD_MS = 180;
 
@@ -156,12 +162,34 @@ async function extractRunner(
 	if (pulseTasks.length > 0) await Promise.all(pulseTasks);
 	await _delayMs(scaledMs(EXTRACT_PULSE_HOLD_MS));
 
-	// Phase 3a: fade the dimmed cells the rest of the way out FIRST, before
-	// the survivor moves. The survivor's path to the result slot crosses
-	// the dimmed cells' rects, so they must be visually gone (opacity
-	// below the harness's visibility threshold) before the glide starts —
-	// otherwise the moving survivor briefly shares pixels with the
-	// stationary, still-visible dimmed cells.
+	// Phase 3: survivors translate LEFT, exiting beforeRoot's box. They
+	// move as a rigid group (same parkDx for every survivor) so their
+	// relative positions are preserved — for matrix `first` the whole
+	// top row leaves together, still in row formation.
+	const beforeBoxRect = beforeRoot.getBoundingClientRect();
+	let maxSurvivorRight = -Infinity;
+	for (const i of survivorIndices) {
+		maxSurvivorRight = Math.max(maxSurvivorRight, beforeRects[i].right);
+	}
+	const parkDx = (beforeBoxRect.left - EXTRACT_PARK_GAP_PX) - maxSurvivorRight;
+	const exitTasks: Promise<unknown>[] = [];
+	for (const i of survivorIndices) {
+		exitTasks.push(
+			animate(
+				beforeCells[i],
+				{ x: parkDx },
+				{ duration: scaled(EXTRACT_EXIT_DURATION), ease: [0.22, 1, 0.36, 1] },
+			).finished,
+		);
+	}
+	await Promise.all(exitTasks);
+	await _delayMs(scaledMs(EXTRACT_POST_EXIT_HOLD_MS));
+
+	// Phase 4: the box and remaining contents fade out. We fade the
+	// dimmed (non-survivor) cells individually rather than beforeRoot
+	// itself — the survivors are STILL children of beforeRoot at this
+	// point, and a parent-level opacity tween would drag them along.
+	// Each dimmed cell drops from 0.22 (its phase-1 dim) to 0.
 	const fadeTasks: Promise<unknown>[] = [];
 	for (let i = 0; i < beforeCells.length; i++) {
 		if (survivorSet.has(i)) continue;
@@ -175,12 +203,12 @@ async function extractRunner(
 	}
 	if (fadeTasks.length > 0) await Promise.all(fadeTasks);
 
-	// Phase 3b: survivors glide from their beforeRoot positions to the
-	// measured afterRoot child positions. Each survivor i targets
-	// afterRects[k] where k is its index within survivorIndices — that's
-	// the order they're laid out in the post-commit row. (For first there's
-	// exactly one survivor; for a 2D first-row case there are C survivors,
-	// all gliding together.)
+	// Phase 5: survivors glide from their parked positions to the
+	// measured afterRoot positions. The motion is computed against the
+	// ORIGINAL beforeRect (translate = 0 at start of animation), so the
+	// scalar `x: dx, y: dy` here eases from parkDx → dx and 0 → dy.
+	// The dimmed cells' old positions are passed over during this glide
+	// but are now opacity 0 — no visible rectangles share screen pixels.
 	const glideTasks: Promise<unknown>[] = [];
 	for (let k = 0; k < survivorIndices.length; k++) {
 		const i = survivorIndices[k];
