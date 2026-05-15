@@ -20,22 +20,24 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 }
 
 // ── reverseMonadic ────────────────────────────────────────────────────────
-// Whole-unit visual: the input — frame, cells, labels — rotates 180°
-// around its own centre as a single rigid block (like flipping a sign).
-// End of Phase 1: everything is upside-down, labels backwards, bars at
-// the top of their cells. The cells are at MIRRORED screen positions
-// (= the reversed order).
-//
-// Phase 2 then hands off to afterRoot, which has the cells in the
-// reversed order at NATURAL orientation. Because the rotated
-// before-cells and the natural after-cells share the same screen
-// positions (rotation around the centre is the same as data-reversal
-// at the layout level), a cross-fade reads as "values drop to the
-// bottom and numbers turn upright" — the upside-down bars fade out
-// and the right-side-up bars fade in at the same spot.
+// Two phases:
+//   1. beforeRoot rotates 180° around its own centre as one rigid
+//      unit — frame, cells, bars, labels all turn together. End state:
+//      everything upside-down at mirrored screen positions (= the
+//      reversed order, rendered backwards).
+//   2. The rotated before-state is replaced by afterRoot, where the
+//      cells are at their natural reversed positions but pre-rotated
+//      180° individually. The two states are visually identical at
+//      the seam (same screen rects, same upside-down orientation), so
+//      the swap is invisible. Each after-cell then animates its own
+//      rotation from 180° → 0°. Because rotation is around the cell's
+//      centre, the bar's BOTTOM swings from screen-top to screen-bottom
+//      and the label flips from upside-down to upright — the "values
+//      drop to the bottom, numbers go upright" beat is an actual
+//      animation, not a teleport.
 
 const REVERSE_ROTATE_DURATION = 0.85;
-const REVERSE_HANDOFF_DURATION = 0.32;
+const REVERSE_DROP_DURATION = 0.55;
 
 export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -55,26 +57,48 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
 	).finished;
 
-	// Phase 2 — reveal afterRoot (data-preparing dropped so the box
-	// frame paints back in alongside the cells) and cross-fade. The
-	// after-cells live at the same screen positions as the rotated
-	// before-cells but are right-side-up — the cross-fade IS the
-	// "values drop to bottom and numbers go upright" beat.
-	for (const cell of afterCells) cell.style.visibility = '';
+	// Hand-off setup: pre-position every after-cell upside-down (rotate
+	// 180°) at its natural slot. Visually identical to the rotated
+	// before-cell that lives at the same screen position. Drop
+	// data-preparing so the box frame paints back in.
 	delete afterRoot.dataset.preparing;
+	for (const cell of afterCells) {
+		cell.style.transformOrigin = 'center';
+		cell.style.transform = 'rotate(180deg)';
+		cell.style.visibility = '';
+	}
+
+	// Phase 2 — fade beforeRoot out, fade afterRoot in, AND animate
+	// every after-cell's rotation 180° → 0°. Per-cell rotation around
+	// its own centre swings the bar's bottom from screen-top to
+	// screen-bottom (the "drop") and turns the label upright in one
+	// continuous motion.
 	await Promise.all([
 		animate(
 			beforeRoot,
 			{ opacity: [1, 0] },
-			{ duration: scaled(REVERSE_HANDOFF_DURATION), ease: 'easeIn' },
+			{ duration: scaled(REVERSE_DROP_DURATION * 0.7), ease: 'easeIn' },
 		).finished,
 		animate(
 			afterRoot,
 			{ opacity: [0, 1] },
-			{ duration: scaled(REVERSE_HANDOFF_DURATION), ease: 'easeOut' },
+			{ duration: scaled(REVERSE_DROP_DURATION * 0.7), ease: 'easeOut' },
 		).finished,
+		...afterCells.map(cell =>
+			animate(
+				cell,
+				{ rotate: [180, 0] },
+				{ duration: scaled(REVERSE_DROP_DURATION), ease: [0.34, 1.56, 0.64, 1] },
+			).finished,
+		),
 	]);
 
+	// Cleanup: clear per-cell inline transform so the post-commit
+	// static render uses CSS defaults.
+	for (const cell of afterCells) {
+		cell.style.transform = '';
+		cell.style.transformOrigin = '';
+	}
 	afterRoot.style.pointerEvents = '';
 	afterRoot.style.opacity = '';
 };
