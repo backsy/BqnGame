@@ -31,14 +31,12 @@ const HOLD_BETWEEN_MS = 60;
 export const blackBox: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	const label = stepLabel(step);
 
-	// Geometric centre of the (before, after) region, in viewport coords.
-	// The label box is anchored here with fixed positioning, so it's
-	// always painted at the same on-screen point regardless of the stage
-	// layout (which might have before/after stacked or side-by-side).
+	// Centre of beforeRoot in viewport coords. The label flashes at
+	// the spot the user was just looking at (the input). Anchored
+	// with position:fixed so it stays put regardless of stage layout.
 	const bRect = beforeRoot.getBoundingClientRect();
-	const aRect = afterRoot.getBoundingClientRect();
-	const cx = (bRect.left + bRect.width / 2 + aRect.left + aRect.width / 2) / 2;
-	const cy = (bRect.top + bRect.height / 2 + aRect.top + aRect.height / 2) / 2;
+	const cx = bRect.left + bRect.width / 2;
+	const cy = bRect.top + bRect.height / 2;
 
 	const box = document.createElement('div');
 	box.className = 'bb-label-box';
@@ -95,12 +93,13 @@ export const blackBox: AnimateStep = async (step, beforeRoot, afterRoot): Promis
 	).finished;
 	box.remove();
 
-	// Phase 3 — reveal afterCells and fade them in via afterRoot
-	// opacity. Same rationale as Phase 1: no slide means no
-	// "translate-X jumps to the first array-keyframe value at
-	// startMs" teleport. afterRoot stays at its natural transform
-	// throughout.
+	// Phase 3 — reveal afterCells AND drop the data-preparing flag so
+	// the CSS box decoration paints in along with them. Without
+	// removing data-preparing, .bqn-vector / .bqn-matrix's frame
+	// stays suppressed until stage.commit, and the user sees cells
+	// fade in INSIDE EMPTY SPACE then a box pops on at the very end.
 	for (const cell of afterCells) cell.style.visibility = '';
+	delete afterRoot.dataset.preparing;
 	afterRoot.style.opacity = '0'; // start invisible so the fade reads clean
 	await new Promise<void>(r => setTimeout(r, HOLD_BETWEEN_MS));
 	await animate(
