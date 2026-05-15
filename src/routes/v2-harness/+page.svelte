@@ -374,6 +374,12 @@
 		return { kind: 'number', value: v };
 	}
 
+	function mkBox(inner: BqnValue): BqnValue {
+		// Rank-0 array — what < produces. Shape is the empty list ⟨⟩
+		// and data holds exactly the wrapped value.
+		return { kind: 'array', shape: [], data: [inner] };
+	}
+
 	const STARTERS: Starter[] = [
 		{ label: '[3 1 4 1 5]', value: mkArr([3, 1, 4, 1, 5]) },
 		{ label: '[9 2 6 5 3]', value: mkArr([9, 2, 6, 5, 3]) },
@@ -386,6 +392,9 @@
 		{ label: '3', value: mkNum(3) },
 		{ label: '5', value: mkNum(5) },
 		{ label: '8', value: mkNum(8) },
+		// Boxed scalar — what < produces. A rank-0 array containing a
+		// number, rendered as the crate visual.
+		{ label: '<5', value: mkBox(mkNum(5)) },
 	];
 
 	// ── Op descriptors ───────────────────────────────────────────────────────
