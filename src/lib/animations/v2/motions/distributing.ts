@@ -205,40 +205,89 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 // slot. The bar fades simultaneously — it isn't really gone, it's "inside"
 // the crate now. End state: crate alone at the centred slot.
 
-const ENCLOSE_WRAP_DURATION = 0.45;
-const ENCLOSE_HOLD_MS = 200;
+const CRATE_SLIDE_DURATION = 0.45;
+const CRATE_SLIDE_OFFSET = 280;        // px off-stage left at start
+const ARC_DURATION = 0.7;
+const ARC_PEAK = 80;                   // px above the input/crate baseline
+const ARC_SAMPLES = 26;
+const POST_ARC_HOLD_MS = 220;
 
 export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 
+	const inputCell = beforeRoot.firstElementChild as HTMLElement | null;
 	const crate = afterRoot.firstElementChild as HTMLElement | null;
-	if (!crate) return blackBox(step, beforeRoot, afterRoot);
+	if (!inputCell || !crate) return blackBox(step, beforeRoot, afterRoot);
 
-	// Crate appears at its resting slot (which sits at the stage centre,
-	// same place as the input). Scale it in from 0 so it visually "grows
-	// around" the input. Input bar fades concurrently — by the time the
-	// crate is at full size the bar is gone, leaving only the crate with
-	// the value on its face. No translation, no separate pulse: one beat,
-	// in place. The afterRoot's data-preparing flag stays set throughout
-	// (its embossed-vector CSS doesn't apply to .bqn-box anyway), so no
-	// container outline leaks.
+	// Hide the crate's content while it's flying in — we want the crate
+	// (the wooden shell) to arrive empty, then have the input value land
+	// inside it. The content reveals at the end so the value's arrival
+	// reads as "this is what's now inside."
+	const crateContent = crate.querySelector('.bqn-box-content') as HTMLElement | null;
+
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
+	crate.style.visibility = 'hidden';
+	if (crateContent) crateContent.style.opacity = '0';
 
-	await Promise.all([
-		animate(
-			crate,
-			{ scale: [0, 1.06, 1], opacity: [0, 1, 1] },
-			{ duration: scaled(ENCLOSE_WRAP_DURATION), ease: [0.34, 1.56, 0.64, 1] },
-		).finished,
-		animate(
-			beforeRoot,
-			{ opacity: [1, 0] },
-			{ duration: scaled(ENCLOSE_WRAP_DURATION), ease: 'easeIn' },
-		).finished,
-	]);
+	inputCell.style.transformOrigin = 'center';
 
-	await _delayMs(scaledMs(ENCLOSE_HOLD_MS));
+	// ── Phase 1: crate slides in from off-stage left to its resting slot.
+	crate.style.visibility = '';
+	await animate(
+		crate,
+		{
+			x: [-CRATE_SLIDE_OFFSET, 0],
+			opacity: [0, 1],
+		},
+		{ duration: scaled(CRATE_SLIDE_DURATION), ease: [0.22, 1, 0.36, 1] },
+	).finished;
+
+	// ── Phase 2: input value arcs up-and-over INTO the crate, shrinking as
+	// it descends so by the time it lands, only the number's size remains.
+	// Both the input and the crate sit at the same stage centre, so the arc
+	// is purely vertical (a bump up + come back down). z-index lifts the
+	// input above the crate during flight.
+	inputCell.style.position = inputCell.style.position || 'relative';
+	inputCell.style.zIndex = '10';
+
+	const xs: number[] = [];
+	const ys: number[] = [];
+	const scales: number[] = [];
+	const opacities: number[] = [];
+	for (let i = 0; i <= ARC_SAMPLES; i++) {
+		const t = i / ARC_SAMPLES;
+		xs.push(0);
+		// Up-and-back-down: peaks at -ARC_PEAK at t=0.5, returns to 0 at t=1.
+		ys.push(-ARC_PEAK * Math.sin(Math.PI * t));
+		// Shrink along the descent so the bar effectively "drops in."
+		scales.push(1 - t * 0.78);
+		// Stay fully visible until near the very end, then fade — the
+		// crate's revealed label takes over.
+		opacities.push(t < 0.85 ? 1 : Math.max(0, 1 - (t - 0.85) / 0.15));
+	}
+
+	// Reveal the crate's label during the descent so the arrival "becomes"
+	// the label naturally.
+	if (crateContent) {
+		animate(
+			crateContent,
+			{ opacity: [0, 1] },
+			{
+				duration: scaled(ARC_DURATION * 0.4),
+				delay: scaled(ARC_DURATION * 0.55),
+				ease: 'easeOut',
+			},
+		);
+	}
+
+	await animate(
+		inputCell,
+		{ x: xs, y: ys, scale: scales, opacity: opacities },
+		{ duration: scaled(ARC_DURATION), ease: 'linear' },
+	).finished;
+
+	await _delayMs(scaledMs(POST_ARC_HOLD_MS));
 
 	beforeRoot.style.opacity = '0';
 	afterRoot.style.pointerEvents = '';

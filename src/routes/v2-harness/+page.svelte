@@ -132,42 +132,75 @@
 		return bar;
 	}
 
-	// Crate (rank-0 box). Flat 2D wooden-plank visual drawn in CSS — no
-	// emoji perspective to fight against. Contents sit on the crate's face
-	// (a number, character, nested crate, or a scaled-down inner array).
+	// Crate (rank-0 box). SVG drawing of a sideways wooden crate, with the
+	// contents (number, char, nested crate, or scaled inner array) shown
+	// over the centre face. Flat head-on, no perspective.
+	const CRATE_SVG = `
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;">
+  <defs>
+    <linearGradient id="bqnCrateWood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b07f48"/>
+      <stop offset="0.5" stop-color="#9b6a39"/>
+      <stop offset="1" stop-color="#7d5226"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" fill="url(#bqnCrateWood)" stroke="#3a1f0a" stroke-width="2.4" rx="1.5"/>
+  <line x1="22" y1="3" x2="22" y2="61" stroke="#3a1f0a" stroke-width="1.4" opacity="0.7"/>
+  <line x1="42" y1="3" x2="42" y2="61" stroke="#3a1f0a" stroke-width="1.4" opacity="0.7"/>
+  <rect x="2" y="20" width="60" height="5" fill="#5d3a18" opacity="0.85"/>
+  <rect x="2" y="39" width="60" height="5" fill="#5d3a18" opacity="0.85"/>
+  <circle cx="6"  cy="6"  r="1.3" fill="#1a0d04"/>
+  <circle cx="58" cy="6"  r="1.3" fill="#1a0d04"/>
+  <circle cx="6"  cy="58" r="1.3" fill="#1a0d04"/>
+  <circle cx="58" cy="58" r="1.3" fill="#1a0d04"/>
+</svg>`;
+
 	function makeCrate(inner: BqnValue, size = 56): HTMLElement {
 		const crate = document.createElement('div');
 		crate.className = 'bqn-box';
 		crate.style.cssText = [
 			`width:${size}px`,
 			`height:${size}px`,
+			'position:relative',
 			'display:grid',
 			'place-items:center',
 			'user-select:none',
+		].join(';');
+		// Crate drawing as the background; contents on top.
+		crate.insertAdjacentHTML('afterbegin', CRATE_SVG);
+
+		const labelHolder = document.createElement('div');
+		labelHolder.className = 'bqn-box-content';
+		labelHolder.style.cssText = [
+			'position:relative',
+			'z-index:1',
+			'display:grid',
+			'place-items:center',
 		].join(';');
 
 		if (inner.kind === 'number') {
 			const label = document.createElement('span');
 			label.className = 'bqn-box-label';
-			label.style.fontSize = `${Math.max(14, size * 0.36)}px`;
+			label.style.fontSize = `${Math.max(14, size * 0.38)}px`;
 			label.textContent = String(inner.value);
-			crate.appendChild(label);
+			labelHolder.appendChild(label);
 		} else if (inner.kind === 'char') {
 			const label = document.createElement('span');
 			label.className = 'bqn-box-label';
-			label.style.fontSize = `${Math.max(14, size * 0.4)}px`;
+			label.style.fontSize = `${Math.max(14, size * 0.42)}px`;
 			label.style.fontFamily = "'BQN386', ui-monospace, monospace";
 			label.textContent = inner.value;
-			crate.appendChild(label);
+			labelHolder.appendChild(label);
 		} else if (inner.kind === 'array' && inner.shape.length === 0 && inner.data.length === 1) {
-			crate.appendChild(makeCrate(inner.data[0], Math.round(size * 0.6)));
+			labelHolder.appendChild(makeCrate(inner.data[0], Math.round(size * 0.6)));
 		} else {
 			const innerEl = renderBqnValue(inner);
 			innerEl.style.transform = 'scale(0.5)';
 			innerEl.style.transformOrigin = 'center';
-			crate.appendChild(innerEl);
+			labelHolder.appendChild(innerEl);
 		}
 
+		crate.appendChild(labelHolder);
 		return crate;
 	}
 
@@ -776,41 +809,10 @@
 		background: rgba(40, 40, 60, 0.18);
 	}
 
-	/* Flat wooden-crate visual for rank-0 boxes. Drawn entirely in CSS so the
-	   contents (number, char, nested crate, scaled inner array) overlay
-	   cleanly on a head-on face — no emoji perspective fighting for space.
-	   Two horizontal dark lines suggest plank seams; inset light/dark edges
-	   give the cratey woodish read. */
-	:global(.bqn-box) {
-		position: relative;
-		background:
-			linear-gradient(
-				180deg,
-				#b07f48 0%,
-				#9b6a39 50%,
-				#7d5226 100%
-			);
-		border: 1.5px solid #4a2f15;
-		border-radius: 3px;
-		box-shadow:
-			inset 0 1px 0 rgba(255, 240, 200, 0.18),
-			inset 0 -1px 0 rgba(0, 0, 0, 0.32),
-			0 2px 4px rgba(0, 0, 0, 0.4);
-		overflow: hidden;
-	}
-	:global(.bqn-box)::before,
-	:global(.bqn-box)::after {
-		content: '';
-		position: absolute;
-		left: 6%;
-		right: 6%;
-		height: 1px;
-		background: rgba(60, 36, 14, 0.55);
-		box-shadow: 0 1px 0 rgba(255, 240, 200, 0.08);
-		pointer-events: none;
-	}
-	:global(.bqn-box)::before { top: 30%; }
-	:global(.bqn-box)::after  { top: 70%; }
+	/* Rank-0 box. The crate drawing comes from an inline SVG inserted as the
+	   first child by makeCrate; this rule only handles the label's text
+	   styling and the .bqn-box layout container. The SVG is positioned
+	   absolute inside, so it fills the box behind the content. */
 	:global(.bqn-box-label) {
 		color: #fff8e1;
 		font-weight: 700;
@@ -819,6 +821,5 @@
 			0 1px 1px rgba(0, 0, 0, 0.9),
 			0 0 3px rgba(0, 0, 0, 0.6);
 		line-height: 1;
-		z-index: 1;
 	}
 </style>
