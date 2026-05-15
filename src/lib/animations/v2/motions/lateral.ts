@@ -20,30 +20,40 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 }
 
 // ── reverseMonadic ────────────────────────────────────────────────────────
-// Two phases:
+// Two phases, no teleport at the seam:
+//
 //   1. beforeRoot rotates 180° around its own centre as one rigid
-//      unit — frame, cells, bars, labels all turn together. End state:
-//      everything upside-down at mirrored screen positions (= the
-//      reversed order, rendered backwards).
-//   2. The rotated before-state is replaced by afterRoot, where the
-//      cells are at their natural reversed positions but pre-rotated
-//      180° individually. The two states are visually identical at
-//      the seam (same screen rects, same upside-down orientation), so
-//      the swap is invisible. Each after-cell then animates its own
-//      rotation from 180° → 0°. Because rotation is around the cell's
-//      centre, the bar's BOTTOM swings from screen-top to screen-bottom
-//      and the label flips from upside-down to upright — the "values
-//      drop to the bottom, numbers go upright" beat is an actual
-//      animation, not a teleport.
+//      unit — frame, cells, bars, labels all turn together. End
+//      state: everything upside-down at mirrored screen positions
+//      (= the reversed order).
+//
+//   2. beforeRoot STAYS at rotate(180°). Per-bar:
+//        - Translate y by -(max_bar_h - this_bar_h) in beforeRoot's
+//          LOCAL frame. Because the parent is rotated, that local-up
+//          translation comes out as a screen-DOWN drop — the bar
+//          falls from its rotated-mirrored y to the y its
+//          corresponding after-cell sits at naturally. Tallest bar
+//          drops 0px (already at the right height); shorter bars
+//          drop more.
+//        - Label span (the numeric text) rotates 0° → 180° in its
+//          OWN frame. Net screen rotation = beforeRoot 180° + own
+//          180° = 360° = 0°, i.e. the text becomes upright.
+//      A short cross-fade hands off to afterRoot at the end so the
+//      static post-commit render takes over without a visible swap.
+//      Bars themselves never rotate (they're rectangles, the
+//      rotation would be invisible anyway); only the numeric labels
+//      rotate.
 
 const REVERSE_ROTATE_DURATION = 0.85;
-const REVERSE_DROP_DURATION = 0.55;
+const REVERSE_FALL_DURATION = 0.6;
+const REVERSE_FADE_DURATION = 0.32;
 
 export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
 
 	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+	const beforeBars = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
 	for (const cell of afterCells) cell.style.visibility = 'hidden';
 	afterRoot.style.opacity = '0';
 	afterRoot.style.pointerEvents = 'none';
@@ -57,48 +67,83 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
 	).finished;
 
-	// Hand-off setup: pre-position every after-cell upside-down (rotate
-	// 180°) at its natural slot. Visually identical to the rotated
-	// before-cell that lives at the same screen position. Drop
-	// data-preparing so the box frame paints back in.
-	delete afterRoot.dataset.preparing;
-	for (const cell of afterCells) {
-		cell.style.transformOrigin = 'center';
-		cell.style.transform = 'rotate(180deg)';
-		cell.style.visibility = '';
+	// Phase 2 setup — measure each bar's height now (while still at
+	// its before-position) and figure out the per-bar drop. Group bars
+	// by their parent row so a matrix's inner rows each have their own
+	// max_h baseline.
+	type BarInfo = { bar: HTMLElement; drop: number; label: HTMLElement | null };
+	const barInfos: BarInfo[] = [];
+	const rowMax = new Map<HTMLElement, number>();
+	for (const bar of beforeBars) {
+		const parent = bar.parentElement;
+		if (!parent) continue;
+		const h = bar.getBoundingClientRect().height;
+		const prev = rowMax.get(parent) ?? 0;
+		if (h > prev) rowMax.set(parent, h);
+	}
+	for (const bar of beforeBars) {
+		const parent = bar.parentElement;
+		if (!parent) continue;
+		const h = bar.getBoundingClientRect().height;
+		const maxH = rowMax.get(parent) ?? h;
+		const drop = maxH - h; // px to fall in screen
+		const label = bar.querySelector('span') as HTMLElement | null;
+		barInfos.push({ bar, drop, label });
 	}
 
-	// Phase 2 — fade beforeRoot out, fade afterRoot in, AND animate
-	// every after-cell's rotation 180° → 0°. Per-cell rotation around
-	// its own centre swings the bar's bottom from screen-top to
-	// screen-bottom (the "drop") and turns the label upright in one
-	// continuous motion.
-	await Promise.all([
+	delete afterRoot.dataset.preparing;
+	for (const cell of afterCells) cell.style.visibility = '';
+
+	// Phase 2 animations — bars fall, labels rotate, then cross-fade.
+	const tasks: Promise<unknown>[] = [];
+	for (const { bar, drop, label } of barInfos) {
+		if (drop > 0) {
+			// Negative y in local frame; beforeRoot's 180° rotation
+			// flips that into a positive (downward) screen translation.
+			tasks.push(
+				animate(
+					bar,
+					{ y: [0, -drop] },
+					{ duration: scaled(REVERSE_FALL_DURATION), ease: [0.55, 0, 0.45, 1] },
+				).finished,
+			);
+		}
+		if (label) {
+			tasks.push(
+				animate(
+					label,
+					{ rotate: [0, 180] },
+					{ duration: scaled(REVERSE_FALL_DURATION), ease: 'easeOut' },
+				).finished,
+			);
+		}
+	}
+	// Cross-fade beforeRoot → afterRoot. Delayed slightly past the
+	// fall's start so the user reads the fall as the leading beat.
+	tasks.push(
 		animate(
 			beforeRoot,
 			{ opacity: [1, 0] },
-			{ duration: scaled(REVERSE_DROP_DURATION * 0.7), ease: 'easeIn' },
+			{
+				duration: scaled(REVERSE_FADE_DURATION),
+				ease: 'easeIn',
+				delay: scaled(REVERSE_FALL_DURATION * 0.55),
+			},
 		).finished,
+	);
+	tasks.push(
 		animate(
 			afterRoot,
 			{ opacity: [0, 1] },
-			{ duration: scaled(REVERSE_DROP_DURATION * 0.7), ease: 'easeOut' },
+			{
+				duration: scaled(REVERSE_FADE_DURATION),
+				ease: 'easeOut',
+				delay: scaled(REVERSE_FALL_DURATION * 0.55),
+			},
 		).finished,
-		...afterCells.map(cell =>
-			animate(
-				cell,
-				{ rotate: [180, 0] },
-				{ duration: scaled(REVERSE_DROP_DURATION), ease: [0.34, 1.56, 0.64, 1] },
-			).finished,
-		),
-	]);
+	);
+	await Promise.all(tasks);
 
-	// Cleanup: clear per-cell inline transform so the post-commit
-	// static render uses CSS defaults.
-	for (const cell of afterCells) {
-		cell.style.transform = '';
-		cell.style.transformOrigin = '';
-	}
 	afterRoot.style.pointerEvents = '';
 	afterRoot.style.opacity = '';
 };
