@@ -264,9 +264,14 @@ async function runComparisonMotion(
 	beforeRoot.style.opacity = '0';
 }
 
-function comparisonDyadic(glyph: string): AnimateStep {
-	return (step, beforeRoot, afterRoot) =>
-		runComparisonMotion(step, beforeRoot, afterRoot, glyph);
+// Comparison motions are currently disabled — the choreography
+// is broken and falls back to blackBox until rewritten. The runtime
+// keeps the underlying machinery (runComparisonMotion, badges, etc.)
+// so re-enabling is a one-line swap.
+function comparisonDyadic(_glyph: string): AnimateStep {
+	void runComparisonMotion;
+	void _glyph;
+	return (step, beforeRoot, afterRoot) => blackBox(step, beforeRoot, afterRoot);
 }
 
 export const eqDyadic: AnimateStep = comparisonDyadic('=');
