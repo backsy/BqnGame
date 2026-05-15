@@ -101,9 +101,18 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		let labelRise = 0;
 		if (label) {
 			const labelH = label.getBoundingClientRect().height;
-			// distance from bar's local-top (natural CSS position) to
-			// bar's local-bottom, minus a small top padding (~4px).
-			labelRise = Math.max(0, barRect.height - labelH - 6);
+			// Read the bar's actual padding-top from computed styles
+			// (CSS sets padding-top:0.2rem ≈ 3.2px). The label sits at
+			// the bar's local-top + padTop. To move it to the bar's
+			// local-bottom (= bar's screen-top once the inherited 180°
+			// rotation is accounted for) the translation must equal
+			//   bar.h - label.h - 2*padTop
+			// — i.e. the gap between the label and the bar's far edge
+			// in both axes. Off-by-px here shows up as a flicker when
+			// the cross-fade swaps the label for afterRoot's natural
+			// (un-rotated) one.
+			const padTop = parseFloat(getComputedStyle(bar).paddingTop) || 0;
+			labelRise = Math.max(0, barRect.height - labelH - 2 * padTop);
 		}
 		barInfos.push({ bar, drop, label, labelRise });
 	}
@@ -145,8 +154,12 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 			);
 		}
 	}
-	// Cross-fade beforeRoot → afterRoot. Delayed slightly past the
-	// fall's start so the user reads the fall as the leading beat.
+	// Cross-fade beforeRoot → afterRoot. Aligned to END at the exact
+	// instant the bar/label animations finish — otherwise the bar
+	// and label sit STATIC for ~50ms (cross-fade still running) at
+	// their end positions, and any sub-pixel mismatch with
+	// afterRoot's natural rendering ghosts as a flicker.
+	const fadeDelay = REVERSE_FALL_DURATION - REVERSE_FADE_DURATION;
 	tasks.push(
 		animate(
 			beforeRoot,
@@ -154,7 +167,7 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 			{
 				duration: scaled(REVERSE_FADE_DURATION),
 				ease: 'easeIn',
-				delay: scaled(REVERSE_FALL_DURATION * 0.55),
+				delay: scaled(fadeDelay),
 			},
 		).finished,
 	);
@@ -165,7 +178,7 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 			{
 				duration: scaled(REVERSE_FADE_DURATION),
 				ease: 'easeOut',
-				delay: scaled(REVERSE_FALL_DURATION * 0.55),
+				delay: scaled(fadeDelay),
 			},
 		).finished,
 	);
