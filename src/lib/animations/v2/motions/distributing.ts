@@ -206,9 +206,9 @@ export const rangeMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Pr
 // the crate now. End state: crate alone at the centred slot.
 
 const CRATE_SLIDE_DURATION = 0.45;
-const CRATE_SLIDE_OFFSET = 280;        // px off-stage left at start
+const CRATE_OFFSCREEN_GAP_PX = 320;    // crate's start position offset from its final slot
 const ARC_DURATION = 0.7;
-const ARC_PEAK = 80;                   // px above the input/crate baseline
+const ARC_PEAK_PX = 90;                // arc apex above the higher of the two cell centres
 const ARC_SAMPLES = 26;
 const POST_ARC_HOLD_MS = 220;
 
@@ -219,11 +219,25 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 	const crate = afterRoot.firstElementChild as HTMLElement | null;
 	if (!inputCell || !crate) return blackBox(step, beforeRoot, afterRoot);
 
-	// Hide the crate's content while it's flying in — we want the crate
-	// (the wooden shell) to arrive empty, then have the input value land
-	// inside it. The content reveals at the end so the value's arrival
-	// reads as "this is what's now inside."
 	const crateContent = crate.querySelector('.bqn-box-content') as HTMLElement | null;
+
+	// MEASURE BOTH at their static natural positions before we touch
+	// anything. These are the ground truths for the motion:
+	//   inputRect    — where the input bar actually sits on screen
+	//   crateRectNat — where the crate sits in afterRoot's centred slot
+	// The input ends INSIDE the crate; the crate ends at its natural slot.
+	const inputRect = inputCell.getBoundingClientRect();
+	const crateRectNat = crate.getBoundingClientRect();
+	const inputCx = inputRect.left + inputRect.width / 2;
+	const inputCy = inputRect.top + inputRect.height / 2;
+	const crateCx = crateRectNat.left + crateRectNat.width / 2;
+	const crateCy = crateRectNat.top + crateRectNat.height / 2;
+	// Delta from where the input naturally is to where the crate will land.
+	// The arc goes from inputCx,inputCy → crateCx,crateCy along an arch.
+	// Constant within the motion regardless of whether they happen to share
+	// the same X (which they sometimes don't due to row width differences).
+	const dx = crateCx - inputCx;
+	const dy = crateCy - inputCy;
 
 	afterRoot.style.opacity = '1';
 	afterRoot.style.pointerEvents = 'none';
@@ -232,22 +246,23 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 
 	inputCell.style.transformOrigin = 'center';
 
-	// ── Phase 1: crate slides in from off-stage left to its resting slot.
+	// ── Phase 1: crate slides in from off-stage left into its natural
+	// resting slot. Start position is computed relative to the crate's
+	// natural rect — translate(-CRATE_OFFSCREEN_GAP_PX, 0) puts the crate
+	// CRATE_OFFSCREEN_GAP_PX to the left of its slot, with end x=0 landing
+	// at the slot. After Phase 1 the crate sits at crateCx, crateCy.
 	crate.style.visibility = '';
 	await animate(
 		crate,
-		{
-			x: [-CRATE_SLIDE_OFFSET, 0],
-			opacity: [0, 1],
-		},
+		{ x: [-CRATE_OFFSCREEN_GAP_PX, 0], opacity: [0, 1] },
 		{ duration: scaled(CRATE_SLIDE_DURATION), ease: [0.22, 1, 0.36, 1] },
 	).finished;
 
-	// ── Phase 2: input value arcs up-and-over INTO the crate, shrinking as
-	// it descends so by the time it lands, only the number's size remains.
-	// Both the input and the crate sit at the same stage centre, so the arc
-	// is purely vertical (a bump up + come back down). z-index lifts the
-	// input above the crate during flight.
+	// ── Phase 2: input arcs from its natural position (inputCx, inputCy)
+	// to the crate's centre (crateCx, crateCy), peaking ARC_PEAK_PX above
+	// the midpoint. Whichever direction the crate is in (left, right,
+	// same X), the bar ends inside the crate. While descending the bar
+	// shrinks; the crate's label fades in to take over the visual identity.
 	inputCell.style.position = inputCell.style.position || 'relative';
 	inputCell.style.zIndex = '10';
 
@@ -257,18 +272,14 @@ export const encloseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 	const opacities: number[] = [];
 	for (let i = 0; i <= ARC_SAMPLES; i++) {
 		const t = i / ARC_SAMPLES;
-		xs.push(0);
-		// Up-and-back-down: peaks at -ARC_PEAK at t=0.5, returns to 0 at t=1.
-		ys.push(-ARC_PEAK * Math.sin(Math.PI * t));
-		// Shrink along the descent so the bar effectively "drops in."
+		// Linear interp from 0 to dx,dy along x,y axes — straight line in
+		// pixel space — overlaid with a vertical sine bump for the arch.
+		xs.push(dx * t);
+		ys.push(dy * t - ARC_PEAK_PX * Math.sin(Math.PI * t));
 		scales.push(1 - t * 0.78);
-		// Stay fully visible until near the very end, then fade — the
-		// crate's revealed label takes over.
 		opacities.push(t < 0.85 ? 1 : Math.max(0, 1 - (t - 0.85) / 0.15));
 	}
 
-	// Reveal the crate's label during the descent so the arrival "becomes"
-	// the label naturally.
 	if (crateContent) {
 		animate(
 			crateContent,
