@@ -38,14 +38,27 @@ export const blackBox: AnimateStep = async (step, beforeRoot, afterRoot): Promis
 	const cx = bRect.left + bRect.width / 2;
 	const cy = bRect.top + bRect.height / 2;
 
+	// Two-layer setup so motion-lib's transform keyframes (scale) can't
+	// clobber the centring translate. The OUTER wrap sits at (cx, cy)
+	// with translate(-50%, -50%) — that's what places the label's
+	// centre on the input's centre. The INNER box is what motion
+	// animates (scale + opacity); its transform replacements only
+	// affect itself, not the wrap.
+	const wrap = document.createElement('div');
+	Object.assign(wrap.style, {
+		position: 'fixed',
+		left: `${cx}px`,
+		top: `${cy}px`,
+		transform: 'translate(-50%, -50%)',
+		pointerEvents: 'none',
+		zIndex: '10',
+	});
+
 	const box = document.createElement('div');
 	box.className = 'bb-label-box';
 	box.textContent = label;
 	Object.assign(box.style, {
-		position: 'fixed',
-		left: `${cx}px`,
-		top: `${cy}px`,
-		transform: 'translate(-50%, -50%) scale(0)',
+		transform: 'scale(0)',
 		background: '#1a1a2e',
 		color: '#e0e0ff',
 		fontFamily: 'monospace',
@@ -54,11 +67,10 @@ export const blackBox: AnimateStep = async (step, beforeRoot, afterRoot): Promis
 		border: '2px solid #7c6af7',
 		borderRadius: '6px',
 		opacity: '0',
-		pointerEvents: 'none',
-		zIndex: '10',
 		whiteSpace: 'nowrap',
 	});
-	document.body.appendChild(box);
+	wrap.appendChild(box);
+	document.body.appendChild(wrap);
 
 	// Hide afterRoot via cell-level visibility before any animation so
 	// nothing flashes at the natural position before the choreography
@@ -91,7 +103,7 @@ export const blackBox: AnimateStep = async (step, beforeRoot, afterRoot): Promis
 		},
 		{ duration: DURATION_FLASH, ease: 'easeOut' },
 	).finished;
-	box.remove();
+	wrap.remove();
 
 	// Phase 3 — reveal afterCells AND drop the data-preparing flag so
 	// the CSS box decoration paints in along with them. Without
