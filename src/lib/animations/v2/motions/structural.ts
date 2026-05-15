@@ -185,30 +185,42 @@ async function extractRunner(
 	await Promise.all(exitTasks);
 	await _delayMs(scaledMs(EXTRACT_POST_EXIT_HOLD_MS));
 
-	// Phase 4: the box and remaining contents fade out. We fade the
-	// dimmed (non-survivor) cells individually rather than beforeRoot
-	// itself — the survivors are STILL children of beforeRoot at this
-	// point, and a parent-level opacity tween would drag them along.
-	// Each dimmed cell drops from 0.22 (its phase-1 dim) to 0.
-	const fadeTasks: Promise<unknown>[] = [];
-	for (let i = 0; i < beforeCells.length; i++) {
-		if (survivorSet.has(i)) continue;
-		fadeTasks.push(
-			animate(
-				beforeCells[i],
-				{ opacity: [0.22, 0] },
-				{ duration: scaled(EXTRACT_FADE_DURATION), ease: 'easeIn' },
-			).finished,
-		);
+	// Phase 4a: reparent survivors out of beforeRoot so they don't
+	// inherit its opacity drop. We use fixed-position with inline
+	// left/top matching the cell's PRE-transform viewport position
+	// (beforeRect.left/top) and KEEP the inline transform that
+	// motion-lib set in phase 3 — so the rendered position
+	// (left + transform.x, top + transform.y) is identical to where
+	// the cell already sits at park, and motion-lib's next animate
+	// can continue tweening from the same x state.
+	for (const i of survivorIndices) {
+		const cell = beforeCells[i];
+		const beforeRect = beforeRects[i];
+		cell.style.position = 'fixed';
+		cell.style.left = `${beforeRect.left}px`;
+		cell.style.top = `${beforeRect.top}px`;
+		cell.style.margin = '0';
+		document.body.appendChild(cell);
 	}
-	if (fadeTasks.length > 0) await Promise.all(fadeTasks);
+
+	// Phase 4b: the BOX and the remaining contents fade together. We
+	// animate beforeRoot's opacity directly — its CSS-painted frame
+	// (background, border, decoration) and the dimmed child cells all
+	// fade as one. Survivors stay visible because they were reparented
+	// out in 4a.
+	await animate(
+		beforeRoot,
+		{ opacity: [1, 0] },
+		{ duration: scaled(EXTRACT_FADE_DURATION), ease: 'easeIn' },
+	).finished;
 
 	// Phase 5: survivors glide from their parked positions to the
 	// measured afterRoot positions. The motion is computed against the
 	// ORIGINAL beforeRect (translate = 0 at start of animation), so the
-	// scalar `x: dx, y: dy` here eases from parkDx → dx and 0 → dy.
-	// The dimmed cells' old positions are passed over during this glide
-	// but are now opacity 0 — no visible rectangles share screen pixels.
+	// scalar `x: dx, y: dy` here eases from parkDx → dx and 0 → dy —
+	// motion-lib reads the current inline transform as the "from"
+	// value, harness uses the previously-tracked tx as prior, both
+	// converge on the same end position (beforeRect.cx + dx = afterCx).
 	const glideTasks: Promise<unknown>[] = [];
 	for (let k = 0; k < survivorIndices.length; k++) {
 		const i = survivorIndices[k];
@@ -226,6 +238,16 @@ async function extractRunner(
 		);
 	}
 	await Promise.all(glideTasks);
+
+	// Hide the reparented survivors on the motion timeline (duration-0
+	// opacity drop is tracked by the harness) and remove the orphaned
+	// nodes from <body>. The afterCells reveal at the same viewport
+	// position, so the handoff is clean — what the user sees as "the
+	// element settles into the result slot" is the afterCell.
+	for (const i of survivorIndices) {
+		animate(beforeCells[i], { opacity: 0 }, { duration: 0 });
+		beforeCells[i].remove();
+	}
 
 	await _delayMs(scaledMs(EXTRACT_POST_HOLD_MS));
 
