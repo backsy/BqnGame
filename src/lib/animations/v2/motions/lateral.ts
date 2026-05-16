@@ -89,13 +89,22 @@ async function reverseMonadic1D(
 		),
 	]);
 
-	// Phase 3 — bars regrow to their original heights. Data didn't change
-	// during the reverse, only positions, so each bar's height ends the
-	// same as it started (= the matching after-cell's height).
+	// Phase 3 — bars regrow with the SCREEN-BOTTOM anchored, growing
+	// upward. Without compensation, the row's flex-end alignment puts the
+	// bar's container-frame bottom at the row's screen-TOP after Phase 2's
+	// 180° rotation, so growing `height` pushes the screen-bottom down
+	// (visually: the bar "falls"). Adding a translateY that increases
+	// with height pins the screen-bottom: at every frame, screen-top moves
+	// up while screen-bottom stays where Phase 2 left it. In the bar's
+	// own counter-rotated frame, motion's `y` is flipped relative to
+	// screen, so y growing positive translates to screen-up.
 	await Promise.all(beforeBars.map((bar, i) =>
 		animate(
 			bar,
-			{ height: [`${REVERSE_BAR_WIDTH}px`, `${originalHeights[i]}px`] },
+			{
+				height: [`${REVERSE_BAR_WIDTH}px`, `${originalHeights[i]}px`],
+				y: [0, originalHeights[i] - REVERSE_BAR_WIDTH],
+			},
 			{ duration: scaled(REVERSE_UNSHRINK_DURATION), ease: [0.4, 0, 0.6, 1] },
 		).finished,
 	));
