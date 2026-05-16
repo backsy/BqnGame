@@ -51,7 +51,6 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 
 const REVERSE_ROTATE_DURATION = 0.85;
 const REVERSE_FALL_DURATION = 0.6;
-const REVERSE_FADE_DURATION = 0.32;
 
 export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
@@ -72,64 +71,74 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 		{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
 	).finished;
 
-	// Phase 2 setup — for each bar, measure heights now (while still
-	// at its before-position) to derive (a) the bar's drop distance
-	// relative to its row's max bar height, and (b) the label's rise
-	// distance relative to its bar.
+	// Phase 2 setup — DIRECT MEASUREMENT, no math from CSS values.
+	// Each beforeBar is paired with its corresponding afterBar (the
+	// one holding the same data after the reverse). We measure both
+	// rects NOW (rotated beforeRoot vs natural afterRoot) and compute
+	// the exact screen delta the bar and the label each need to move.
+	// Convert to motion-lib's local-y by negating (the parent's 180°
+	// rotation flips the local-y axis from screen-y).
+	const shape = step.x.shape;
+	const afterBars = Array.from(afterRoot.querySelectorAll('.bar')) as HTMLElement[];
+	const corrIndex = (i: number): number => {
+		if (shape.length === 1) return shape[0] - 1 - i;
+		if (shape.length === 2) {
+			const C = shape[1];
+			return (shape[0] - 1 - Math.floor(i / C)) * C + (C - 1 - (i % C));
+		}
+		return shape[0] - 1 - i;
+	};
+
 	type BarInfo = {
 		bar: HTMLElement;
-		drop: number;
+		barLocalY: number;
 		label: HTMLElement | null;
-		labelRise: number;
+		labelLocalY: number;
 	};
 	const barInfos: BarInfo[] = [];
-	const rowMax = new Map<HTMLElement, number>();
-	for (const bar of beforeBars) {
-		const parent = bar.parentElement;
-		if (!parent) continue;
-		const h = bar.getBoundingClientRect().height;
-		const prev = rowMax.get(parent) ?? 0;
-		if (h > prev) rowMax.set(parent, h);
-	}
-	for (const bar of beforeBars) {
-		const parent = bar.parentElement;
-		if (!parent) continue;
-		const barRect = bar.getBoundingClientRect();
-		const maxH = rowMax.get(parent) ?? barRect.height;
-		const drop = maxH - barRect.height;
-		const label = bar.querySelector('span') as HTMLElement | null;
-		let labelRise = 0;
-		if (label) {
-			const labelH = label.getBoundingClientRect().height;
-			// Read the bar's actual padding-top from computed styles
-			// (CSS sets padding-top:0.2rem ≈ 3.2px). The label sits at
-			// the bar's local-top + padTop. To move it to the bar's
-			// local-bottom (= bar's screen-top once the inherited 180°
-			// rotation is accounted for) the translation must equal
-			//   bar.h - label.h - 2*padTop
-			// — i.e. the gap between the label and the bar's far edge
-			// in both axes. Off-by-px here shows up as a flicker when
-			// the cross-fade swaps the label for afterRoot's natural
-			// (un-rotated) one.
-			const padTop = parseFloat(getComputedStyle(bar).paddingTop) || 0;
-			labelRise = Math.max(0, barRect.height - labelH - 2 * padTop);
+	for (let i = 0; i < beforeBars.length; i++) {
+		const beforeBar = beforeBars[i];
+		const afterBar = afterBars[corrIndex(i)];
+		if (!afterBar) continue;
+
+		// Bar's screen delta = afterBar's natural top − beforeBar's
+		// rotated top. Local y = −screen y (parent rotated 180°).
+		const beforeBarRect = beforeBar.getBoundingClientRect();
+		const afterBarRect = afterBar.getBoundingClientRect();
+		const barScreenDy = afterBarRect.top - beforeBarRect.top;
+		const barLocalY = -barScreenDy;
+
+		// Label's screen delta is computed the SAME way. Because the
+		// label inherits the bar's transform, its OWN local-y only
+		// needs to make up the difference between the label's screen
+		// delta and the bar's screen delta — encoded again with the
+		// local-y = −screen-y flip.
+		const beforeLabel = beforeBar.querySelector('span') as HTMLElement | null;
+		const afterLabel = afterBar.querySelector('span') as HTMLElement | null;
+		let labelLocalY = 0;
+		if (beforeLabel && afterLabel) {
+			const beforeLabelRect = beforeLabel.getBoundingClientRect();
+			const afterLabelRect = afterLabel.getBoundingClientRect();
+			const labelScreenDy = afterLabelRect.top - beforeLabelRect.top;
+			labelLocalY = -(labelScreenDy - barScreenDy);
 		}
-		barInfos.push({ bar, drop, label, labelRise });
+
+		barInfos.push({ bar: beforeBar, barLocalY, label: beforeLabel, labelLocalY });
 	}
 
 	delete afterRoot.dataset.preparing;
 	for (const cell of afterCells) cell.style.visibility = '';
 
-	// Phase 2 animations — bars fall, labels rotate AND translate to
-	// the bar's far end (= bar's screen-top, given the parent's 180°
-	// rotation). Cross-fade hands off to afterRoot at the end.
+	// Phase 2 animations — bars and labels move to the exact measured
+	// targets. No cross-fade: if end positions are pixel-aligned, the
+	// instant SWAP at the end is invisible.
 	const tasks: Promise<unknown>[] = [];
-	for (const { bar, drop, label, labelRise } of barInfos) {
-		if (drop > 0) {
+	for (const { bar, barLocalY, label, labelLocalY } of barInfos) {
+		if (barLocalY !== 0) {
 			tasks.push(
 				animate(
 					bar,
-					{ y: [0, -drop] },
+					{ y: [0, barLocalY] },
 					{ duration: scaled(REVERSE_FALL_DURATION), ease: [0.55, 0, 0.45, 1] },
 				).finished,
 			);
@@ -139,53 +148,33 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 				animate(
 					label,
 					{
-						// Rotate own → net screen rotation 180° → 0°.
 						rotate: [0, 180],
-						// Translate +y in local (the rotated frame) ⇒
-						// rises in screen. Moves the label from the
-						// bar's screen-bottom (inherited rotation
-						// parked it there) to the bar's screen-top
-						// (where afterRoot's natural rendering holds
-						// it) — continuously, no jump at the seam.
-						y: [0, labelRise],
+						y: [0, labelLocalY],
 					},
-					{ duration: scaled(REVERSE_FALL_DURATION), ease: 'easeOut' },
+					{ duration: scaled(REVERSE_FALL_DURATION), ease: [0.55, 0, 0.45, 1] },
 				).finished,
 			);
 		}
 	}
-	// Cross-fade beforeRoot → afterRoot. Aligned to END at the exact
-	// instant the bar/label animations finish — otherwise the bar
-	// and label sit STATIC for ~50ms (cross-fade still running) at
-	// their end positions, and any sub-pixel mismatch with
-	// afterRoot's natural rendering ghosts as a flicker.
-	const fadeDelay = REVERSE_FALL_DURATION - REVERSE_FADE_DURATION;
-	tasks.push(
-		animate(
-			beforeRoot,
-			{ opacity: [1, 0] },
-			{
-				duration: scaled(REVERSE_FADE_DURATION),
-				ease: 'easeIn',
-				delay: scaled(fadeDelay),
-			},
-		).finished,
-	);
-	tasks.push(
-		animate(
-			afterRoot,
-			{ opacity: [0, 1] },
-			{
-				duration: scaled(REVERSE_FADE_DURATION),
-				ease: 'easeOut',
-				delay: scaled(fadeDelay),
-			},
-		).finished,
-	);
 	await Promise.all(tasks);
 
-	afterRoot.style.pointerEvents = '';
+	// Force-snap the final values in case motion-lib's last frame is
+	// off by a sub-pixel — the swap below assumes pixel-perfect.
+	for (const { bar, barLocalY, label, labelLocalY } of barInfos) {
+		bar.style.transform = `translateY(${barLocalY}px)`;
+		if (label) {
+			label.style.transform = `translateY(${labelLocalY}px) rotate(180deg)`;
+		}
+	}
+
+	// Instant swap. beforeRoot is identical to afterRoot at this point
+	// (each bar/label is at its corresponding afterBar/afterLabel's
+	// exact viewport rect), so hiding beforeRoot and showing afterRoot
+	// is a no-op visually.
+	beforeRoot.style.opacity = '0';
 	afterRoot.style.opacity = '';
+
+	afterRoot.style.pointerEvents = '';
 };
 
 // ── sortUp/sortDownMonadic ────────────────────────────────────────────────
