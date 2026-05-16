@@ -94,9 +94,44 @@ function makeMockAnimate() {
 		return {
 			finished: Promise.resolve().then(() => {
 				motionTimeMs = Math.max(motionTimeMs, endMs);
+				// Real motion-lib sets inline.transform continuously
+				// during the animation. The mock can't replicate that
+				// frame-by-frame, but it CAN set the final value when
+				// .finished resolves — so production code that calls
+				// getBoundingClientRect AFTER a motion (e.g. to plan
+				// the next phase) sees the correct rect, including
+				// ancestor-applied rotations.
+				applyFinalKeyframesToInlineTransform(el, keyframes);
 			}),
 		};
 	};
+}
+
+function applyFinalKeyframesToInlineTransform(
+	el: HTMLElement,
+	keyframes: Keyframes,
+): void {
+	const kfFinal = (...names: string[]): number | null => {
+		for (const name of names) {
+			if (!(name in keyframes)) continue;
+			const v = (keyframes as Record<string, unknown>)[name];
+			const last = Array.isArray(v) ? v[v.length - 1] : v;
+			const n = typeof last === 'number' ? last : parseFloat(String(last));
+			if (Number.isFinite(n)) return n;
+		}
+		return null;
+	};
+	const x = kfFinal('x', 'translateX');
+	const y = kfFinal('y', 'translateY');
+	const scale = kfFinal('scale', 'scaleX');
+	const rotate = kfFinal('rotate', 'rotateZ');
+	if (x === null && y === null && scale === null && rotate === null) return;
+	const parts: string[] = [];
+	if (x !== null) parts.push(`translateX(${x}px)`);
+	if (y !== null) parts.push(`translateY(${y}px)`);
+	if (scale !== null) parts.push(`scale(${scale})`);
+	if (rotate !== null) parts.push(`rotate(${rotate}deg)`);
+	el.style.transform = parts.join(' ');
 }
 
 export function installAnimateMock(): void {
@@ -341,6 +376,92 @@ export function assertSmoothMotion(
 	}
 }
 
+// Handoff-alignment invariant: at the end of motion (t = totalMotionMs),
+// every VISIBLE before-cell must occupy the SAME viewport rect as some
+// after-cell's natural (post-commit) rect. If a before-cell is still
+// visible at end and not at any after-cell's natural rect, the
+// post-commit render will visibly teleport — afterRoot snaps in at
+// its natural positions and the before-cell's pixels jump.
+//
+// Identifying which cells are which: SceneElement ids start with
+// "before." or "after." (per the test's buildSceneFor prefix arg).
+//
+// Tolerance covers sub-pixel arithmetic; full-rect alignment is the
+// invariant. Motions that animate properties the harness can't see
+// (e.g. inline `height` keyframes used by sizing / comparison) won't
+// satisfy this; they should fade the before-cells out at end so the
+// check is vacuous for them.
+export function assertHandoffAligned(
+	scene: Scene,
+	opts: { tolerance?: number } = {},
+): void {
+	const tolerance = opts.tolerance ?? 1.5;
+	const total = totalMotionMs > 0 ? totalMotionMs : 1;
+	const t = total;
+
+	const beforeCells = scene.elements.filter(el => el.id.startsWith('before.'));
+	const afterCells = scene.elements.filter(el => el.id.startsWith('after.'));
+	if (afterCells.length === 0) return;
+
+	// END-OF-MOTION SCREEN RECT for each scene element comes from the
+	// mock's getBoundingClientRect, which already walks ancestor chains
+	// and applies inline transforms (set by the mock animate's final
+	// keyframe snapshot when each animation's .finished resolved).
+	// That gives the EXACT viewport rect the user would see, post-
+	// motion, in production.
+	for (const before of beforeCells) {
+		const opacity = elementOpacityAt(before, t);
+		if (opacity <= INVISIBLE_THRESHOLD) continue;
+
+		const endRect = domRectToRect(before.el.getBoundingClientRect());
+		const matched = afterCells.find(a => {
+			const aRect = domRectToRect(a.el.getBoundingClientRect());
+			return rectsAlign(endRect, aRect, tolerance);
+		});
+		if (!matched) {
+			const candidates = afterCells
+				.map(a => {
+					const ar = domRectToRect(a.el.getBoundingClientRect());
+					return { a, ar, d: rectMaxAbsDiff(endRect, ar) };
+				})
+				.sort((p, q) => p.d - q.d)
+				.slice(0, 3)
+				.map(({ a, ar, d }) => `'${a.id}' end=${rectStr(ar)} maxΔ=${d.toFixed(2)}px`);
+			throw new Error(
+				`Handoff-alignment: '${before.id}' is VISIBLE at end of motion ` +
+					`(rect ${rectStr(endRect)}, opacity ${opacity.toFixed(2)}, ` +
+					`t=${t.toFixed(0)}ms total=${total.toFixed(0)}ms) ` +
+					`but is NOT at any after-cell's end-of-motion rect ` +
+					`(tolerance ${tolerance}px). ` +
+					`Post-commit will visibly TELEPORT. Nearest candidates: ` +
+					candidates.join('; '),
+			);
+		}
+	}
+}
+
+function domRectToRect(r: DOMRect): Rect {
+	return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+}
+
+function rectsAlign(a: Rect, b: Rect, tol: number): boolean {
+	return (
+		Math.abs(a.left - b.left) <= tol &&
+		Math.abs(a.right - b.right) <= tol &&
+		Math.abs(a.top - b.top) <= tol &&
+		Math.abs(a.bottom - b.bottom) <= tol
+	);
+}
+
+function rectMaxAbsDiff(a: Rect, b: Rect): number {
+	return Math.max(
+		Math.abs(a.left - b.left),
+		Math.abs(a.right - b.right),
+		Math.abs(a.top - b.top),
+		Math.abs(a.bottom - b.bottom),
+	);
+}
+
 // Helpers for scene setup.
 export function makeMockElement(
 	id: string,
@@ -350,25 +471,38 @@ export function makeMockElement(
 	const el = document.createElement('div');
 	if (opts?.initialOpacity !== undefined) el.style.opacity = String(opts.initialOpacity);
 	if (opts?.initialVisibility) el.style.visibility = opts.initialVisibility;
-	// Mock getBoundingClientRect so the motion's measurements use our rect.
+	// Mock getBoundingClientRect so production code's measurements use
+	// our rect. Walks the ancestor chain and applies inline rotations
+	// (in a real browser this is automatic — in jsdom we have to do
+	// it ourselves, otherwise a child of a rotated parent measures as
+	// if no rotation had happened).
 	el.getBoundingClientRect = function (): DOMRect {
-		// Return the rect adjusted by the current inline transform — the
-		// motion measures live, and may translate before measuring.
 		const tx = parseInlineTranslateX(el.style.transform);
 		const ty = parseInlineTranslateY(el.style.transform);
 		const w = rect.right - rect.left;
 		const h = rect.bottom - rect.top;
-		const left = rect.left + tx;
-		const top = rect.top + ty;
+		let cur: Rect = {
+			left: rect.left + tx,
+			top: rect.top + ty,
+			right: rect.left + tx + w,
+			bottom: rect.top + ty + h,
+		};
+		let parent: HTMLElement | null = el.parentElement;
+		while (parent) {
+			const rot = parseInlineRotateDeg(parent.style.transform);
+			if (rot !== 0) {
+				const pr = parent.getBoundingClientRect();
+				const pcx = (pr.left + pr.right) / 2;
+				const pcy = (pr.top + pr.bottom) / 2;
+				cur = rotateAxisAlignedRect(cur, pcx, pcy, rot);
+			}
+			parent = parent.parentElement;
+		}
+		const w2 = cur.right - cur.left;
+		const h2 = cur.bottom - cur.top;
 		return {
-			left,
-			top,
-			right: left + w,
-			bottom: top + h,
-			width: w,
-			height: h,
-			x: left,
-			y: top,
+			left: cur.left, top: cur.top, right: cur.right, bottom: cur.bottom,
+			width: w2, height: h2, x: cur.left, y: cur.top,
 			toJSON: () => ({}),
 		} as DOMRect;
 	};
@@ -384,6 +518,43 @@ function parseInlineTranslateY(transform: string): number {
 	if (m) return parseFloat(m[1]);
 	const t = transform.match(/translate(?:3d)?\(\s*[-0-9.]+px\s*,\s*([-0-9.]+)px/);
 	return t ? parseFloat(t[1]) : 0;
+}
+function parseInlineRotateDeg(transform: string): number {
+	const m = transform.match(/rotate(?:Z)?\(\s*([-0-9.]+)deg/);
+	return m ? parseFloat(m[1]) : 0;
+}
+function rotateAxisAlignedRect(r: Rect, cx: number, cy: number, deg: number): Rect {
+	const d = ((deg % 360) + 360) % 360;
+	if (Math.abs(d - 180) < 1e-6) {
+		return {
+			left: 2 * cx - r.right,
+			right: 2 * cx - r.left,
+			top: 2 * cy - r.bottom,
+			bottom: 2 * cy - r.top,
+		};
+	}
+	if (d < 1e-6 || Math.abs(d - 360) < 1e-6) return r;
+	const rad = (deg * Math.PI) / 180;
+	const cos = Math.cos(rad);
+	const sin = Math.sin(rad);
+	const corners: [number, number][] = [
+		[r.left, r.top],
+		[r.right, r.top],
+		[r.left, r.bottom],
+		[r.right, r.bottom],
+	];
+	let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+	for (const [px, py] of corners) {
+		const dx = px - cx;
+		const dy = py - cy;
+		const nx = cx + dx * cos - dy * sin;
+		const ny = cy + dx * sin + dy * cos;
+		if (nx < minX) minX = nx;
+		if (nx > maxX) maxX = nx;
+		if (ny < minY) minY = ny;
+		if (ny > maxY) maxY = ny;
+	}
+	return { left: minX, right: maxX, top: minY, bottom: maxY };
 }
 
 export function makeScene(elements: SceneElement[]): Scene {

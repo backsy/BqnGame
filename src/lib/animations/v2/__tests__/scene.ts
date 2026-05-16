@@ -229,15 +229,41 @@ function rect(cx: number, cy: number, w: number, h: number): Rect {
 
 function setRect(el: HTMLElement, r: Rect): void {
 	el.getBoundingClientRect = () => {
+		// Start from natural rect + own inline translate (mock doesn't
+		// distinguish translateX/Y notation — we cover the common forms).
 		const tx = parseTx(el.style.transform);
 		const ty = parseTy(el.style.transform);
 		const w = r.right - r.left;
 		const h = r.bottom - r.top;
-		const left = r.left + tx;
-		const top = r.top + ty;
+		let cur: Rect = {
+			left: r.left + tx,
+			top: r.top + ty,
+			right: r.left + tx + w,
+			bottom: r.top + ty + h,
+		};
+		// Walk ancestor chain and apply each ancestor's inline rotation.
+		// In a real browser, getBoundingClientRect respects all ancestor
+		// transforms automatically. In jsdom the mock has to do it
+		// itself, otherwise production code that measures cells after a
+		// parent rotation (e.g. reverse measuring after Phase 1) sees
+		// the un-rotated natural rect and the motion mis-computes its
+		// targets.
+		let parent: HTMLElement | null = el.parentElement;
+		while (parent) {
+			const rot = parseRotateDeg(parent.style.transform);
+			if (rot !== 0) {
+				const pRect = parent.getBoundingClientRect();
+				const pcx = (pRect.left + pRect.right) / 2;
+				const pcy = (pRect.top + pRect.bottom) / 2;
+				cur = rotateAxisAlignedRect(cur, pcx, pcy, rot);
+			}
+			parent = parent.parentElement;
+		}
+		const w2 = cur.right - cur.left;
+		const h2 = cur.bottom - cur.top;
 		return {
-			left, top, right: left + w, bottom: top + h,
-			width: w, height: h, x: left, y: top, toJSON: () => ({}),
+			left: cur.left, top: cur.top, right: cur.right, bottom: cur.bottom,
+			width: w2, height: h2, x: cur.left, y: cur.top, toJSON: () => ({}),
 		} as DOMRect;
 	};
 }
@@ -251,6 +277,47 @@ function parseTy(t: string): number {
 	if (my) return parseFloat(my[1]);
 	const m = t.match(/translate(?:3d)?\(\s*[-0-9.]+px\s*,\s*([-0-9.]+)px/);
 	return m ? parseFloat(m[1]) : 0;
+}
+function parseRotateDeg(t: string): number {
+	const m = t.match(/rotate(?:Z)?\(\s*([-0-9.]+)deg/);
+	return m ? parseFloat(m[1]) : 0;
+}
+// Rotate an axis-aligned rect around an arbitrary point. For non-axis-
+// aligned rotations the result is the AABB of the rotated rect — that's
+// what getBoundingClientRect would return in a real browser. The
+// special-case for ±180° avoids floating-point noise in the common case.
+function rotateAxisAlignedRect(r: Rect, cx: number, cy: number, deg: number): Rect {
+	const d = ((deg % 360) + 360) % 360;
+	if (Math.abs(d - 180) < 1e-6) {
+		return {
+			left: 2 * cx - r.right,
+			right: 2 * cx - r.left,
+			top: 2 * cy - r.bottom,
+			bottom: 2 * cy - r.top,
+		};
+	}
+	if (d < 1e-6 || Math.abs(d - 360) < 1e-6) return r;
+	const rad = (deg * Math.PI) / 180;
+	const cos = Math.cos(rad);
+	const sin = Math.sin(rad);
+	const corners = [
+		[r.left, r.top],
+		[r.right, r.top],
+		[r.left, r.bottom],
+		[r.right, r.bottom],
+	];
+	let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+	for (const [px, py] of corners) {
+		const dx = px - cx;
+		const dy = py - cy;
+		const nx = cx + dx * cos - dy * sin;
+		const ny = cy + dx * sin + dy * cos;
+		if (nx < minX) minX = nx;
+		if (nx > maxX) maxX = nx;
+		if (ny < minY) minY = ny;
+		if (ny > maxY) maxY = ny;
+	}
+	return { left: minX, right: maxX, top: minY, bottom: maxY };
 }
 
 // ── BQN evaluation ───────────────────────────────────────────────────────

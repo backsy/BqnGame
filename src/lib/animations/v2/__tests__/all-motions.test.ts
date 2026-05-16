@@ -19,6 +19,7 @@ import type { FnExpr } from '../fn-expr';
 import type { Step } from '../step';
 import type { BqnValue } from '../value';
 import {
+	assertHandoffAligned,
 	assertNoOverlapAcross,
 	assertSmoothMotion,
 	getTotalMotionMs,
@@ -155,6 +156,7 @@ describe('all motions — no-overlap invariant across input shapes', () => {
 				const scene = makeScene([...beforeCells, ...afterCells]);
 				assertNoOverlapAcross(scene, SAMPLES);
 				assertSmoothMotion(scene);
+				assertHandoffAligned(scene);
 			});
 		}
 	}
