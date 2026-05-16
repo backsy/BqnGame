@@ -20,41 +20,102 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 }
 
 // ── reverseMonadic ────────────────────────────────────────────────────────
-// Two phases with full continuity (no teleport between or at the seam):
+// Rank-1: three-phase gesture per the design.
+//   Phase 1 — bars SHRINK vertically to unit size (height = BAR_WIDTH),
+//             so every cell becomes a square of the same dimensions.
+//             The array's outer box (border + padding) stays put.
+//   Phase 2 — the whole row rotates 180° around its centre. Each cell
+//             counter-rotates -180° around its own centre so it stays
+//             upright in the screen frame even as the container spins.
+//             Concentric arcs at different radii from centre never
+//             intersect, so cells don't clip each other.
+//   Phase 3 — bars unshrink: heights tween back to their original
+//             values. Data didn't change, only positions permuted, so
+//             each bar ends at its original height (= the matching
+//             after-cell's height after the reverse).
 //
-//   1. beforeRoot rotates 180° around its own centre as one rigid
-//      unit — frame, cells, bars, labels all turn together. End
-//      state: everything upside-down at mirrored screen positions
-//      (= the reversed order).
-//
-//   2. beforeRoot STAYS at rotate(180°). The bars don't rotate
-//      (they're rectangles, they just FALL):
-//        - Bar: translate y by -(max_bar_h - this_bar_h) in the
-//          parent's LOCAL frame. The 180° inherited rotation flips
-//          that into a screen DOWNWARD drop — the bar falls from its
-//          rotated y to the y its corresponding after-cell sits at
-//          naturally. Tallest bar drops 0px; shorter bars drop more.
-//      The NUMERIC LABEL inside each bar gets its own animation, two
-//      properties at once for full continuity:
-//        - rotate: 0° → 180° in own frame. Net screen rotation
-//          = beforeRoot(180°) + own(180°) = 360° = 0°, i.e. text
-//          becomes upright.
-//        - translateY: 0 → +(bar_h - label_h - pad). In the rotated
-//          local frame, positive local-y is screen-UP, so the label
-//          rises from the bar's screen-bottom (where the inherited
-//          rotation parked it) to the bar's screen-top (where
-//          afterRoot's natural rendering will hold it). The label is
-//          moving smoothly THROUGHOUT the rotation — never teleports
-//          when the cross-fade swaps in afterRoot.
-//      A short cross-fade hands off to afterRoot at the end so the
-//      static post-commit render takes over without a visible swap.
+// Rank ≥ 2: the old rotate-180-with-fall path is retained below until
+// a separate design lands.
 
+const REVERSE_SHRINK_DURATION = 0.3;
 const REVERSE_ROTATE_DURATION = 0.85;
+const REVERSE_UNSHRINK_DURATION = 0.3;
+
+// Per CLAUDE.md: bar width is the unit. Cells become BAR_WIDTH × BAR_WIDTH
+// squares during the swap so all cells share the same dimensions and the
+// rotation-around-centre geometry behaves uniformly.
+const REVERSE_BAR_WIDTH = 24;
+
+async function reverseMonadic1D(
+	beforeRoot: HTMLElement,
+	afterRoot: HTMLElement,
+): Promise<void> {
+	const beforeBars = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '0';
+	afterRoot.style.pointerEvents = 'none';
+
+	// Measure the natural heights so Phase 3 knows what to grow back to.
+	// (Data is permuted, not changed — these are the final heights too.)
+	const originalHeights = beforeBars.map(b => b.getBoundingClientRect().height);
+
+	// Phase 1 — shrink each bar's height to the unit square (BAR_WIDTH).
+	// The label inside follows the bar's layout naturally.
+	await Promise.all(beforeBars.map((bar, i) =>
+		animate(
+			bar,
+			{ height: [`${originalHeights[i]}px`, `${REVERSE_BAR_WIDTH}px`] },
+			{ duration: scaled(REVERSE_SHRINK_DURATION), ease: [0.4, 0, 0.6, 1] },
+		).finished,
+	));
+
+	// Phase 2 — row rotates 180°, each cell counter-rotates -180°. Run in
+	// parallel so the cell-level counter-rotation tracks the row-level
+	// rotation frame-by-frame and the cells never appear tilted.
+	await Promise.all([
+		animate(
+			beforeRoot,
+			{ rotate: [0, 180] },
+			{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
+		).finished,
+		...beforeBars.map(bar =>
+			animate(
+				bar,
+				{ rotate: [0, -180] },
+				{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
+			).finished,
+		),
+	]);
+
+	// Phase 3 — bars regrow to their original heights. Data didn't change
+	// during the reverse, only positions, so each bar's height ends the
+	// same as it started (= the matching after-cell's height).
+	await Promise.all(beforeBars.map((bar, i) =>
+		animate(
+			bar,
+			{ height: [`${REVERSE_BAR_WIDTH}px`, `${originalHeights[i]}px`] },
+			{ duration: scaled(REVERSE_UNSHRINK_DURATION), ease: [0.4, 0, 0.6, 1] },
+		).finished,
+	));
+
+	delete afterRoot.dataset.preparing;
+	for (const cell of afterCells) cell.style.visibility = '';
+	beforeRoot.style.opacity = '0';
+	afterRoot.style.opacity = '';
+	afterRoot.style.pointerEvents = '';
+}
+
 const REVERSE_FALL_DURATION = 0.6;
 
 export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): Promise<void> => {
 	if (step.kind !== 'monadic') return blackBox(step, beforeRoot, afterRoot);
 	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
+
+	if (step.x.shape.length === 1) {
+		return reverseMonadic1D(beforeRoot, afterRoot);
+	}
 
 	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
 	const beforeBars = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
