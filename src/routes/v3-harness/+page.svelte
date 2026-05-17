@@ -76,6 +76,21 @@
 
 	const SPEED_CHOICES: number[] = [0.25, 0.5, 1, 2];
 
+	// Rainbow palette indexed by rank. Cool → warm. Each frame draws
+	// stroke in its rank's colour and a faint fill tint of the same.
+	// Higher ranks than the table size clamp to the last entry.
+	const RANK_RGB: ReadonlyArray<string> = [
+		'168, 156, 247', // 0 — unit (lavender)
+		'90, 156, 247',  // 1 — list (blue)
+		'106, 247, 216', // 2 — table (cyan)
+		'95, 204, 95',   // 3 — green
+		'247, 225, 106', // 4 — yellow
+		'247, 168, 106', // 5 — orange
+		'247, 106, 106', // 6 — red
+	];
+	const rankRgb = (r: number): string =>
+		RANK_RGB[Math.max(0, Math.min(r, RANK_RGB.length - 1))];
+
 	// ── Reactive state ────────────────────────────────────────────────────────
 	let selectedStarterIdx = 0;
 	let playing = false;
@@ -242,9 +257,9 @@
 			<g transform="rotate({frameRotation} {frameCx} {frameCy})">
 				{#each prims as p, i (i)}
 					{#if p.kind === 'frame'}
-						<!-- Array outline. Rank-0 boxes get a thicker, more
-						     saturated stroke plus a faint lavender fill tint so
-						     they read distinctly against plain array outlines. -->
+						<!-- Array outline. Stroke + faint fill tint in this
+						     rank's rainbow colour (cool→warm by rank). -->
+						{@const rgb = rankRgb(p.rank)}
 						<rect
 							x={p.x}
 							y={p.y}
@@ -252,9 +267,9 @@
 							height={p.h}
 							rx="3"
 							ry="3"
-							fill={p.rank0 ? 'rgba(168, 156, 247, 0.10)' : 'none'}
-							stroke={p.rank0 ? 'rgba(168, 156, 247, 0.85)' : 'rgba(140, 140, 200, 0.4)'}
-							stroke-width={p.rank0 ? 2 : 1}
+							fill="rgba({rgb}, 0.10)"
+							stroke="rgba({rgb}, 0.85)"
+							stroke-width="1.5"
 						/>
 					{:else if p.kind === 'bar'}
 						<!-- Bars are counter-rotated around their own centre so

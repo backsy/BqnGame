@@ -15,7 +15,7 @@ import { PADDING } from './layout';
 import type { Cell, Scene } from './scene';
 
 export type RenderPrim =
-	| { kind: 'frame'; x: number; y: number; w: number; h: number; rank0: boolean }
+	| { kind: 'frame'; x: number; y: number; w: number; h: number; rank: number }
 	| { kind: 'bar'; x: number; y: number; w: number; h: number; value: number };
 
 // ── formatAtomLabel ──────────────────────────────────────────────────────
@@ -69,9 +69,8 @@ function walkScene(scene: Scene, out: RenderPrim[]): void {
 		return;
 	}
 	if (scene.shape.length === 2) {
-		// Mat = array of rows. Emit outer frame (2×PADDING beyond cells:
-		// once for the row frame, once for the outer), then per-row
-		// frames, then the cells themselves.
+		// Mat = array of rows. Emit outer rank-2 frame, then per-row
+		// rank-1 frames, then the cells themselves.
 		const [R, C] = scene.shape;
 		const all = bboxOfCells(scene.cells);
 		out.push({
@@ -80,7 +79,7 @@ function walkScene(scene: Scene, out: RenderPrim[]): void {
 			y: all.y - 2 * PADDING,
 			w: all.w + 4 * PADDING,
 			h: all.h + 4 * PADDING,
-			rank0: false,
+			rank: 2,
 		});
 		for (let r = 0; r < R; r++) {
 			const rowCells = scene.cells.slice(r * C, (r + 1) * C);
@@ -91,13 +90,13 @@ function walkScene(scene: Scene, out: RenderPrim[]): void {
 				y: rb.y - PADDING,
 				w: rb.w + 2 * PADDING,
 				h: rb.h + 2 * PADDING,
-				rank0: false,
+				rank: 1,
 			});
 		}
 		for (const cell of scene.cells) walkCell(cell, out);
 		return;
 	}
-	// rank 0 or 1: single frame around the cells.
+	// Other ranks: single frame around the cells. Rank = shape.length.
 	const bbox = bboxOfCells(scene.cells);
 	out.push({
 		kind: 'frame',
@@ -105,7 +104,7 @@ function walkScene(scene: Scene, out: RenderPrim[]): void {
 		y: bbox.y - PADDING,
 		w: bbox.w + 2 * PADDING,
 		h: bbox.h + 2 * PADDING,
-		rank0: scene.shape.length === 0,
+		rank: scene.shape.length,
 	});
 	for (const cell of scene.cells) walkCell(cell, out);
 }
