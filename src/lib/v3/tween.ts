@@ -86,7 +86,8 @@ export function lerpScene(a: Scene, b: Scene, t: number): Scene {
 			);
 		}
 		const cells = a.cells.map((c, i) => lerpCell(c, b.cells[i], t));
-		return { kind: 'array', viewBox, shape: a.shape, cells };
+		const rotation = lerpNum(a.rotation, b.rotation, t);
+		return { kind: 'array', viewBox, shape: a.shape, cells, rotation };
 	}
 	// TypeScript can't see the kind check above narrowed both; explicit
 	// throw keeps the function total without silently mis-handling a

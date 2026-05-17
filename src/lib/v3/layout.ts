@@ -282,7 +282,7 @@ function layoutArray(
 		throw new Error(`rank ${v.shape.length} layout not yet implemented`);
 	}
 
-	return { kind: 'array', viewBox, shape: v.shape, cells };
+	return { kind: 'array', viewBox, shape: v.shape, cells, rotation: 0 };
 }
 
 // ── bqnValueToScene ───────────────────────────────────────────────────────

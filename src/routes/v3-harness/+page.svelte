@@ -93,6 +93,13 @@
 	// otherwise it derives from history.cursor.
 	$: scene = displayScene ?? current(history)?.scene ?? null;
 	$: prims = (scene ? flattenScene(scene) : []) satisfies RenderPrim[];
+	// Whole-scene rotation comes from scene.rotation (array variant only).
+	// The outer group rotates by this angle around the cells' bbox centre;
+	// each bar is wrapped in a counter-rotation so its content stays upright.
+	$: frameRotation = scene && scene.kind === 'array' ? scene.rotation : 0;
+	$: outerFramePrim = prims.find((p) => p.kind === 'frame');
+	$: frameCx = outerFramePrim ? outerFramePrim.x + outerFramePrim.w / 2 : VB_W / 2;
+	$: frameCy = outerFramePrim ? outerFramePrim.y + outerFramePrim.h / 2 : VB_H / 2;
 
 	let familyOpen: Record<Family, boolean> = {
 		primitives: true,
@@ -232,48 +239,51 @@
 			role="img"
 			aria-label="animation window"
 		>
-			{#each prims as p, i (i)}
-				{#if p.kind === 'frame'}
-					<!-- Array outline. Rank-0 boxes get a thicker, more
-					     saturated stroke plus a faint lavender fill tint so
-					     they read distinctly at a glance against plain
-					     (rank ≥ 1) array outlines. -->
-					<rect
-						x={p.x}
-						y={p.y}
-						width={p.w}
-						height={p.h}
-						rx="3"
-						ry="3"
-						fill={p.rank0 ? 'rgba(168, 156, 247, 0.10)' : 'none'}
-						stroke={p.rank0 ? 'rgba(168, 156, 247, 0.85)' : 'rgba(140, 140, 200, 0.4)'}
-						stroke-width={p.rank0 ? 2 : 1}
-					/>
-				{:else if p.kind === 'bar'}
-					<!-- Atom cell: colored rect by sign + numeric label. -->
-					<rect
-						x={p.x}
-						y={p.y}
-						width={p.w}
-						height={p.h}
-						rx="3"
-						ry="3"
-						fill={p.value < 0 ? '#f76a6a' : '#7c6af7'}
-					/>
-					<!-- Label sits at the "tip" of the bar (the end away from the
-					     baseline): top for positive bars, bottom for negative. -->
-					<text
-						x={p.x + p.w / 2}
-						y={p.value < 0 ? p.y + p.h - 16 : p.y + 4}
-						text-anchor="middle"
-						dominant-baseline="hanging"
-						font-family="system-ui, -apple-system, sans-serif"
-						font-size="12"
-						font-weight="600"
-						fill="#f0fff0"
-					>{formatAtomLabel(p.value)}</text>
-				{/if}
-			{/each}
+			<g transform="rotate({frameRotation} {frameCx} {frameCy})">
+				{#each prims as p, i (i)}
+					{#if p.kind === 'frame'}
+						<!-- Array outline. Rank-0 boxes get a thicker, more
+						     saturated stroke plus a faint lavender fill tint so
+						     they read distinctly against plain array outlines. -->
+						<rect
+							x={p.x}
+							y={p.y}
+							width={p.w}
+							height={p.h}
+							rx="3"
+							ry="3"
+							fill={p.rank0 ? 'rgba(168, 156, 247, 0.10)' : 'none'}
+							stroke={p.rank0 ? 'rgba(168, 156, 247, 0.85)' : 'rgba(140, 140, 200, 0.4)'}
+							stroke-width={p.rank0 ? 2 : 1}
+						/>
+					{:else if p.kind === 'bar'}
+						<!-- Bars are counter-rotated around their own centre so
+						     contents stay upright even when the outer group is
+						     rotated. -->
+						<g transform="rotate({-frameRotation} {p.x + p.w / 2} {p.y + p.h / 2})">
+							<rect
+								x={p.x}
+								y={p.y}
+								width={p.w}
+								height={p.h}
+								rx="3"
+								ry="3"
+								fill={p.value < 0 ? '#f76a6a' : '#7c6af7'}
+							/>
+							<text
+								x={p.x + p.w / 2}
+								y={p.value < 0 ? p.y + p.h - 16 : p.y + 4}
+								text-anchor="middle"
+								dominant-baseline="hanging"
+								font-family="system-ui, -apple-system, sans-serif"
+								font-size="12"
+								font-weight="600"
+								fill="#f0fff0"
+							>{formatAtomLabel(p.value)}</text>
+						</g>
+					{/if}
+				{/each}
+			</g>
 		</svg>
 	</div>
 

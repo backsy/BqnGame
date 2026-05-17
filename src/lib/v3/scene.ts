@@ -58,6 +58,9 @@ export type Scene =
 			viewBox: ViewBox;
 			shape: readonly number[];
 			cells: Cell[];
+			/** Degrees the whole scene is rotated (around the cells' bbox
+			 *  centre at render time). Default 0. */
+			rotation: number;
 	  };
 
 /** Exhaustiveness helper for `switch (scene.kind)` dispatch. */
