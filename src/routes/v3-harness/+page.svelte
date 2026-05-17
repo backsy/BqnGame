@@ -14,12 +14,11 @@
 	import type { History } from '$lib/v3/history';
 	import { emptyHistory, current, reset } from '$lib/v3/history';
 	import { bqnValueToScene } from '$lib/v3/layout';
-	import { flattenScene, formatAtomLabel } from '$lib/v3/render';
-	import type { RenderPrim } from '$lib/v3/render';
 	import type { Scene, ViewBox } from '$lib/v3/scene';
 	import { primitives } from '$lib/v3/primitives';
 	import type { RegisteredPrimitive } from '$lib/v3/primitives';
 	import { tween, linear } from '$lib/v3/tween';
+	import SceneNode from '$lib/v3/SceneNode.svelte';
 
 	type Starter = { label: string; source: string };
 
@@ -76,21 +75,6 @@
 
 	const SPEED_CHOICES: number[] = [0.25, 0.5, 1, 2];
 
-	// Rainbow palette indexed by rank. Cool → warm. Each frame draws
-	// stroke in its rank's colour and a faint fill tint of the same.
-	// Higher ranks than the table size clamp to the last entry.
-	const RANK_RGB: ReadonlyArray<string> = [
-		'168, 156, 247', // 0 — unit (lavender)
-		'90, 156, 247',  // 1 — list (blue)
-		'106, 247, 216', // 2 — table (cyan)
-		'95, 204, 95',   // 3 — green
-		'247, 225, 106', // 4 — yellow
-		'247, 168, 106', // 5 — orange
-		'247, 106, 106', // 6 — red
-	];
-	const rankRgb = (r: number): string =>
-		RANK_RGB[Math.max(0, Math.min(r, RANK_RGB.length - 1))];
-
 	// ── Reactive state ────────────────────────────────────────────────────────
 	let selectedStarterIdx = 0;
 	let playing = false;
@@ -107,14 +91,6 @@
 	// The scene the renderer reads. displayScene wins when present;
 	// otherwise it derives from history.cursor.
 	$: scene = displayScene ?? current(history)?.scene ?? null;
-	$: prims = (scene ? flattenScene(scene) : []) satisfies RenderPrim[];
-	// Whole-scene rotation comes from scene.rotation (array variant only).
-	// The outer group rotates by this angle around the cells' bbox centre;
-	// each bar is wrapped in a counter-rotation so its content stays upright.
-	$: frameRotation = scene && scene.kind === 'array' ? scene.rotation : 0;
-	$: outerFramePrim = prims.find((p) => p.kind === 'frame');
-	$: frameCx = outerFramePrim ? outerFramePrim.x + outerFramePrim.w / 2 : VB_W / 2;
-	$: frameCy = outerFramePrim ? outerFramePrim.y + outerFramePrim.h / 2 : VB_H / 2;
 
 	let familyOpen: Record<Family, boolean> = {
 		primitives: true,
@@ -254,51 +230,9 @@
 			role="img"
 			aria-label="animation window"
 		>
-			<g transform="rotate({frameRotation} {frameCx} {frameCy})">
-				{#each prims as p, i (i)}
-					{#if p.kind === 'frame'}
-						<!-- Array outline. Stroke only, in this rank's
-						     rainbow colour (cool→warm by rank). -->
-						{@const rgb = rankRgb(p.rank)}
-						<rect
-							x={p.x}
-							y={p.y}
-							width={p.w}
-							height={p.h}
-							rx="3"
-							ry="3"
-							fill="none"
-							stroke="rgba({rgb}, 0.85)"
-							stroke-width="1.5"
-						/>
-					{:else if p.kind === 'bar'}
-						<!-- Bars are counter-rotated around their own centre so
-						     contents stay upright even when the outer group is
-						     rotated. -->
-						<g transform="rotate({-frameRotation} {p.x + p.w / 2} {p.y + p.h / 2})">
-							<rect
-								x={p.x}
-								y={p.y}
-								width={p.w}
-								height={p.h}
-								rx="3"
-								ry="3"
-								fill={p.value < 0 ? '#f76a6a' : '#7c6af7'}
-							/>
-							<text
-								x={p.x + p.w / 2}
-								y={p.value < 0 ? p.y + p.h - 16 : p.y + 4}
-								text-anchor="middle"
-								dominant-baseline="hanging"
-								font-family="system-ui, -apple-system, sans-serif"
-								font-size="12"
-								font-weight="600"
-								fill="#f0fff0"
-							>{formatAtomLabel(p.value)}</text>
-						</g>
-					{/if}
-				{/each}
-			</g>
+			{#if scene}
+				<SceneNode {scene} />
+			{/if}
 		</svg>
 	</div>
 

@@ -1,22 +1,23 @@
-// v3 render helper — flatten a Scene into a list of SVG primitive
-// descriptions ready for the harness <svg> loop. Pure walk: no DOM,
-// no clock, no allocation surprises.
+// v3 render helpers.
 //
-// Two primitive kinds today:
-//   - `frame`  — an outline rect for an array (rank ≥ 0). `rank0=true`
-//                marks rank-0 boxes so the renderer can apply the glow
-//                filter. Same data, no extra fields, the renderer reads
-//                rank0 to pick the styling.
-//   - `bar`    — a colored rect + numeric label for an atom cell.
-//
-// More primitive kinds get added as new shape variants land.
+// The harness uses a recursive SceneNode.svelte component to walk the
+// Scene tree directly — no flat flatten pass. This module just exposes
+// shared utilities: the rank colour palette, atom-label formatting.
 
-import { PADDING } from './layout';
-import type { Cell, Scene } from './scene';
+// ── Rainbow palette indexed by rank (cool → warm) ──────────────────────────
+export const RANK_RGB: ReadonlyArray<string> = [
+	'168, 156, 247', // 0 — unit (lavender)
+	'90, 156, 247',  // 1 — list (blue)
+	'106, 247, 216', // 2 — table (cyan)
+	'95, 204, 95',   // 3 — green
+	'247, 225, 106', // 4 — yellow
+	'247, 168, 106', // 5 — orange
+	'247, 106, 106', // 6+ — red (clamp)
+];
 
-export type RenderPrim =
-	| { kind: 'frame'; x: number; y: number; w: number; h: number; rank: number }
-	| { kind: 'bar'; x: number; y: number; w: number; h: number; value: number };
+export function rankRgb(rank: number): string {
+	return RANK_RGB[Math.max(0, Math.min(rank, RANK_RGB.length - 1))];
+}
 
 // ── formatAtomLabel ──────────────────────────────────────────────────────
 // Display an atom value as BQN-form text.
@@ -55,87 +56,4 @@ export function formatAtomLabel(value: number): string {
 		}
 	}
 	return sign + abs.toString();
-}
-
-export function flattenScene(scene: Scene): RenderPrim[] {
-	const out: RenderPrim[] = [];
-	walkScene(scene, out);
-	return out;
-}
-
-function walkScene(scene: Scene, out: RenderPrim[]): void {
-	if (scene.kind === 'atom') {
-		walkCell(scene.atom, out);
-		return;
-	}
-	if (scene.shape.length === 2) {
-		// Mat = array of rows. Emit outer rank-2 frame, then per-row
-		// rank-1 frames, then the cells themselves.
-		const [R, C] = scene.shape;
-		const all = bboxOfCells(scene.cells);
-		out.push({
-			kind: 'frame',
-			x: all.x - 2 * PADDING,
-			y: all.y - 2 * PADDING,
-			w: all.w + 4 * PADDING,
-			h: all.h + 4 * PADDING,
-			rank: 2,
-		});
-		for (let r = 0; r < R; r++) {
-			const rowCells = scene.cells.slice(r * C, (r + 1) * C);
-			const rb = bboxOfCells(rowCells);
-			out.push({
-				kind: 'frame',
-				x: rb.x - PADDING,
-				y: rb.y - PADDING,
-				w: rb.w + 2 * PADDING,
-				h: rb.h + 2 * PADDING,
-				rank: 1,
-			});
-		}
-		for (const cell of scene.cells) walkCell(cell, out);
-		return;
-	}
-	// Other ranks: single frame around the cells. Rank = shape.length.
-	const bbox = bboxOfCells(scene.cells);
-	out.push({
-		kind: 'frame',
-		x: bbox.x - PADDING,
-		y: bbox.y - PADDING,
-		w: bbox.w + 2 * PADDING,
-		h: bbox.h + 2 * PADDING,
-		rank: scene.shape.length,
-	});
-	for (const cell of scene.cells) walkCell(cell, out);
-}
-
-function walkCell(cell: Cell, out: RenderPrim[]): void {
-	if (cell.inner === null) {
-		out.push({
-			kind: 'bar',
-			x: cell.x,
-			y: cell.y,
-			w: cell.w,
-			h: cell.h,
-			value: cell.value,
-		});
-		return;
-	}
-	walkScene(cell.inner, out);
-}
-
-function bboxOfCells(
-	cells: Cell[],
-): { x: number; y: number; w: number; h: number } {
-	let minX = Infinity;
-	let minY = Infinity;
-	let maxX = -Infinity;
-	let maxY = -Infinity;
-	for (const c of cells) {
-		if (c.x < minX) minX = c.x;
-		if (c.y < minY) minY = c.y;
-		if (c.x + c.w > maxX) maxX = c.x + c.w;
-		if (c.y + c.h > maxY) maxY = c.y + c.h;
-	}
-	return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }

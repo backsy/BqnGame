@@ -207,10 +207,11 @@ function layoutArray(
 			cursorX += c.width + GAP;
 		}
 	} else if (v.shape.length === 2) {
-		// rank-2: each row is treated like its own vec — gets its own
-		// frame at render time. Cells inside a row sit inside that row's
-		// frame's padding. Row baselines stack with PADDING above & below
-		// each row's content + GAP between row frames.
+		// rank-2: each row is its own rank-1 sub-Scene wrapped in a
+		// wrapper cell. The outer table holds R wrapper cells (one per
+		// row); each wrapper's `inner` is a vec Scene with C atomic cells.
+		// This tree shape is what lets rotate target the whole table or
+		// a single row — major-cell ops act on the topmost layer only.
 		const [R, C] = v.shape;
 		const rowAbove: number[] = [];
 		const rowBelow: number[] = [];
@@ -228,18 +229,16 @@ function layoutArray(
 		const rowBaseline: number[] = new Array(R);
 		rowBaseline[R - 1] = baselineY;
 		for (let r = R - 2; r >= 0; r--) {
-			// row r baseline = row r+1's frame-top y - GAP - row r's
-			//                  PADDING (frame-bottom inside) - row r below
 			rowBaseline[r] =
 				rowBaseline[r + 1]
-				- rowAbove[r + 1] - PADDING   // up to row r+1's frame top
-				- GAP                          // gap between row frames
-				- PADDING                      // down through row r's frame bottom padding
-				- rowBelow[r];                 // to row r's baseline
+				- rowAbove[r + 1] - PADDING
+				- GAP
+				- PADDING
+				- rowBelow[r];
 		}
 		for (let r = 0; r < R; r++) {
-			// Cells in a row sit inside both the outer frame's PADDING
-			// (contentX is outer-frame.left) AND the row frame's PADDING.
+			// Build the row's atomic (or nested) cells.
+			const rowCells: Cell[] = [];
 			let cursorX = contentX + 2 * PADDING;
 			const rb = rowBaseline[r];
 			for (let cc = 0; cc < C; cc++) {
@@ -248,7 +247,7 @@ function layoutArray(
 				const cellPath = `${idPath}.${r}.${cc}`;
 				if (inner.kind === 'number') {
 					const h = barHeight(inner.value);
-					cells.push({
+					rowCells.push({
 						id: cellPath,
 						x: cursorX,
 						y: inner.value < 0 ? rb : rb - h,
@@ -265,7 +264,7 @@ function layoutArray(
 						rb,
 						viewBox,
 					);
-					cells.push({
+					rowCells.push({
 						id: cellPath,
 						x: cursorX,
 						y: rb - d.above,
@@ -277,6 +276,35 @@ function layoutArray(
 				}
 				cursorX += d.width + GAP;
 			}
+			// Wrap the row as a rank-1 sub-Scene; the outer table cell
+			// holds this sub-Scene as its `inner`.
+			const rowScene: Scene = {
+				kind: 'array',
+				viewBox,
+				shape: [C],
+				cells: rowCells,
+				rotation: 0,
+			};
+			// Wrapper cell rect = the row's frame (cells bbox + PADDING).
+			let minX = Infinity;
+			let minY = Infinity;
+			let maxX = -Infinity;
+			let maxY = -Infinity;
+			for (const rc of rowCells) {
+				if (rc.x < minX) minX = rc.x;
+				if (rc.y < minY) minY = rc.y;
+				if (rc.x + rc.w > maxX) maxX = rc.x + rc.w;
+				if (rc.y + rc.h > maxY) maxY = rc.y + rc.h;
+			}
+			cells.push({
+				id: `${idPath}.${r}`,
+				x: minX - PADDING,
+				y: minY - PADDING,
+				w: maxX - minX + 2 * PADDING,
+				h: maxY - minY + 2 * PADDING,
+				value: 0,
+				inner: rowScene,
+			});
 		}
 	} else {
 		throw new Error(`rank ${v.shape.length} layout not yet implemented`);
