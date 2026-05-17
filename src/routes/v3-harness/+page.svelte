@@ -257,8 +257,8 @@
 			<g transform="rotate({frameRotation} {frameCx} {frameCy})">
 				{#each prims as p, i (i)}
 					{#if p.kind === 'frame'}
-						<!-- Array outline. Stroke + faint fill tint in this
-						     rank's rainbow colour (cool→warm by rank). -->
+						<!-- Array outline. Stroke only, in this rank's
+						     rainbow colour (cool→warm by rank). -->
 						{@const rgb = rankRgb(p.rank)}
 						<rect
 							x={p.x}
@@ -267,7 +267,7 @@
 							height={p.h}
 							rx="3"
 							ry="3"
-							fill="rgba({rgb}, 0.10)"
+							fill="none"
 							stroke="rgba({rgb}, 0.85)"
 							stroke-width="1.5"
 						/>
