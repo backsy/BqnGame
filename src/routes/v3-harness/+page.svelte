@@ -16,7 +16,10 @@
 	import { bqnValueToScene } from '$lib/v3/layout';
 	import { flattenScene, formatAtomLabel } from '$lib/v3/render';
 	import type { RenderPrim } from '$lib/v3/render';
-	import type { ViewBox } from '$lib/v3/scene';
+	import type { Scene, ViewBox } from '$lib/v3/scene';
+	import { primitives } from '$lib/v3/primitives';
+	import type { RegisteredPrimitive } from '$lib/v3/primitives';
+	import { tween, linear } from '$lib/v3/tween';
 
 	type Starter = { label: string; source: string };
 
@@ -81,10 +84,14 @@
 	let speed = 1;
 	let worker: BqnWorkerClient | null = null;
 	let history: History = emptyHistory();
-	// The scene is a pure derivation of history.cursor; no other state
-	// feeds rendering. flattenScene then turns it into a flat list of
-	// SVG primitive descriptions the template loop draws.
-	$: scene = current(history)?.scene ?? null;
+	// A primitive-preview overrides the history-derived scene while it's
+	// playing and afterwards (until the user picks another starter). This
+	// stays out of history — per CLAUDE.md, primitives don't enter it.
+	let displayScene: Scene | null = null;
+	let primitiveBusy = false;
+	// The scene the renderer reads. displayScene wins when present;
+	// otherwise it derives from history.cursor.
+	$: scene = displayScene ?? current(history)?.scene ?? null;
 	$: prims = (scene ? flattenScene(scene) : []) satisfies RenderPrim[];
 
 	let familyOpen: Record<Family, boolean> = {
@@ -117,6 +124,9 @@
 	async function mountStarter(idx: number): Promise<void> {
 		selectedStarterIdx = idx;
 		statusMsg = '';
+		// Clicking a starter resets any in-flight primitive preview — the
+		// user is back to the history-derived scene.
+		displayScene = null;
 		if (!worker) return;
 		busy = true;
 		try {
@@ -130,6 +140,39 @@
 			statusMsg = `error: ${msg}`;
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function playPrimitive(p: RegisteredPrimitive): Promise<void> {
+		if (primitiveBusy) return;
+		const startScene = scene;
+		if (!startScene) return;
+		primitiveBusy = true;
+		statusMsg = '';
+		try {
+			const result = p.apply(startScene, p.defaultParams);
+			const totalMs = 1000 / speed;
+			const segments = Math.max(1, result.snapshots.length - 1);
+			const segmentMs = totalMs / segments;
+			// Tween each adjacent pair so the polyline approximates the arc
+			// the primitive's snapshots trace. Linear easing inside each
+			// segment so segments join smoothly.
+			for (let i = 0; i < segments; i++) {
+				await tween({
+					from: result.snapshots[i],
+					to: result.snapshots[i + 1],
+					durationMs: segmentMs,
+					easing: linear,
+					onFrame: (s) => {
+						displayScene = s;
+					},
+				}).promise;
+			}
+			displayScene = result.toScene;
+		} catch (e) {
+			statusMsg = `primitive error: ${e instanceof Error ? e.message : String(e)}`;
+		} finally {
+			primitiveBusy = false;
 		}
 	}
 
@@ -237,6 +280,24 @@
 	{#if statusMsg}
 		<p style="font-size:0.8rem;color:#f7a86a;margin-bottom:0.8rem;">{statusMsg}</p>
 	{/if}
+
+	<!-- Primitives panel — playable visual atoms. Each button runs its
+	     primitive against the current scene; the preview stays visible
+	     until the user picks another starter or hits Reset. -->
+	<section style="margin-bottom:0.8rem;">
+		<div style="font-size:0.75rem;color:#9af7c2;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Primitives</div>
+		<div style="display:flex;flex-wrap:wrap;gap:6px;">
+			{#each primitives as p}
+				<button
+					on:click={() => playPrimitive(p)}
+					disabled={primitiveBusy || busy}
+					style="padding:0.35rem 0.7rem;font-size:0.85rem;background:#1a1a2e;color:#9af7c2;border:1px solid #9af7c2;border-radius:5px;cursor:pointer;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
+				>
+					{p.name}
+				</button>
+			{/each}
+		</div>
+	</section>
 
 	<!-- Op picker — families present, op buttons grow in as animations are wired. -->
 	{#each FAMILIES as fam}

@@ -42,5 +42,14 @@ export type RegisteredPrimitive = {
 	defaultParams: unknown;
 };
 
-/** Global registry. Empty until the user spec's the first primitive. */
-export const primitives: RegisteredPrimitive[] = [];
+import { rotate } from './rotate';
+import type { RotateParams } from './rotate';
+
+/** Registered primitives. Each lands as the user specs its visual. */
+export const primitives: RegisteredPrimitive[] = [
+	{
+		name: 'rotate 180°',
+		apply: (fromScene, params) => rotate(fromScene, params as RotateParams),
+		defaultParams: { degrees: 180 } as RotateParams,
+	},
+];
