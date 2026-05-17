@@ -42,7 +42,11 @@ type ValueDims = { width: number; above: number; below: number };
 
 function valueDims(v: BqnStructuredValue): ValueDims {
 	if (v.kind === 'number') {
-		return { width: BAR_WIDTH, above: barHeight(v.value), below: 0 };
+		const h = barHeight(v.value);
+		// Positive bars grow up from the baseline; negative bars grow down.
+		return v.value < 0
+			? { width: BAR_WIDTH, above: 0, below: h }
+			: { width: BAR_WIDTH, above: h, below: 0 };
 	}
 	if (v.kind === 'array') {
 		const child = v.data.map(valueDims);
@@ -66,36 +70,38 @@ function valueDims(v: BqnStructuredValue): ValueDims {
 			};
 		}
 		if (v.shape.length === 2) {
-			// Each row of the mat is treated like a vec: cells bottom-aligned
-			// to that row's baseline, varying heights stick up above. Rows
-			// stack vertically with GAP between. The anchor baseline of the
-			// whole mat is the bottom row's baseline; everything above is
-			// "above," and only the bottom row's `below` contributes to
-			// matBelow.
+			// Mat = array of rows. Each row is treated like a vec with its
+			// OWN frame; the mat then has a second outer frame around the
+			// row frames. So a mat has 1 (outer) + R (per-row) frames,
+			// matching the visual of "array of arrays." Widths and heights
+			// are computed with all PADDING + GAP contributions counted.
 			const [R, C] = v.shape;
-			let maxRowWidth = 0;
-			let total = 0;
-			let bottomBelow = 0;
+			let maxRowFrameW = 0;
+			let totalRowFramesH = 0;
+			let bottomRowBelow = 0;
 			for (let r = 0; r < R; r++) {
-				let rowW = 0;
+				let rowInnerW = 0;
 				let rowAbove = 0;
 				let rowBelow = 0;
 				for (let c = 0; c < C; c++) {
 					const d = child[r * C + c];
-					rowW += d.width;
+					rowInnerW += d.width;
 					if (d.above > rowAbove) rowAbove = d.above;
 					if (d.below > rowBelow) rowBelow = d.below;
 				}
-				rowW += Math.max(0, C - 1) * GAP;
-				if (rowW > maxRowWidth) maxRowWidth = rowW;
-				total += rowAbove + rowBelow;
-				if (r === R - 1) bottomBelow = rowBelow;
+				rowInnerW += Math.max(0, C - 1) * GAP;
+				const rowFrameW = rowInnerW + 2 * PADDING;
+				const rowFrameH = rowAbove + rowBelow + 2 * PADDING;
+				if (rowFrameW > maxRowFrameW) maxRowFrameW = rowFrameW;
+				totalRowFramesH += rowFrameH;
+				if (r === R - 1) bottomRowBelow = rowBelow;
 			}
-			total += Math.max(0, R - 1) * GAP;
+			totalRowFramesH += Math.max(0, R - 1) * GAP;
+			const bottomRowFrameBelow = bottomRowBelow + PADDING;
 			return {
-				width: maxRowWidth + 2 * PADDING,
-				above: total - bottomBelow + PADDING,
-				below: bottomBelow + PADDING,
+				width: maxRowFrameW + 2 * PADDING,
+				above: totalRowFramesH - bottomRowFrameBelow + PADDING,
+				below: bottomRowFrameBelow + PADDING,
 			};
 		}
 		throw new Error(`rank ${v.shape.length} layout not yet implemented`);
@@ -115,12 +121,13 @@ function layoutValue(
 	viewBox: ViewBox,
 ): Scene {
 	if (v.kind === 'number') {
+		const h = barHeight(v.value);
 		const cell: Cell = {
 			id: idPath,
 			x: contentX,
-			y: baselineY - barHeight(v.value),
+			y: v.value < 0 ? baselineY : baselineY - h,
 			w: BAR_WIDTH,
-			h: barHeight(v.value),
+			h,
 			value: v.value,
 			inner: null,
 		};
@@ -169,12 +176,13 @@ function layoutArray(
 			const c = child[i];
 			const cellPath = `${idPath}.${i}`;
 			if (inner.kind === 'number') {
+				const h = barHeight(inner.value);
 				cells.push({
 					id: cellPath,
 					x: cursorX,
-					y: baselineY - barHeight(inner.value),
+					y: inner.value < 0 ? baselineY : baselineY - h,
 					w: BAR_WIDTH,
-					h: barHeight(inner.value),
+					h,
 					value: inner.value,
 					inner: null,
 				});
@@ -199,12 +207,11 @@ function layoutArray(
 			cursorX += c.width + GAP;
 		}
 	} else if (v.shape.length === 2) {
-		// rank-2: rows stack vertically, each row is a vec-style line of
-		// cells anchored to that row's own baseline. Bottom row's baseline
-		// is `baselineY` (the caller's anchor). Higher rows are computed
-		// going upward.
+		// rank-2: each row is treated like its own vec — gets its own
+		// frame at render time. Cells inside a row sit inside that row's
+		// frame's padding. Row baselines stack with PADDING above & below
+		// each row's content + GAP between row frames.
 		const [R, C] = v.shape;
-		// Pre-compute per-row dims so row baselines stack correctly.
 		const rowAbove: number[] = [];
 		const rowBelow: number[] = [];
 		for (let r = 0; r < R; r++) {
@@ -221,25 +228,32 @@ function layoutArray(
 		const rowBaseline: number[] = new Array(R);
 		rowBaseline[R - 1] = baselineY;
 		for (let r = R - 2; r >= 0; r--) {
-			// row r baseline = row r+1 top - GAP - row r below
-			//              = (row r+1 baseline - row r+1 above) - GAP - row r below
+			// row r baseline = row r+1's frame-top y - GAP - row r's
+			//                  PADDING (frame-bottom inside) - row r below
 			rowBaseline[r] =
-				rowBaseline[r + 1] - rowAbove[r + 1] - GAP - rowBelow[r];
+				rowBaseline[r + 1]
+				- rowAbove[r + 1] - PADDING   // up to row r+1's frame top
+				- GAP                          // gap between row frames
+				- PADDING                      // down through row r's frame bottom padding
+				- rowBelow[r];                 // to row r's baseline
 		}
 		for (let r = 0; r < R; r++) {
-			let cursorX = contentX + PADDING;
+			// Cells in a row sit inside both the outer frame's PADDING
+			// (contentX is outer-frame.left) AND the row frame's PADDING.
+			let cursorX = contentX + 2 * PADDING;
 			const rb = rowBaseline[r];
 			for (let cc = 0; cc < C; cc++) {
 				const inner = v.data[r * C + cc];
 				const d = child[r * C + cc];
 				const cellPath = `${idPath}.${r}.${cc}`;
 				if (inner.kind === 'number') {
+					const h = barHeight(inner.value);
 					cells.push({
 						id: cellPath,
 						x: cursorX,
-						y: rb - barHeight(inner.value),
+						y: inner.value < 0 ? rb : rb - h,
 						w: BAR_WIDTH,
-						h: barHeight(inner.value),
+						h,
 						value: inner.value,
 						inner: null,
 					});

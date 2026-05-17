@@ -216,9 +216,11 @@
 						ry="3"
 						fill={p.value < 0 ? '#f76a6a' : '#7c6af7'}
 					/>
+					<!-- Label sits at the "tip" of the bar (the end away from the
+					     baseline): top for positive bars, bottom for negative. -->
 					<text
 						x={p.x + p.w / 2}
-						y={p.y + 4}
+						y={p.value < 0 ? p.y + p.h - 16 : p.y + 4}
 						text-anchor="middle"
 						dominant-baseline="hanging"
 						font-family="system-ui, -apple-system, sans-serif"

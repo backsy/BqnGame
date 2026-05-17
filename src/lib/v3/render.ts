@@ -29,7 +29,36 @@ function walkScene(scene: Scene, out: RenderPrim[]): void {
 		walkCell(scene.atom, out);
 		return;
 	}
-	// kind === 'array' — emit the frame around the cells, then recurse.
+	if (scene.shape.length === 2) {
+		// Mat = array of rows. Emit outer frame (2×PADDING beyond cells:
+		// once for the row frame, once for the outer), then per-row
+		// frames, then the cells themselves.
+		const [R, C] = scene.shape;
+		const all = bboxOfCells(scene.cells);
+		out.push({
+			kind: 'frame',
+			x: all.x - 2 * PADDING,
+			y: all.y - 2 * PADDING,
+			w: all.w + 4 * PADDING,
+			h: all.h + 4 * PADDING,
+			rank0: false,
+		});
+		for (let r = 0; r < R; r++) {
+			const rowCells = scene.cells.slice(r * C, (r + 1) * C);
+			const rb = bboxOfCells(rowCells);
+			out.push({
+				kind: 'frame',
+				x: rb.x - PADDING,
+				y: rb.y - PADDING,
+				w: rb.w + 2 * PADDING,
+				h: rb.h + 2 * PADDING,
+				rank0: false,
+			});
+		}
+		for (const cell of scene.cells) walkCell(cell, out);
+		return;
+	}
+	// rank 0 or 1: single frame around the cells.
 	const bbox = bboxOfCells(scene.cells);
 	out.push({
 		kind: 'frame',
