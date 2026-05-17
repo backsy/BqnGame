@@ -185,24 +185,12 @@
 			role="img"
 			aria-label="animation window"
 		>
-			<defs>
-				<!-- Rank-0 box glow. Lavender accent, subtle blur.
-				     Only frames with rank0=true wear it. -->
-				<filter id="v3-rank0-glow" x="-50%" y="-50%" width="200%" height="200%">
-					<feDropShadow
-						dx="0"
-						dy="0"
-						stdDeviation="3"
-						flood-color="#a89cf7"
-						flood-opacity="0.6"
-					/>
-				</filter>
-			</defs>
-
 			{#each prims as p, i (i)}
 				{#if p.kind === 'frame'}
-					<!-- Array outline. rank-0 adds the glow filter; all other
-					     ranks share the same neutral stroke. -->
+					<!-- Array outline. Rank-0 boxes get a thicker, more
+					     saturated stroke plus a faint lavender fill tint so
+					     they read distinctly at a glance against plain
+					     (rank ≥ 1) array outlines. -->
 					<rect
 						x={p.x}
 						y={p.y}
@@ -210,10 +198,9 @@
 						height={p.h}
 						rx="3"
 						ry="3"
-						fill="none"
-						stroke="rgba(140, 140, 200, 0.4)"
-						stroke-width="1"
-						filter={p.rank0 ? 'url(#v3-rank0-glow)' : null}
+						fill={p.rank0 ? 'rgba(168, 156, 247, 0.10)' : 'none'}
+						stroke={p.rank0 ? 'rgba(168, 156, 247, 0.85)' : 'rgba(140, 140, 200, 0.4)'}
+						stroke-width={p.rank0 ? 2 : 1}
 					/>
 				{:else if p.kind === 'bar'}
 					<!-- Atom cell: colored rect by sign + numeric label. -->
