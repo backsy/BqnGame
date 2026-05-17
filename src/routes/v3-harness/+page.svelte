@@ -14,6 +14,8 @@
 	import type { History } from '$lib/v3/history';
 	import { emptyHistory, current, reset } from '$lib/v3/history';
 	import { bqnValueToScene } from '$lib/v3/layout';
+	import { flattenScene } from '$lib/v3/render';
+	import type { RenderPrim } from '$lib/v3/render';
 	import type { ViewBox } from '$lib/v3/scene';
 
 	type Starter = { label: string; source: string };
@@ -36,16 +38,19 @@
 	const VB_H = 220;
 	const VIEW_BOX: ViewBox = { x: 0, y: 0, w: VB_W, h: VB_H };
 
-	// Scalar starters. Each is a real BQN source the worker evaluates.
-	// `¯` (U+00AF) is BQN's negative sign — not the ASCII minus.
+	// Real BQN literals. `¯` (U+00AF) is BQN's negative-number prefix;
+	// `<` is Enclose (rank-0 box around the next value); `‿` (U+203F) is
+	// stranding (list literal). Labels = source so the button reads as
+	// real BQN.
 	const STARTERS: Starter[] = [
-		{ label: '3',  source: '3' },
-		{ label: '5',  source: '5' },
-		{ label: '8',  source: '8' },
-		{ label: '12', source: '12' },
-		{ label: '¯3', source: '¯3' },
-		{ label: '¯7', source: '¯7' },
-		{ label: '0',  source: '0' },
+		{ label: '3',          source: '3' },
+		{ label: '¯3',         source: '¯3' },
+		{ label: '8',          source: '8' },
+		{ label: '<5',         source: '<5' },
+		{ label: '<<5',        source: '<<5' },
+		{ label: '3‿1‿4‿1‿5', source: '3‿1‿4‿1‿5' },
+		{ label: '¯3‿1‿¯2‿4', source: '¯3‿1‿¯2‿4' },
+		{ label: '<3‿1‿4',    source: '<3‿1‿4' },
 	];
 
 	const FAMILIES: Array<{ key: Family; label: string; color: string; btnColor: string }> = [
@@ -73,9 +78,10 @@
 	let worker: BqnWorkerClient | null = null;
 	let history: History = emptyHistory();
 	// The scene is a pure derivation of history.cursor; no other state
-	// feeds rendering. `current(history)?.scene` is the single input the
-	// SVG template reads from.
+	// feeds rendering. flattenScene then turns it into a flat list of
+	// SVG primitive descriptions the template loop draws.
 	$: scene = current(history)?.scene ?? null;
+	$: prims = (scene ? flattenScene(scene) : []) satisfies RenderPrim[];
 
 	let familyOpen: Record<Family, boolean> = {
 		primitives: true,
@@ -179,30 +185,59 @@
 			role="img"
 			aria-label="animation window"
 		>
-			{#if scene && scene.kind === 'atom'}
-				{@const c = scene.atom}
-				<!-- Scalar = upright rectangle, height encodes |value|, colour
-				     by sign. Matches v2-harness makeBar 1:1. -->
-				<rect
-					x={c.x}
-					y={c.y}
-					width={c.w}
-					height={c.h}
-					rx="3"
-					ry="3"
-					fill={c.value < 0 ? '#f76a6a' : '#7c6af7'}
-				/>
-				<text
-					x={c.x + c.w / 2}
-					y={c.y + 4}
-					text-anchor="middle"
-					dominant-baseline="hanging"
-					font-family="system-ui, -apple-system, sans-serif"
-					font-size="12"
-					font-weight="600"
-					fill="#f0fff0"
-				>{c.value}</text>
-			{/if}
+			<defs>
+				<!-- Rank-0 box glow. Lavender accent, subtle blur.
+				     Only frames with rank0=true wear it. -->
+				<filter id="v3-rank0-glow" x="-50%" y="-50%" width="200%" height="200%">
+					<feDropShadow
+						dx="0"
+						dy="0"
+						stdDeviation="3"
+						flood-color="#a89cf7"
+						flood-opacity="0.6"
+					/>
+				</filter>
+			</defs>
+
+			{#each prims as p, i (i)}
+				{#if p.kind === 'frame'}
+					<!-- Array outline. rank-0 adds the glow filter; all other
+					     ranks share the same neutral stroke. -->
+					<rect
+						x={p.x}
+						y={p.y}
+						width={p.w}
+						height={p.h}
+						rx="3"
+						ry="3"
+						fill="none"
+						stroke="rgba(140, 140, 200, 0.4)"
+						stroke-width="1"
+						filter={p.rank0 ? 'url(#v3-rank0-glow)' : null}
+					/>
+				{:else if p.kind === 'bar'}
+					<!-- Atom cell: colored rect by sign + numeric label. -->
+					<rect
+						x={p.x}
+						y={p.y}
+						width={p.w}
+						height={p.h}
+						rx="3"
+						ry="3"
+						fill={p.value < 0 ? '#f76a6a' : '#7c6af7'}
+					/>
+					<text
+						x={p.x + p.w / 2}
+						y={p.y + 4}
+						text-anchor="middle"
+						dominant-baseline="hanging"
+						font-family="system-ui, -apple-system, sans-serif"
+						font-size="12"
+						font-weight="600"
+						fill="#f0fff0"
+					>{p.value < 0 ? '¯' + Math.abs(p.value) : p.value}</text>
+				{/if}
+			{/each}
 		</svg>
 	</div>
 
