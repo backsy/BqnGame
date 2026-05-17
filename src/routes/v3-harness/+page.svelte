@@ -43,14 +43,17 @@
 	// stranding (list literal). Labels = source so the button reads as
 	// real BQN.
 	const STARTERS: Starter[] = [
-		{ label: '3',          source: '3' },
-		{ label: '¯3',         source: '¯3' },
-		{ label: '8',          source: '8' },
-		{ label: '<5',         source: '<5' },
-		{ label: '<<5',        source: '<<5' },
-		{ label: '3‿1‿4‿1‿5', source: '3‿1‿4‿1‿5' },
-		{ label: '¯3‿1‿¯2‿4', source: '¯3‿1‿¯2‿4' },
-		{ label: '<3‿1‿4',    source: '<3‿1‿4' },
+		{ label: '3',                  source: '3' },
+		{ label: '¯3',                 source: '¯3' },
+		{ label: '8',                  source: '8' },
+		{ label: '<5',                 source: '<5' },
+		{ label: '<<5',                source: '<<5' },
+		{ label: '3‿1‿4‿1‿5',         source: '3‿1‿4‿1‿5' },
+		{ label: '¯3‿1‿¯2‿4',         source: '¯3‿1‿¯2‿4' },
+		{ label: '<3‿1‿4',            source: '<3‿1‿4' },
+		{ label: '2‿3⥊3‿1‿4‿1‿5‿9',  source: '2‿3⥊3‿1‿4‿1‿5‿9' },
+		{ label: '3‿3⥊↕9',            source: '3‿3⥊↕9' },
+		{ label: '<2‿2⥊3‿1‿4‿1',     source: '<2‿2⥊3‿1‿4‿1' },
 	];
 
 	const FAMILIES: Array<{ key: Family; label: string; color: string; btnColor: string }> = [

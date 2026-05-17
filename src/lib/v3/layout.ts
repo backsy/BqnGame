@@ -21,9 +21,10 @@ export const BAR_HEIGHT_MAX = 140;
 export const PADDING = 8;
 export const GAP = 4;
 
-// Top-level baseline (where bar bottoms sit) as a fraction of viewBox
-// height. ~82% down matches v2-harness's flex-end-with-padding feel.
-export const BASELINE_FRAC = 180 / 220;
+// Top-level value is centred vertically in the viewBox: its frame
+// (or just the bar for an atom) is positioned so its centre lands on
+// the viewBox's centre. baselineY is computed per-value from its
+// above/below dims; there's no fixed fraction.
 
 export function barHeight(value: number): number {
 	return Math.min(
@@ -62,6 +63,39 @@ function valueDims(v: BqnStructuredValue): ValueDims {
 				width: inner + 2 * PADDING,
 				above: maxAbove + PADDING,
 				below: maxBelow + PADDING,
+			};
+		}
+		if (v.shape.length === 2) {
+			// Each row of the mat is treated like a vec: cells bottom-aligned
+			// to that row's baseline, varying heights stick up above. Rows
+			// stack vertically with GAP between. The anchor baseline of the
+			// whole mat is the bottom row's baseline; everything above is
+			// "above," and only the bottom row's `below` contributes to
+			// matBelow.
+			const [R, C] = v.shape;
+			let maxRowWidth = 0;
+			let total = 0;
+			let bottomBelow = 0;
+			for (let r = 0; r < R; r++) {
+				let rowW = 0;
+				let rowAbove = 0;
+				let rowBelow = 0;
+				for (let c = 0; c < C; c++) {
+					const d = child[r * C + c];
+					rowW += d.width;
+					if (d.above > rowAbove) rowAbove = d.above;
+					if (d.below > rowBelow) rowBelow = d.below;
+				}
+				rowW += Math.max(0, C - 1) * GAP;
+				if (rowW > maxRowWidth) maxRowWidth = rowW;
+				total += rowAbove + rowBelow;
+				if (r === R - 1) bottomBelow = rowBelow;
+			}
+			total += Math.max(0, R - 1) * GAP;
+			return {
+				width: maxRowWidth + 2 * PADDING,
+				above: total - bottomBelow + PADDING,
+				below: bottomBelow + PADDING,
 			};
 		}
 		throw new Error(`rank ${v.shape.length} layout not yet implemented`);
@@ -164,6 +198,72 @@ function layoutArray(
 			}
 			cursorX += c.width + GAP;
 		}
+	} else if (v.shape.length === 2) {
+		// rank-2: rows stack vertically, each row is a vec-style line of
+		// cells anchored to that row's own baseline. Bottom row's baseline
+		// is `baselineY` (the caller's anchor). Higher rows are computed
+		// going upward.
+		const [R, C] = v.shape;
+		// Pre-compute per-row dims so row baselines stack correctly.
+		const rowAbove: number[] = [];
+		const rowBelow: number[] = [];
+		for (let r = 0; r < R; r++) {
+			let a = 0;
+			let b = 0;
+			for (let cc = 0; cc < C; cc++) {
+				const d = child[r * C + cc];
+				if (d.above > a) a = d.above;
+				if (d.below > b) b = d.below;
+			}
+			rowAbove.push(a);
+			rowBelow.push(b);
+		}
+		const rowBaseline: number[] = new Array(R);
+		rowBaseline[R - 1] = baselineY;
+		for (let r = R - 2; r >= 0; r--) {
+			// row r baseline = row r+1 top - GAP - row r below
+			//              = (row r+1 baseline - row r+1 above) - GAP - row r below
+			rowBaseline[r] =
+				rowBaseline[r + 1] - rowAbove[r + 1] - GAP - rowBelow[r];
+		}
+		for (let r = 0; r < R; r++) {
+			let cursorX = contentX + PADDING;
+			const rb = rowBaseline[r];
+			for (let cc = 0; cc < C; cc++) {
+				const inner = v.data[r * C + cc];
+				const d = child[r * C + cc];
+				const cellPath = `${idPath}.${r}.${cc}`;
+				if (inner.kind === 'number') {
+					cells.push({
+						id: cellPath,
+						x: cursorX,
+						y: rb - barHeight(inner.value),
+						w: BAR_WIDTH,
+						h: barHeight(inner.value),
+						value: inner.value,
+						inner: null,
+					});
+				} else {
+					const innerScene = layoutValue(
+						inner,
+						cellPath,
+						cursorX,
+						rb,
+						viewBox,
+					);
+					cells.push({
+						id: cellPath,
+						x: cursorX,
+						y: rb - d.above,
+						w: d.width,
+						h: d.above + d.below,
+						value: 0,
+						inner: innerScene,
+					});
+				}
+				cursorX += d.width + GAP;
+			}
+		}
 	} else {
 		throw new Error(`rank ${v.shape.length} layout not yet implemented`);
 	}
@@ -183,13 +283,14 @@ export function bqnValueToScene(
 		throw new Error(`bqnValueToScene: '${value.kind}' not implemented yet`);
 	}
 	const dims = valueDims(value);
-	const baselineY = viewBox.y + viewBox.h * BASELINE_FRAC;
-	// contentX = the value's bounding-box left edge. For an atom it IS
-	// bar.x; for an array it's frame.left. layoutValue's branches consume
-	// it consistently: atom uses it directly as cell.x; layoutArray adds
-	// PADDING when placing cells (so cells sit inside the frame). The
-	// uniform "subtract dims.width to centre" rule keeps the outermost
-	// rect centred in the viewBox in either case.
-	const contentX = viewBox.x + (viewBox.w - dims.width) / 2;
+	// Centre the outermost frame in the viewBox both ways. The frame's
+	// vertical extent runs from (baselineY - dims.above) to
+	// (baselineY + dims.below); its centre is baselineY + (below - above)/2.
+	// Setting baselineY = vbCy + (above - below)/2 makes the centre land on
+	// viewBox centre.
+	const vbCx = viewBox.x + viewBox.w / 2;
+	const vbCy = viewBox.y + viewBox.h / 2;
+	const contentX = vbCx - dims.width / 2;
+	const baselineY = vbCy + (dims.above - dims.below) / 2;
 	return layoutValue(value, 'root', contentX, baselineY, viewBox);
 }
