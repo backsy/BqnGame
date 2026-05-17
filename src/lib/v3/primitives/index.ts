@@ -44,6 +44,8 @@ export type RegisteredPrimitive = {
 
 import { rotate } from './rotate';
 import type { RotateParams } from './rotate';
+import { squeeze } from './squeeze';
+import type { SqueezeParams } from './squeeze';
 
 /** Registered primitives. Each lands as the user specs its visual. */
 export const primitives: RegisteredPrimitive[] = [
@@ -51,5 +53,10 @@ export const primitives: RegisteredPrimitive[] = [
 		name: 'rotate 180°',
 		apply: (fromScene, params) => rotate(fromScene, params as RotateParams),
 		defaultParams: { degrees: 180 } as RotateParams,
+	},
+	{
+		name: 'squeeze',
+		apply: (fromScene, params) => squeeze(fromScene, params as SqueezeParams),
+		defaultParams: {} as SqueezeParams,
 	},
 ];
