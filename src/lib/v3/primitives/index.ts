@@ -46,6 +46,8 @@ import { rotate } from './rotate';
 import type { RotateParams } from './rotate';
 import { squeeze } from './squeeze';
 import type { SqueezeParams } from './squeeze';
+import { unsqueeze } from './unsqueeze';
+import type { UnsqueezeParams } from './unsqueeze';
 
 /** Registered primitives. Each lands as the user specs its visual. */
 export const primitives: RegisteredPrimitive[] = [
@@ -58,5 +60,11 @@ export const primitives: RegisteredPrimitive[] = [
 		name: 'squeeze',
 		apply: (fromScene, params) => squeeze(fromScene, params as SqueezeParams),
 		defaultParams: {} as SqueezeParams,
+	},
+	{
+		name: 'unsqueeze',
+		apply: (fromScene, params) =>
+			unsqueeze(fromScene, params as UnsqueezeParams),
+		defaultParams: {} as UnsqueezeParams,
 	},
 ];
