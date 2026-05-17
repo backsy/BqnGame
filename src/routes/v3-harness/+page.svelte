@@ -46,6 +46,7 @@
 		{ label: '3',                  source: '3' },
 		{ label: '¯3',                 source: '¯3' },
 		{ label: '8',                  source: '8' },
+		{ label: '1÷2',                source: '1÷2' },
 		{ label: '<5',                 source: '<5' },
 		{ label: '<<5',                source: '<<5' },
 		{ label: '3‿1‿4‿1‿5',         source: '3‿1‿4‿1‿5' },
