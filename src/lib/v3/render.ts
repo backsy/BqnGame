@@ -18,6 +18,45 @@ export type RenderPrim =
 	| { kind: 'frame'; x: number; y: number; w: number; h: number; rank0: boolean }
 	| { kind: 'bar'; x: number; y: number; w: number; h: number; value: number };
 
+// ── formatAtomLabel ──────────────────────────────────────────────────────
+// Display an atom value as BQN-form text.
+//   • integers → `3`, `¯3`
+//   • non-integers → reduced fraction `n/d` (e.g. 0.5 → `1/2`, ¯0.333 → `¯1/3`)
+//   • non-finite values (Infinity, NaN) → their JS string
+// Non-integers that can't be matched to a fraction within a small
+// denominator fall back to the decimal string — covers irrationals etc.
+
+function gcd(a: number, b: number): number {
+	a = Math.abs(a);
+	b = Math.abs(b);
+	while (b !== 0) {
+		const t = b;
+		b = a % b;
+		a = t;
+	}
+	return a;
+}
+
+const FRACTION_MAX_DENOM = 100;
+const FRACTION_TOL = 1e-10;
+
+export function formatAtomLabel(value: number): string {
+	if (!Number.isFinite(value)) return String(value);
+	if (Number.isInteger(value)) {
+		return value < 0 ? '¯' + (-value) : String(value);
+	}
+	const sign = value < 0 ? '¯' : '';
+	const abs = Math.abs(value);
+	for (let d = 1; d <= FRACTION_MAX_DENOM; d++) {
+		const n = Math.round(abs * d);
+		if (n > 0 && Math.abs(abs - n / d) < FRACTION_TOL) {
+			const g = gcd(n, d);
+			return sign + (n / g) + '/' + (d / g);
+		}
+	}
+	return sign + abs.toString();
+}
+
 export function flattenScene(scene: Scene): RenderPrim[] {
 	const out: RenderPrim[] = [];
 	walkScene(scene, out);

@@ -14,7 +14,7 @@
 	import type { History } from '$lib/v3/history';
 	import { emptyHistory, current, reset } from '$lib/v3/history';
 	import { bqnValueToScene } from '$lib/v3/layout';
-	import { flattenScene } from '$lib/v3/render';
+	import { flattenScene, formatAtomLabel } from '$lib/v3/render';
 	import type { RenderPrim } from '$lib/v3/render';
 	import type { ViewBox } from '$lib/v3/scene';
 
@@ -227,7 +227,7 @@
 						font-size="12"
 						font-weight="600"
 						fill="#f0fff0"
-					>{p.value < 0 ? '¯' + Math.abs(p.value) : p.value}</text>
+					>{formatAtomLabel(p.value)}</text>
 				{/if}
 			{/each}
 		</svg>
