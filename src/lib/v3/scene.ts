@@ -14,6 +14,14 @@ export type ViewBox = {
 	h: number;
 };
 
+/** A plain axis-aligned rectangle in SVG coordinates. */
+export type Rect = {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+};
+
 /**
  * The atom values BQN supports as scalar contents. Numbers for now;
  * characters and strings widen this union when they land. The widening
@@ -39,6 +47,12 @@ export type Cell = {
 	h: number;
 	value: AtomValue;
 	inner: Scene | null;
+	/** Render dispatch. `'atom'` (default when omitted) renders the
+	 *  usual bar + label. `'ellipsis'` renders `…` standing in for
+	 *  elided cells in a long list; its `value` and `inner` are
+	 *  unused. Ellipsis cells are render-only — `sceneToBqnValue`
+	 *  throws on them because the elided data isn't recoverable. */
+	kind?: 'atom' | 'ellipsis';
 };
 
 /**
@@ -58,9 +72,12 @@ export type Scene =
 			viewBox: ViewBox;
 			shape: readonly number[];
 			cells: Cell[];
-			/** Degrees the whole scene is rotated (around the cells' bbox
-			 *  centre at render time). Default 0. */
-			rotation: number;
+			/** Explicit outline rect. Always stored as data — never
+			 *  auto-computed at render time. Layout sets it to
+			 *  bbox(cells) + PADDING; primitives change it deliberately
+			 *  (e.g. squeeze enlarges it to "set up a stage";
+			 *  unsqueeze shrinks it back to auto-fit). */
+			frame: Rect;
 	  };
 
 /** Exhaustiveness helper for `switch (scene.kind)` dispatch. */

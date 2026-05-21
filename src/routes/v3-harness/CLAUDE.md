@@ -210,6 +210,15 @@ one. Steps never paper over a gap with ad-hoc code.
     requires registering it with the harness's primitives panel so a
     developer can invoke it on the current Scene with no step or BQN
     context. Unplayable primitives are not allowed.
+15. **Vertical squeezes, horizontal ellipsizes.** Bars compress
+    uniformly when the budget tightens (every magnitude stays
+    visible). Cells/rows/columns do *not* compress — overflow on
+    the horizontal axis is handled by hiding the middle behind a
+    `…` (in a row) or `⋮` (between rows of a mat), capped at 3
+    head + 3 tail. No primitive may narrow `BAR_WIDTH`, and no
+    step may animate across an ellipsized vec (the hidden cells
+    aren't in the Scene). Full design grammar in
+    [`docs/decisions/006-vertical-squeeze-horizontal-ellipsis.md`](../../../docs/decisions/006-vertical-squeeze-horizontal-ellipsis.md).
 
 ## Determinism commitments
 

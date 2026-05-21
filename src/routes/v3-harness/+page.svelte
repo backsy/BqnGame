@@ -15,15 +15,13 @@
 	import { emptyHistory, current, reset } from '$lib/v3/history';
 	import { bqnValueToScene } from '$lib/v3/layout';
 	import type { Scene, ViewBox } from '$lib/v3/scene';
-	import { primitives } from '$lib/v3/primitives';
-	import type { RegisteredPrimitive } from '$lib/v3/primitives';
+	import { reverseAnimation } from '$lib/v3/steps/reverse';
 	import { tween, linear } from '$lib/v3/tween';
 	import SceneNode from '$lib/v3/SceneNode.svelte';
 
 	type Starter = { label: string; source: string };
 
 	type Family =
-		| 'primitives'
 		| 'lateral'
 		| 'vertical'
 		| 'sizing'
@@ -37,7 +35,7 @@
 	// Fixed viewBox for the SVG window. All cell coords are in these units;
 	// the browser scales to the wrapper's pixel size.
 	const VB_W = 400;
-	const VB_H = 220;
+	const VB_H = 280;
 	const VIEW_BOX: ViewBox = { x: 0, y: 0, w: VB_W, h: VB_H };
 
 	// Real BQN literals. `¯` (U+00AF) is BQN's negative-number prefix;
@@ -56,11 +54,24 @@
 		{ label: '<3‿1‿4',            source: '<3‿1‿4' },
 		{ label: '2‿3⥊3‿1‿4‿1‿5‿9',  source: '2‿3⥊3‿1‿4‿1‿5‿9' },
 		{ label: '3‿3⥊↕9',            source: '3‿3⥊↕9' },
+		{ label: '2‿10⥊↕20',          source: '2‿10⥊↕20' },
 		{ label: '<2‿2⥊3‿1‿4‿1',     source: '<2‿2⥊3‿1‿4‿1' },
+		{ label: '⟨3‿1, 4‿1‿5⟩',     source: '⟨3‿1, 4‿1‿5⟩' },
+		{ label: '⟨1‿2, 3‿4, 5‿6⟩',  source: '⟨1‿2, 3‿4, 5‿6⟩' },
+		// The 2×4 mat that motivated dynamic bar scaling. Keep as a
+		// rhythm check: 0s should look substantial, 8 shouldn't dominate.
+		{ label: '2‿4⥊0‿0‿¯1‿8‿5‿0‿¯6‿0', source: '2‿4⥊0‿0‿¯1‿8‿5‿0‿¯6‿0' },
+		// ── Ellipsis test cases ──────────────────────────────────────
+		// Each pushes a different axis past its budget so the fit-based
+		// ellipsis fires visibly. `↕N` is BQN's range 0..N-1.
+		{ label: '↕30',               source: '↕30' },              // rank-1 width: …
+		{ label: '15‿3⥊↕45',         source: '15‿3⥊↕45' },          // rank-2 many rows: ⋮
+		{ label: '2‿30⥊↕60',         source: '2‿30⥊↕60' },          // rank-2 wide rows: … per row
+		{ label: '⟨↕30, 1‿2‿3⟩',     source: '⟨↕30, 1‿2‿3⟩' },      // recursive: inner vec ellipsizes inside its share
+		{ label: '20‿15⥊↕300',       source: '20‿15⥊↕300' },        // both axes overflow: ⋮ + …
 	];
 
 	const FAMILIES: Array<{ key: Family; label: string; color: string; btnColor: string }> = [
-		{ key: 'primitives',   label: 'Primitives',   color: '#9af7c2', btnColor: '#e0ffe6' },
 		{ key: 'lateral',      label: 'Lateral',      color: '#7c6af7', btnColor: '#e0e0ff' },
 		{ key: 'vertical',     label: 'Vertical',     color: '#5fcc5f', btnColor: '#e0e0ff' },
 		{ key: 'sizing',       label: 'Sizing',       color: '#f7a86a', btnColor: '#e0e0ff' },
@@ -70,8 +81,11 @@
 		{ key: 'structural',   label: 'Structural',   color: '#f7e16a', btnColor: '#e0e0ff' },
 	];
 
-	// Empty: ops are added as their animations get wired.
-	const OPS: OpDesc[] = [];
+	// Ops are added as their animations get wired. Each `kind` corresponds
+	// to a self-contained step file under `$lib/v3/steps/`.
+	const OPS: OpDesc[] = [
+		{ label: '⌽', family: 'lateral', kind: 'reverse' },
+	];
 
 	const SPEED_CHOICES: number[] = [0.25, 0.5, 1, 2];
 
@@ -88,25 +102,36 @@
 	// stays out of history — per CLAUDE.md, primitives don't enter it.
 	let displayScene: Scene | null = null;
 	let primitiveBusy = false;
+	// Animation cancellation. `activeGen` is bumped any time a new
+	// starter is picked or a new animation begins; in-flight tween
+	// loops check their own captured generation against this and bail
+	// out (and stop writing `displayScene`) when stale. `activeCancel`
+	// resolves the current rAF tween early so we don't waste frames.
+	let activeGen = 0;
+	let activeCancel: (() => void) | null = null;
 	// The scene the renderer reads. displayScene wins when present;
 	// otherwise it derives from history.cursor.
 	$: scene = displayScene ?? current(history)?.scene ?? null;
+	// The BQN source string corresponding to the current history entry.
+	// Shown above the SVG so the player sees the expression that produced
+	// what they're looking at. Goes null when history is empty.
+	$: sourceLine = current(history)?.source ?? null;
 
 	let familyOpen: Record<Family, boolean> = {
-		primitives: true,
-		lateral: false,
+		lateral: true,
 		vertical: false,
 		sizing: false,
 		merging: false,
 		distributing: false,
 		comparison: false,
-		structural: true,
+		structural: false,
 	};
 
 	onMount(() => {
 		worker = new BqnWorkerClient();
-		// Mount the first starter so the canvas is not empty on first paint.
-		void mountStarter(0);
+		// Mount the last starter (the render-test counterexample) so the
+		// failing input is visible immediately for inspection.
+		void mountStarter(STARTERS.length - 1);
 	});
 
 	onDestroy(() => {
@@ -119,7 +144,19 @@
 		familyOpen = familyOpen;
 	}
 
+	function cancelActiveAnimation(): void {
+		activeGen++;
+		if (activeCancel) {
+			activeCancel();
+			activeCancel = null;
+		}
+		primitiveBusy = false;
+	}
+
 	async function mountStarter(idx: number): Promise<void> {
+		// Stop any in-flight animation before we swap the scene, so its
+		// onFrame callbacks don't overwrite the new starter's scene.
+		cancelActiveAnimation();
 		selectedStarterIdx = idx;
 		statusMsg = '';
 		// Clicking a starter resets any in-flight primitive preview — the
@@ -141,40 +178,56 @@
 		}
 	}
 
-	async function playPrimitive(p: RegisteredPrimitive): Promise<void> {
+	async function runOpAnimation(snapshots: Scene[]): Promise<void> {
 		if (primitiveBusy) return;
-		const startScene = scene;
-		if (!startScene) return;
+		// No-op animation (single snapshot): nothing to tween. Showing
+		// the snapshot and returning keeps the button available.
+		if (snapshots.length < 2) {
+			displayScene = snapshots[0] ?? displayScene;
+			return;
+		}
+		const myGen = ++activeGen;
 		primitiveBusy = true;
 		statusMsg = '';
 		try {
-			const result = p.apply(startScene, p.defaultParams);
-			const totalMs = 1000 / speed;
-			const segments = Math.max(1, result.snapshots.length - 1);
+			const totalMs = 1600 / speed;
+			const segments = snapshots.length - 1;
 			const segmentMs = totalMs / segments;
-			// Tween each adjacent pair so the polyline approximates the arc
-			// the primitive's snapshots trace. Linear easing inside each
-			// segment so segments join smoothly.
 			for (let i = 0; i < segments; i++) {
-				await tween({
-					from: result.snapshots[i],
-					to: result.snapshots[i + 1],
+				if (myGen !== activeGen) return;
+				const handle = tween({
+					from: snapshots[i],
+					to: snapshots[i + 1],
 					durationMs: segmentMs,
 					easing: linear,
 					onFrame: (s) => {
-						displayScene = s;
+						if (myGen === activeGen) displayScene = s;
 					},
-				}).promise;
+				});
+				activeCancel = handle.cancel;
+				const r = await handle.promise;
+				if (myGen !== activeGen) return;
+				activeCancel = null;
+				if (r === 'cancelled') return;
 			}
-			displayScene = result.toScene;
+			displayScene = snapshots[snapshots.length - 1];
 		} catch (e) {
-			statusMsg = `primitive error: ${e instanceof Error ? e.message : String(e)}`;
+			statusMsg = `op error: ${e instanceof Error ? e.message : String(e)}`;
 		} finally {
-			primitiveBusy = false;
+			if (myGen === activeGen) {
+				primitiveBusy = false;
+				activeCancel = null;
+			}
 		}
 	}
 
 	function handleOp(op: OpDesc): void {
+		const startScene = scene;
+		if (!startScene) return;
+		if (op.kind === 'reverse') {
+			void runOpAnimation(reverseAnimation(startScene));
+			return;
+		}
 		statusMsg = `${op.kind} not wired yet`;
 	}
 
@@ -218,45 +271,55 @@
 		</div>
 	</section>
 
-	<!-- Animation window: empty SVG with fixed viewBox.
-	     This is where future rendering will land. Nothing inside yet. -->
+	<!-- Source line. Shows the BQN expression that produced the resting
+	     Scene under the cursor. During a primitive preview the expression
+	     stays the same (previews don't enter history), so this is always
+	     coherent with what history says is "current". -->
 	<div
-		style="position:relative;min-height:320px;padding:16px;background:#1a1a2e;border-radius:8px;border:1px solid #333;margin-bottom:1rem;display:flex;align-items:center;justify-content:center;"
+		style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1.05rem;color:#e0e0ff;background:#0d0d1a;border:1px solid #333;border-bottom:none;border-top-left-radius:8px;border-top-right-radius:8px;padding:0.5rem 0.75rem;min-height:1.6rem;letter-spacing:0.01em;display:flex;align-items:center;gap:0.5rem;"
+	>
+		<span style="font-size:0.7rem;color:#7c6af7;text-transform:uppercase;letter-spacing:0.08em;">BQN</span>
+		<span style="white-space:pre;overflow-x:auto;">{sourceLine ?? ''}</span>
+	</div>
+
+	<!-- Animation window. Panel's content box has aspect 400:280 (=viewBox)
+	     so the SVG fills it exactly — visible panel inner === SVG element
+	     box === viewBox in userspace coords. `overflow:hidden` makes the
+	     viewBox the actual clip rect; nothing can render beyond. Width
+	     responds to viewport (uniform scale, aspect preserved). The pink
+	     outline marks the canvas edge for visual verification. -->
+	<div
+		style="position:relative;aspect-ratio:{VB_W} / {VB_H};box-sizing:border-box;background:#1a1a2e;border:1px solid #333;border-bottom-left-radius:8px;border-bottom-right-radius:8px;margin-bottom:1rem;"
 	>
 		<svg
 			viewBox="0 0 {VB_W} {VB_H}"
-			width="100%"
-			style="display:block;overflow:visible;"
+			preserveAspectRatio="xMidYMid meet"
+			style="display:block;overflow:hidden;width:100%;height:100%;"
 			role="img"
 			aria-label="animation window"
 		>
 			{#if scene}
 				<SceneNode {scene} />
 			{/if}
+			<!-- Permanent canvas-edge marker. Drawn at viewBox edge with stroke
+			     offset 1 unit inward so the full 2-unit stroke lies inside the
+			     clip rect and renders visibly. -->
+			<rect
+				x="1"
+				y="1"
+				width={VB_W - 2}
+				height={VB_H - 2}
+				fill="none"
+				stroke="#ff2bd6"
+				stroke-width="2"
+				pointer-events="none"
+			/>
 		</svg>
 	</div>
 
 	{#if statusMsg}
 		<p style="font-size:0.8rem;color:#f7a86a;margin-bottom:0.8rem;">{statusMsg}</p>
 	{/if}
-
-	<!-- Primitives panel — playable visual atoms. Each button runs its
-	     primitive against the current scene; the preview stays visible
-	     until the user picks another starter or hits Reset. -->
-	<section style="margin-bottom:0.8rem;">
-		<div style="font-size:0.75rem;color:#9af7c2;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Primitives</div>
-		<div style="display:flex;flex-wrap:wrap;gap:6px;">
-			{#each primitives as p}
-				<button
-					on:click={() => playPrimitive(p)}
-					disabled={primitiveBusy || busy}
-					style="padding:0.35rem 0.7rem;font-size:0.85rem;background:#1a1a2e;color:#9af7c2;border:1px solid #9af7c2;border-radius:5px;cursor:pointer;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
-				>
-					{p.name}
-				</button>
-			{/each}
-		</div>
-	</section>
 
 	<!-- Op picker — families present, op buttons grow in as animations are wired. -->
 	{#each FAMILIES as fam}
@@ -278,7 +341,7 @@
 						{#each ops as op}
 							<button
 								on:click={() => handleOp(op)}
-								disabled={playing}
+								disabled={playing || primitiveBusy || busy}
 								style="padding:0.4rem 0.8rem;font-size:1.2rem;background:#1a1a2e;color:{fam.btnColor};border:1px solid {fam.color};border-radius:5px;cursor:pointer;font-family:monospace;min-width:2.5rem;"
 								title={op.kind}
 							>
