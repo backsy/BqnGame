@@ -1,70 +1,74 @@
-// unsqueeze primitive — recursively restore every leaf atomic cell to
-// its value-derived height, anchored to its current bottom edge.
-// Wrapper cells recurse; their rect is rebuilt from the new inner bbox.
+// unsqueeze primitive — tear down the stage by RE-LAYING OUT FROM DATA.
 //
-// Dual of squeeze: where squeeze strips magnitude (everything becomes
-// a uniform tile), unsqueeze brings magnitude back from each cell's
-// stored `value`. Reads ONLY from each cell's current data (no
-// remembered state, no rotation-awareness).
+// Spec (paraphrased from user):
+//   "No data should carry over so unsqueeze can figure out from data
+//    what it should be. Squeeze normalizes centers so rotate is always
+//    clean. Unsqueeze denormalizes — pure function of the data it sees."
 //
-// Scope: any Scene — atom, list, table, boxed, nested arbitrarily deep.
+// Mechanism:
+//   1) Walk the current Scene in VISUAL order at each level, reading
+//      each cell's value (atoms) and recursing into wrappers. This
+//      yields a `BqnStructuredValue` — the reconstructed BQN value at
+//      its currently-displayed positions. If `rotate` permuted top-level
+//      cells, the reconstruction reflects that permutation.
+//   2) Call `bqnValueToScene` on the reconstructed value — fresh,
+//      canonical layout for whatever value the Scene now represents.
+//      The new Scene's cells sit where `bqnValueToScene` would put them
+//      from scratch; row baselines, cell heights, frames, all recomputed
+//      from the data. No information from squeeze leaks through.
+//   3) Overlay the IDs from the squeezed Scene (visited in visual order
+//      at every level) onto the fresh layout's cells (visited in source
+//      order). This keeps the tween a smooth lerp between adjacent
+//      snapshots — the cell visually at the top of the squeezed Scene
+//      remains the cell at the top of the fresh layout, so its `<g>`
+//      element interpolates positions / sizes rather than disappearing.
 
-import { barHeight, PADDING } from '../layout';
+import { bqnValueToScene, sceneToBqnValue } from '../layout';
 import type { Cell, Scene } from '../scene';
 import type { Primitive, PrimitiveResult } from './index';
 
 export type UnsqueezeParams = Record<string, never>;
 
-function unsqueezeAtomCell(c: Cell): Cell {
-	// Anchor at the cell's current bottom. After squeeze, that bottom is
-	// the row baseline. Positives grow up from it, negatives grow down.
-	const baseline = c.y + c.h;
-	const h = barHeight(c.value);
-	return {
-		...c,
-		y: c.value < 0 ? baseline : baseline - h,
-		h,
-	};
-}
+// IdTree mirrors the Scene's cell tree but holds only stable cell ids.
+// The list at each level is in VISUAL order (the same order
+// `sceneToBqnValue` reads cells in), so it lines up element-for-element
+// with the source-order cells of the freshly-laid-out Scene built from
+// the same reconstructed value.
+type IdNode = { id: string; children: IdNode[] };
 
-function bboxOf(cells: Cell[]): { x: number; y: number; w: number; h: number } {
-	let minX = Infinity;
-	let minY = Infinity;
-	let maxX = -Infinity;
-	let maxY = -Infinity;
-	for (const c of cells) {
-		if (c.x < minX) minX = c.x;
-		if (c.y < minY) minY = c.y;
-		if (c.x + c.w > maxX) maxX = c.x + c.w;
-		if (c.y + c.h > maxY) maxY = c.y + c.h;
-	}
-	return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
-
-function rebuildWrapperRect(cell: Cell, newInner: Scene): Cell {
-	const innerCells =
-		newInner.kind === 'atom' ? [newInner.atom] : newInner.cells;
-	if (innerCells.length === 0) {
-		return { ...cell, inner: newInner };
-	}
-	const bb = bboxOf(innerCells);
-	return {
-		...cell,
-		x: bb.x - PADDING,
-		y: bb.y - PADDING,
-		w: bb.w + 2 * PADDING,
-		h: bb.h + 2 * PADDING,
-		inner: newInner,
-	};
-}
-
-function unsqueezeScene(scene: Scene): Scene {
+function collectVisualIds(scene: Scene): IdNode[] {
 	if (scene.kind === 'atom') {
-		return { ...scene, atom: unsqueezeAtomCell(scene.atom) };
+		return [{ id: scene.atom.id, children: [] }];
 	}
-	const newCells = scene.cells.map((cell) => {
-		if (cell.inner === null) return unsqueezeAtomCell(cell);
-		return rebuildWrapperRect(cell, unsqueezeScene(cell.inner));
+	let sorted: Cell[];
+	if (scene.shape.length === 1) {
+		sorted = [...scene.cells].sort(
+			(a, b) => (a.x + a.w / 2) - (b.x + b.w / 2),
+		);
+	} else if (scene.shape.length === 2) {
+		sorted = [...scene.cells].sort(
+			(a, b) => (a.y + a.h / 2) - (b.y + b.h / 2),
+		);
+	} else {
+		sorted = [...scene.cells];
+	}
+	return sorted.map((c) => ({
+		id: c.id,
+		children: c.inner === null ? [] : collectVisualIds(c.inner),
+	}));
+}
+
+function applyIds(scene: Scene, ids: IdNode[]): Scene {
+	if (scene.kind === 'atom') {
+		return { ...scene, atom: { ...scene.atom, id: ids[0].id } };
+	}
+	const newCells = scene.cells.map((c, i) => {
+		const node = ids[i];
+		return {
+			...c,
+			id: node.id,
+			inner: c.inner === null ? null : applyIds(c.inner, node.children),
+		};
 	});
 	return { ...scene, cells: newCells };
 }
@@ -72,6 +76,9 @@ function unsqueezeScene(scene: Scene): Scene {
 export const unsqueeze: Primitive<UnsqueezeParams> = (
 	fromScene,
 ): PrimitiveResult => {
-	const to = unsqueezeScene(fromScene);
+	const value = sceneToBqnValue(fromScene);
+	const fresh = bqnValueToScene(value, fromScene.viewBox);
+	const visualIds = collectVisualIds(fromScene);
+	const to = applyIds(fresh, visualIds);
 	return { snapshots: [fromScene, to], toScene: to };
 };
