@@ -174,13 +174,6 @@ function matReverseAnimation(prevScene: Scene): Scene[] {
 	const vb = prevScene.viewBox;
 	const startCells = prevScene.cells;
 
-	// More than 3 rows means inner pairs whose cells share the
-	// column with the outer pair's lateral track, plus each other.
-	// The current one-pair-at-a-time L-detour can't separate them
-	// without nested lateral slots. Refuse for now; game levels use
-	// 2–3 row tables.
-	if (R > 3) return [prevScene];
-
 	// End positions: a fresh layout of the reversed value. We can't
 	// just swap Y positions of the existing wrappers — rows of
 	// different heights produce different total stacking, so the
@@ -200,72 +193,116 @@ function matReverseAnimation(prevScene: Scene): Scene[] {
 		return ca.y + ca.h / 2 - (cb.y + cb.h / 2);
 	});
 
-	// Required lateral detour: a moving row's far edge must clear
-	// the column's near edge by at least PADDING. The column is
-	// the union of stationary rows' x extents. We compare against
-	// start AND end positions to cover the cell's whole trajectory.
+	// Parallel pair swap with nested lateral slots. All pairs do
+	// their L-detour at the same time, each at its own lateral
+	// offset Δ_k. The outermost pair (k=0) sits at the largest Δ;
+	// inner pairs are nested inside.
+	//
+	// Slot spacing: each pair's cell must clear the next-outer
+	// pair's cell horizontally by at least PADDING. With per-pair
+	// step W + PADDING the rectangles never overlap.
+	//
+	//   Δ_innermost = W/2 + PADDING   (so the inner pair clears
+	//                                   itself across the column)
+	//   Δ_k         = Δ_innermost + (innermost − k) · (W + PADDING)
+	//
+	// Phase A (all pairs lateral out), phase B (all pairs swap Y +
+	// self-mirror lerps Y), phase C (all pairs back to column at
+	// natural Y). At every frame each pair lives in its own
+	// vertical strip — column or one of the lateral slots — so no
+	// pair shares an x-range with any other pair.
+	const numPairs = Math.floor(R / 2);
+	const hasSelfMirror = R % 2 === 1;
 	const allRects = [...startCells, ...endScene.cells];
-	const columnLeft = Math.min(...allRects.map((c) => c.x));
-	const columnRight = Math.max(...allRects.map((c) => c.x + c.w));
-	let needDeltaRight = 0;
-	let needDeltaLeft = 0;
-	for (let k = 0; k < Math.floor(R / 2); k++) {
+	const maxW = Math.max(...allRects.map((c) => c.w));
+	// Innermost pair's Δ has to clear the column cell at the
+	// self-mirror sortedPos (one cell-width + padding). When there
+	// is no self-mirror the column is empty during the swap, so the
+	// innermost pair only needs to separate from its own partner
+	// across the column → ½W + PADDING is enough.
+	const baseDelta = (hasSelfMirror ? maxW : maxW / 2) + PADDING;
+	const nestStep = maxW + PADDING;
+	const deltaForPair = (k: number): number =>
+		baseDelta + (numPairs - 1 - k) * nestStep;
+
+	type PairData = {
+		topIdx: number;
+		botIdx: number;
+		sortedPos: number;
+		topStartX: number;
+		topStartY: number;
+		botStartX: number;
+		botStartY: number;
+		topTargetX: number;
+		topTargetY: number;
+		botTargetX: number;
+		botTargetY: number;
+		topShiftedX: number;
+		botShiftedX: number;
+	};
+	const pairData: PairData[] = [];
+	for (let k = 0; k < numPairs; k++) {
 		const topIdx = sortedByY[k];
 		const botIdx = sortedByY[R - 1 - k];
-		const topCell = startCells[topIdx];
-		const botCell = startCells[botIdx];
-		const topTargetX = endScene.cells[R - 1 - k].x;
-		const botTargetX = endScene.cells[k].x;
-		// Top-half row goes RIGHT — its left edge must end up right
-		// of the column. delta is measured from max(start, target).x.
-		const topAnchor = Math.max(topCell.x, topTargetX);
-		needDeltaRight = Math.max(needDeltaRight, columnRight + PADDING - topAnchor);
-		// Bottom-half row goes LEFT — its right edge must end up
-		// left of the column.
-		const botAnchor = Math.min(botCell.x, botTargetX);
-		needDeltaLeft = Math.max(needDeltaLeft, botAnchor + botCell.w - (columnLeft - PADDING));
-	}
-	const needDelta = Math.max(needDeltaRight, needDeltaLeft);
-
-	// Feasibility against the viewBox.
-	let rightRoom = Infinity;
-	let leftRoom = Infinity;
-	for (let k = 0; k < Math.floor(R / 2); k++) {
-		const topIdx = sortedByY[k];
-		const botIdx = sortedByY[R - 1 - k];
-		const topCell = startCells[topIdx];
-		const botCell = startCells[botIdx];
-		const topTargetX = endScene.cells[R - 1 - k].x;
-		const botTargetX = endScene.cells[k].x;
-		const topAnchor = Math.max(topCell.x, topTargetX);
-		const botAnchor = Math.min(botCell.x, botTargetX);
-		rightRoom = Math.min(
-			rightRoom,
-			vb.x + vb.w - PADDING - (topAnchor + topCell.w),
-		);
-		leftRoom = Math.min(leftRoom, botAnchor - (vb.x + PADDING));
-	}
-	if (!isFinite(rightRoom)) rightRoom = 0;
-	if (!isFinite(leftRoom)) leftRoom = 0;
-	const delta = Math.min(needDelta, rightRoom, leftRoom);
-	if (delta < needDelta - 0.5) return [prevScene];
-
-	const pairs: Array<{ topIdx: number; botIdx: number; sortedPos: number }> = [];
-	for (let k = 0; k < Math.floor(R / 2); k++) {
-		pairs.push({
-			topIdx: sortedByY[k],
-			botIdx: sortedByY[R - 1 - k],
+		const top = startCells[topIdx];
+		const bot = startCells[botIdx];
+		const topEnd = endScene.cells[R - 1 - k];
+		const botEnd = endScene.cells[k];
+		const d = deltaForPair(k);
+		pairData.push({
+			topIdx,
+			botIdx,
 			sortedPos: k,
+			topStartX: top.x,
+			topStartY: top.y,
+			botStartX: bot.x,
+			botStartY: bot.y,
+			topTargetX: topEnd.x,
+			topTargetY: topEnd.y,
+			botTargetX: botEnd.x,
+			botTargetY: botEnd.y,
+			topShiftedX: Math.max(top.x, topEnd.x) + d,
+			botShiftedX: Math.min(bot.x, botEnd.x) - d,
 		});
+	}
+
+	// Feasibility: every shifted x must stay inside the viewBox.
+	for (const p of pairData) {
+		const topCell = startCells[p.topIdx];
+		const botCell = startCells[p.botIdx];
+		if (p.topShiftedX + topCell.w > vb.x + vb.w - PADDING) return [prevScene];
+		if (p.botShiftedX < vb.x + PADDING) return [prevScene];
+	}
+
+	// Self-mirror (odd R): not in any pair. Slides Y to its natural
+	// slot during phase B, when the column is otherwise empty.
+	let selfMirror: { idx: number; startY: number; targetY: number } | null = null;
+	if (R % 2 === 1) {
+		const midSp = Math.floor(R / 2);
+		const idx = sortedByY[midSp];
+		selfMirror = {
+			idx,
+			startY: startCells[idx].y,
+			targetY: endScene.cells[midSp].y,
+		};
 	}
 
 	const snapshots: Scene[] = [prevScene];
 
-	// Staged frame: the maximal x extent any cell will visit, plus
-	// PADDING, clamped to viewBox.
+	// Staged frame: bounding box of every lateral slot all pairs
+	// will occupy.
 	const stagedRects: Rect[] = [];
+	for (const p of pairData) {
+		const topCell = startCells[p.topIdx];
+		const botCell = startCells[p.botIdx];
+		stagedRects.push({ x: p.topShiftedX, y: topCell.y, w: topCell.w, h: topCell.h });
+		stagedRects.push({ x: p.botShiftedX, y: botCell.y, w: botCell.w, h: botCell.h });
+	}
 	for (const c of startCells) {
-		stagedRects.push({ x: c.x - delta, y: c.y, w: c.w + 2 * delta, h: c.h });
+		stagedRects.push({ x: c.x, y: c.y, w: c.w, h: c.h });
+	}
+	for (const c of endScene.cells) {
+		stagedRects.push({ x: c.x, y: c.y, w: c.w, h: c.h });
 	}
 	const stagedFrame = frameOfRects(stagedRects, vb);
 	let curScene: ArrayScene = { ...prevScene, frame: stagedFrame };
@@ -275,97 +312,73 @@ function matReverseAnimation(prevScene: Scene): Scene[] {
 	}
 	snapshots.push(curScene);
 
-	// All cells NOT in pair 0: lerp Y to the natural-reversed Y for
-	// their CURRENT sorted position in parallel with pair 0's phase
-	// B. Without this, an inner pair's cell (or the self-mirror in
-	// odd-R) sits at its prev Y while pair 0 lands at the reversed
-	// layout's natural Y — those two can be in different stacking
-	// positions, so when pair 0's phase C slides the active cell
-	// back to the column it walks through the inactive cell. By
-	// piggy-backing the Y shift on pair 0's phase B (active pair
-	// is laterally offset, column is otherwise empty), the inactive
-	// cells reach their natural slots before phase C starts.
-	const passengerIndices: number[] = [];
-	for (let k = 1; k < R - 1; k++) {
-		if (k === 0 || k === R - 1) continue;
-		passengerIndices.push(sortedByY[k]);
-	}
-	const passengerTargetY = new Map<number, number>();
-	const passengerStartY = new Map<number, number>();
-	for (const idx of passengerIndices) {
-		const sp = sortedByY.indexOf(idx);
-		passengerStartY.set(idx, curScene.cells[idx].y);
-		passengerTargetY.set(idx, endScene.cells[sp].y);
+	// Phase A: all pairs lateral out in parallel.
+	for (let s = 1; s <= PHASE_SNAPS; s++) {
+		const t = s / PHASE_SNAPS;
+		const updates: Array<{ idx: number; x: number; y: number }> = [];
+		for (const p of pairData) {
+			updates.push({
+				idx: p.topIdx,
+				x: lerpNum(p.topStartX, p.topShiftedX, t),
+				y: p.topStartY,
+			});
+			updates.push({
+				idx: p.botIdx,
+				x: lerpNum(p.botStartX, p.botShiftedX, t),
+				y: p.botStartY,
+			});
+		}
+		curScene = moveCells(curScene, updates);
+		snapshots.push(curScene);
 	}
 
-	for (const { topIdx, botIdx, sortedPos } of pairs) {
-		const top = curScene.cells[topIdx];
-		const bot = curScene.cells[botIdx];
-		const topStartX = top.x;
-		const botStartX = bot.x;
-		const topStartY = top.y;
-		const botStartY = bot.y;
-		// The cell currently at sorted-position k targets the natural
-		// reversed layout's row at sorted-position R-1-k, and vice
-		// versa. `endScene.cells[i]` is in shape-traversal order so
-		// `endScene.cells[0]` is the topmost row, `cells[R-1]` the
-		// bottommost.
-		const topEndRect = endScene.cells[R - 1 - sortedPos];
-		const botEndRect = endScene.cells[sortedPos];
-		const topTargetX = topEndRect.x;
-		const topTargetY = topEndRect.y;
-		const botTargetX = botEndRect.x;
-		const botTargetY = botEndRect.y;
-		const topShiftedX = Math.max(topStartX, topTargetX) + delta;
-		const botShiftedX = Math.min(botStartX, botTargetX) - delta;
-
-		// Phase A: top RIGHT, bottom LEFT.
-		for (let k = 1; k <= PHASE_SNAPS; k++) {
-			const t = k / PHASE_SNAPS;
-			curScene = moveCells(curScene, [
-				{ idx: topIdx, x: lerpNum(topStartX, topShiftedX, t), y: topStartY },
-				{ idx: botIdx, x: lerpNum(botStartX, botShiftedX, t), y: botStartY },
-			]);
-			snapshots.push(curScene);
+	// Phase B: all pairs swap Y in parallel. Self-mirror also lerps
+	// Y here (column is empty of active-pair cells, all of which
+	// are at their lateral slots).
+	for (let s = 1; s <= PHASE_SNAPS; s++) {
+		const t = s / PHASE_SNAPS;
+		const updates: Array<{ idx: number; x: number; y: number }> = [];
+		for (const p of pairData) {
+			updates.push({
+				idx: p.topIdx,
+				x: p.topShiftedX,
+				y: lerpNum(p.topStartY, p.topTargetY, t),
+			});
+			updates.push({
+				idx: p.botIdx,
+				x: p.botShiftedX,
+				y: lerpNum(p.botStartY, p.botTargetY, t),
+			});
 		}
-
-		// Phase B: top DOWN, bottom UP. Rows are now horizontally
-		// separated by 2Δ > maxW, so they never share x-extent and
-		// pass each other cleanly. For the outermost pair only, the
-		// passenger cells (any row not in pair 0) ride along by
-		// lerping y to their natural-reversed slot — see
-		// `passengerIndices`.
-		const includePassengers = sortedPos === 0;
-		for (let k = 1; k <= PHASE_SNAPS; k++) {
-			const t = k / PHASE_SNAPS;
-			const updates = [
-				{ idx: topIdx, x: topShiftedX, y: lerpNum(topStartY, topTargetY, t) },
-				{ idx: botIdx, x: botShiftedX, y: lerpNum(botStartY, botTargetY, t) },
-			];
-			if (includePassengers) {
-				for (const idx of passengerIndices) {
-					updates.push({
-						idx,
-						x: curScene.cells[idx].x,
-						y: lerpNum(passengerStartY.get(idx)!, passengerTargetY.get(idx)!, t),
-					});
-				}
-			}
-			curScene = moveCells(curScene, updates);
-			snapshots.push(curScene);
+		if (selfMirror) {
+			updates.push({
+				idx: selfMirror.idx,
+				x: curScene.cells[selfMirror.idx].x,
+				y: lerpNum(selfMirror.startY, selfMirror.targetY, t),
+			});
 		}
+		curScene = moveCells(curScene, updates);
+		snapshots.push(curScene);
+	}
 
-		// Phase C: top LEFT to its natural target column (from
-		// `endScene`), bottom RIGHT to its natural target column.
-		// Final positions equal a fresh layout of the reversed value.
-		for (let k = 1; k <= PHASE_SNAPS; k++) {
-			const t = k / PHASE_SNAPS;
-			curScene = moveCells(curScene, [
-				{ idx: topIdx, x: lerpNum(topShiftedX, topTargetX, t), y: topTargetY },
-				{ idx: botIdx, x: lerpNum(botShiftedX, botTargetX, t), y: botTargetY },
-			]);
-			snapshots.push(curScene);
+	// Phase C: all pairs back to column at natural Y.
+	for (let s = 1; s <= PHASE_SNAPS; s++) {
+		const t = s / PHASE_SNAPS;
+		const updates: Array<{ idx: number; x: number; y: number }> = [];
+		for (const p of pairData) {
+			updates.push({
+				idx: p.topIdx,
+				x: lerpNum(p.topShiftedX, p.topTargetX, t),
+				y: p.topTargetY,
+			});
+			updates.push({
+				idx: p.botIdx,
+				x: lerpNum(p.botShiftedX, p.botTargetX, t),
+				y: p.botTargetY,
+			});
 		}
+		curScene = moveCells(curScene, updates);
+		snapshots.push(curScene);
 	}
 
 	// Contract the frame back to auto-fit of the swapped layout.
@@ -398,6 +411,9 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 	// Same reasoning as the mat path: more than 3 cells means inner
 	// pairs that would tangle with the outer pair's perpendicular
 	// track. Refuse for now.
+	// Vec animation has known holes (mixed-sign and N>3); refuse
+	// those rather than ship clipping. The mat path is the focus of
+	// the current work.
 	if (N > 3) return [prevScene];
 
 	const endScene = computeReversedEndScene(prevScene);
@@ -409,10 +425,10 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 		return ca.x + ca.w / 2 - (cb.x + cb.w / 2);
 	});
 
-	// Perpendicular detour magnitude: a moving cell's far edge must
-	// clear the row's near edge (the union of every cell's y extent)
-	// by PADDING. Without this the active cell would still share y
-	// with a stationary cell when their x ranges cross during phase B.
+	// Single global Δ. Cells in the swap pair must have enough
+	// y-separation at mid x-swap to not overlap. For uniform-height
+	// rows this is straightforward; for mixed-sign vecs the
+	// asymmetric y baselines make this hard and we refuse instead.
 	const allRects = [...startCells, ...endScene.cells];
 	const rowTop = Math.min(...allRects.map((c) => c.y));
 	const rowBottom = Math.max(...allRects.map((c) => c.y + c.h));
@@ -457,8 +473,9 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 	const delta = Math.min(needDelta, upRoom, downRoom);
 	if (delta < needDelta - 0.5) return [prevScene];
 
+	// Innermost pair first, outermost last (sequential).
 	const pairs: Array<{ leftIdx: number; rightIdx: number; sortedPos: number }> = [];
-	for (let k = 0; k < Math.floor(N / 2); k++) {
+	for (let k = Math.floor(N / 2) - 1; k >= 0; k--) {
 		pairs.push({
 			leftIdx: sortedByX[k],
 			rightIdx: sortedByX[N - 1 - k],
@@ -480,33 +497,31 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 	}
 	snapshots.push(curScene);
 
-	// Passengers: cells not in pair 0. They ride along by lerping x
-	// to their natural-reversed-slot x in parallel with pair 0's
-	// phase B.
+	// Self-mirror only (odd N) lerps X during the first pair's phase B.
 	const passengerIndices: number[] = [];
-	for (let k = 1; k < N - 1; k++) {
-		passengerIndices.push(sortedByX[k]);
-	}
 	const passengerStartX = new Map<number, number>();
 	const passengerTargetX = new Map<number, number>();
-	for (const idx of passengerIndices) {
-		const sp = sortedByX.indexOf(idx);
+	if (N % 2 === 1) {
+		const midSp = Math.floor(N / 2);
+		const idx = sortedByX[midSp];
+		passengerIndices.push(idx);
 		passengerStartX.set(idx, curScene.cells[idx].x);
-		passengerTargetX.set(idx, endScene.cells[sp].x);
+		passengerTargetX.set(idx, endScene.cells[midSp].x);
 	}
 
+	let pairIter = 0;
 	for (const { leftIdx, rightIdx, sortedPos } of pairs) {
+		const isFirstPair = pairIter === 0;
+		pairIter++;
+		void sortedPos;
 		const left = curScene.cells[leftIdx];
 		const right = curScene.cells[rightIdx];
 		const leftStartX = left.x;
 		const rightStartX = right.x;
 		const leftStartY = left.y;
 		const rightStartY = right.y;
-		// Sorted-position k swaps to sorted-position N-1-k. The
-		// natural reversed layout's `endScene.cells[i]` is in
-		// shape-traversal order = left→right by x.
-		const leftEndRect = endScene.cells[N - 1 - sortedPos];
-		const rightEndRect = endScene.cells[sortedPos];
+		const leftEndRect = endScene.cells[N - 1 - sortedByX.indexOf(leftIdx)];
+		const rightEndRect = endScene.cells[sortedByX.indexOf(leftIdx)];
 		const leftTargetX = leftEndRect.x;
 		const leftTargetY = leftEndRect.y;
 		const rightTargetX = rightEndRect.x;
@@ -524,12 +539,8 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 			snapshots.push(curScene);
 		}
 
-		// Phase B: left slides RIGHT over the row, right slides
-		// LEFT under it. Vertical separation 2Δ > maxH keeps the
-		// two rectangles from sharing y-extent. For the outermost
-		// pair only, passenger cells ride along (lerp x to their
-		// natural-reversed slot).
-		const includePassengers = sortedPos === 0;
+		// Phase B: swap X. Self-mirror lerps X here if this is the first pair.
+		const includePassengers = isFirstPair;
 		for (let k = 1; k <= PHASE_SNAPS; k++) {
 			const t = k / PHASE_SNAPS;
 			const updates = [
@@ -549,8 +560,7 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 			snapshots.push(curScene);
 		}
 
-		// Phase C: drop / climb back to each cell's natural target
-		// y from the reversed scene.
+		// Phase C: drop/climb back to natural Y.
 		for (let k = 1; k <= PHASE_SNAPS; k++) {
 			const t = k / PHASE_SNAPS;
 			curScene = moveCells(curScene, [
