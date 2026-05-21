@@ -259,11 +259,11 @@ function pickBarCeil(v: BqnStructuredValue, viewBox: ViewBox): number {
 		// GAP between rows.
 		const rowOverhead = R * 2 * PADDING + Math.max(0, R - 1) * GAP;
 		const barsBudget = fullBudget - rowOverhead;
-		return clamp(
-			barsBudget / (R * slotsPerRow),
-			BAR_CEIL_MIN,
-			BAR_CEIL_CAP,
-		);
+		// Cap to BAR_CEIL_CAP, floor to a tiny positive number — for
+		// mats we'd rather collapse bar variance than overflow the
+		// viewBox (and break the frame-containment invariant downstream
+		// renderers and property tests rely on).
+		return Math.max(1, Math.min(barsBudget / (R * slotsPerRow), BAR_CEIL_CAP));
 	}
 	return clamp(60, BAR_CEIL_MIN, BAR_CEIL_CAP);
 }
@@ -862,5 +862,47 @@ export function bqnValueToScene(
 	const vbCy = viewBox.y + viewBox.h / 2;
 	const contentX = vbCx - dims.width / 2;
 	const baselineY = vbCy + (dims.above - dims.below) / 2;
-	return applyPlan(value, plan, 'root', contentX, baselineY, viewBox);
+	const scene = applyPlan(value, plan, 'root', contentX, baselineY, viewBox);
+	// Baseline arithmetic can push content a fraction of a pixel past
+	// the viewBox edge (a rounding artifact of mat balancing). Nudge
+	// the whole scene back inside whenever this happens, and clamp
+	// the root frame to the viewBox so consumers can rely on
+	// `frame ⊆ viewBox` and `cells ⊆ frame`.
+	if (scene.kind === 'array') {
+		return fitSceneToViewBox(scene, viewBox);
+	}
+	return scene;
+}
+
+function fitSceneToViewBox(
+	scene: Extract<Scene, { kind: 'array' }>,
+	vb: ViewBox,
+): Scene {
+	let shifted: Extract<Scene, { kind: 'array' }> = scene;
+	const overTop = vb.y - scene.frame.y;
+	const overLeft = vb.x - scene.frame.x;
+	const overBottom = scene.frame.y + scene.frame.h - (vb.y + vb.h);
+	const overRight = scene.frame.x + scene.frame.w - (vb.x + vb.w);
+	let dx = 0;
+	let dy = 0;
+	if (overTop > 0) dy += overTop;
+	else if (overBottom > 0) dy -= overBottom;
+	if (overLeft > 0) dx += overLeft;
+	else if (overRight > 0) dx -= overRight;
+	if (dx !== 0 || dy !== 0) {
+		const t = translateScene(scene, dx, dy);
+		if (t.kind === 'array') shifted = t;
+	}
+	return {
+		...shifted,
+		frame: clampRectToViewBox(shifted.frame, vb),
+	};
+}
+
+function clampRectToViewBox(r: Rect, vb: ViewBox): Rect {
+	const x = Math.max(r.x, vb.x);
+	const y = Math.max(r.y, vb.y);
+	const right = Math.min(r.x + r.w, vb.x + vb.w);
+	const bottom = Math.min(r.y + r.h, vb.y + vb.h);
+	return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
 }
