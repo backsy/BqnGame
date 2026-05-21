@@ -42,6 +42,7 @@ import {
 } from '../layout';
 import type { BqnStructuredValue } from '$lib/bqn/protocol';
 import type { Cell, Rect, Scene, ViewBox } from '../scene';
+import { lerpScene } from '../tween';
 
 const FRAME_MORPH_SNAPS = 4;
 const PHASE_SNAPS = 6;
@@ -406,18 +407,31 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 	}
 	const N = prevScene.cells.length;
 	const vb = prevScene.viewBox;
-	const startCells = prevScene.cells;
 
-	// Same reasoning as the mat path: more than 3 cells means inner
-	// pairs that would tangle with the outer pair's perpendicular
-	// track. Refuse for now.
-	// Vec animation has known holes (mixed-sign and N>3); refuse
-	// those rather than ship clipping. The mat path is the focus of
-	// the current work.
-	if (N > 3) return [prevScene];
+	const naturalEnd = computeReversedEndScene(prevScene);
+	if (naturalEnd === null || naturalEnd.cells.length !== N) return [prevScene];
 
-	const endScene = computeReversedEndScene(prevScene);
-	if (endScene === null || endScene.cells.length !== N) return [prevScene];
+	// Squish bars uniformly if the natural L-detour wouldn't fit
+	// the viewBox. We pick the largest h_max such that the
+	// outermost nested slot still fits above/below the row.
+	// `picked` <= naturalHMax; if no squish is needed picked equals
+	// naturalHMax and the helpers are no-ops.
+	const naturalHMax = Math.max(...prevScene.cells.map((c) => c.h));
+	const numPairs = Math.floor(N / 2);
+	const hasSelfMirror = N % 2 === 1;
+	const pickedHMax = pickHMaxForDetour(vb, naturalHMax, numPairs, hasSelfMirror);
+	const squishFactor = pickedHMax / naturalHMax;
+	if (squishFactor <= 0) return [prevScene];
+
+	const squishedPrev =
+		squishFactor < 1 ? squishVecScene(prevScene, vb, squishFactor) : prevScene;
+	const squishedEndAny =
+		squishFactor < 1 ? squishVecScene(naturalEnd, vb, squishFactor) : naturalEnd;
+	if (squishedPrev.kind !== 'array' || squishedEndAny.kind !== 'array') {
+		return [prevScene];
+	}
+	const squishedEnd = squishedEndAny;
+	const startCells = squishedPrev.cells;
 
 	const sortedByX = [...Array(N).keys()].sort((a, b) => {
 		const ca = startCells[a];
@@ -425,166 +439,274 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 		return ca.x + ca.w / 2 - (cb.x + cb.w / 2);
 	});
 
-	// Single global Δ. Cells in the swap pair must have enough
-	// y-separation at mid x-swap to not overlap. For uniform-height
-	// rows this is straightforward; for mixed-sign vecs the
-	// asymmetric y baselines make this hard and we refuse instead.
-	const allRects = [...startCells, ...endScene.cells];
-	const rowTop = Math.min(...allRects.map((c) => c.y));
-	const rowBottom = Math.max(...allRects.map((c) => c.y + c.h));
-	let needDeltaUp = 0;
-	let needDeltaDown = 0;
-	for (let k = 0; k < Math.floor(N / 2); k++) {
+	// Parallel pair swap with nested perpendicular slots — mirror of
+	// the mat path, rotated 90°. Outermost pair (k=0) at the largest
+	// Δ above/below the row; inner pairs nested inside.
+	const allRects = [...startCells, ...squishedEnd.cells];
+	const maxH = Math.max(...allRects.map((c) => c.h));
+	const baseDelta = (hasSelfMirror ? maxH : maxH / 2) + PADDING;
+	const nestStep = maxH + PADDING;
+	const deltaForPair = (k: number): number =>
+		baseDelta + (numPairs - 1 - k) * nestStep;
+
+	type VecPairData = {
+		leftIdx: number;
+		rightIdx: number;
+		leftStartX: number;
+		leftStartY: number;
+		rightStartX: number;
+		rightStartY: number;
+		leftTargetX: number;
+		leftTargetY: number;
+		rightTargetX: number;
+		rightTargetY: number;
+		leftShiftedY: number;
+		rightShiftedY: number;
+	};
+	const pairData: VecPairData[] = [];
+	for (let k = 0; k < numPairs; k++) {
 		const leftIdx = sortedByX[k];
 		const rightIdx = sortedByX[N - 1 - k];
-		const leftCell = startCells[leftIdx];
-		const rightCell = startCells[rightIdx];
-		const leftTargetY = endScene.cells[N - 1 - k].y;
-		const rightTargetY = endScene.cells[k].y;
-		const leftAnchor = Math.min(leftCell.y, leftTargetY);
-		needDeltaUp = Math.max(
-			needDeltaUp,
-			leftAnchor + leftCell.h - (rowTop - PADDING),
-		);
-		const rightAnchor = Math.max(rightCell.y, rightTargetY);
-		needDeltaDown = Math.max(needDeltaDown, rowBottom + PADDING - rightAnchor);
-	}
-	const needDelta = Math.max(needDeltaUp, needDeltaDown);
-
-	let upRoom = Infinity;
-	let downRoom = Infinity;
-	for (let k = 0; k < Math.floor(N / 2); k++) {
-		const leftIdx = sortedByX[k];
-		const rightIdx = sortedByX[N - 1 - k];
-		const leftCell = startCells[leftIdx];
-		const rightCell = startCells[rightIdx];
-		const leftTargetY = endScene.cells[N - 1 - k].y;
-		const rightTargetY = endScene.cells[k].y;
-		const leftAnchor = Math.min(leftCell.y, leftTargetY);
-		const rightAnchor = Math.max(rightCell.y, rightTargetY);
-		upRoom = Math.min(upRoom, leftAnchor - (vb.y + PADDING));
-		downRoom = Math.min(
-			downRoom,
-			vb.y + vb.h - PADDING - (rightAnchor + rightCell.h),
-		);
-	}
-	if (!isFinite(upRoom)) upRoom = 0;
-	if (!isFinite(downRoom)) downRoom = 0;
-	const delta = Math.min(needDelta, upRoom, downRoom);
-	if (delta < needDelta - 0.5) return [prevScene];
-
-	// Innermost pair first, outermost last (sequential).
-	const pairs: Array<{ leftIdx: number; rightIdx: number; sortedPos: number }> = [];
-	for (let k = Math.floor(N / 2) - 1; k >= 0; k--) {
-		pairs.push({
-			leftIdx: sortedByX[k],
-			rightIdx: sortedByX[N - 1 - k],
-			sortedPos: k,
+		const left = startCells[leftIdx];
+		const right = startCells[rightIdx];
+		const leftEnd = squishedEnd.cells[N - 1 - k];
+		const rightEnd = squishedEnd.cells[k];
+		const d = deltaForPair(k);
+		pairData.push({
+			leftIdx,
+			rightIdx,
+			leftStartX: left.x,
+			leftStartY: left.y,
+			rightStartX: right.x,
+			rightStartY: right.y,
+			leftTargetX: leftEnd.x,
+			leftTargetY: leftEnd.y,
+			rightTargetX: rightEnd.x,
+			rightTargetY: rightEnd.y,
+			leftShiftedY: Math.min(left.y, leftEnd.y) - d,
+			rightShiftedY: Math.max(right.y, rightEnd.y) + d,
 		});
+	}
+
+	for (const p of pairData) {
+		const rightCell = startCells[p.rightIdx];
+		if (p.leftShiftedY < vb.y + PADDING) return [prevScene];
+		if (p.rightShiftedY + rightCell.h > vb.y + vb.h - PADDING) return [prevScene];
+	}
+
+	let selfMirror: { idx: number; startX: number; targetX: number } | null = null;
+	if (hasSelfMirror) {
+		const midSp = Math.floor(N / 2);
+		const idx = sortedByX[midSp];
+		selfMirror = {
+			idx,
+			startX: startCells[idx].x,
+			targetX: squishedEnd.cells[midSp].x,
+		};
 	}
 
 	const snapshots: Scene[] = [prevScene];
 
+	// Squish phase: lerp from natural prev to squished prev. Frame
+	// expands to staged extent in the same window. The staged frame
+	// has to contain EVERY rect cells will occupy at ANY phase —
+	// squished cells at lateral slots (L-detour), squished cells at
+	// the column (start + end), AND natural cells (prev + final
+	// end after unsquish).
 	const stagedRects: Rect[] = [];
-	for (const c of startCells) {
-		stagedRects.push({ x: c.x, y: c.y - delta, w: c.w, h: c.h + 2 * delta });
+	for (const p of pairData) {
+		const leftCell = startCells[p.leftIdx];
+		const rightCell = startCells[p.rightIdx];
+		stagedRects.push({ x: leftCell.x, y: p.leftShiftedY, w: leftCell.w, h: leftCell.h });
+		stagedRects.push({ x: rightCell.x, y: p.rightShiftedY, w: rightCell.w, h: rightCell.h });
+	}
+	for (const c of startCells) stagedRects.push({ x: c.x, y: c.y, w: c.w, h: c.h });
+	for (const c of squishedEnd.cells) {
+		stagedRects.push({ x: c.x, y: c.y, w: c.w, h: c.h });
+	}
+	for (const c of prevScene.cells) stagedRects.push({ x: c.x, y: c.y, w: c.w, h: c.h });
+	for (const c of naturalEnd.cells) {
+		stagedRects.push({ x: c.x, y: c.y, w: c.w, h: c.h });
 	}
 	const stagedFrame = frameOfRects(stagedRects, vb);
-	let curScene: ArrayScene = { ...prevScene, frame: stagedFrame };
-	for (let k = 1; k <= FRAME_MORPH_SNAPS; k++) {
-		const t = k / FRAME_MORPH_SNAPS;
-		snapshots.push(lerpFrameOnly(prevScene, curScene, t));
+	const squishedStaged: ArrayScene = { ...squishedPrev, frame: stagedFrame };
+	let curScene: ArrayScene = squishedStaged;
+	if (squishFactor < 1) {
+		for (let k = 1; k <= FRAME_MORPH_SNAPS; k++) {
+			const t = k / FRAME_MORPH_SNAPS;
+			snapshots.push(lerpScene(prevScene, squishedStaged, t) as ArrayScene);
+		}
+	} else {
+		for (let k = 1; k <= FRAME_MORPH_SNAPS; k++) {
+			const t = k / FRAME_MORPH_SNAPS;
+			snapshots.push(lerpFrameOnly(prevScene, squishedStaged, t));
+		}
 	}
 	snapshots.push(curScene);
 
-	// Self-mirror only (odd N) lerps X during the first pair's phase B.
-	const passengerIndices: number[] = [];
-	const passengerStartX = new Map<number, number>();
-	const passengerTargetX = new Map<number, number>();
-	if (N % 2 === 1) {
-		const midSp = Math.floor(N / 2);
-		const idx = sortedByX[midSp];
-		passengerIndices.push(idx);
-		passengerStartX.set(idx, curScene.cells[idx].x);
-		passengerTargetX.set(idx, endScene.cells[midSp].x);
+	// Phase A: all pairs out vertically in parallel.
+	for (let s = 1; s <= PHASE_SNAPS; s++) {
+		const t = s / PHASE_SNAPS;
+		const updates: Array<{ idx: number; x: number; y: number }> = [];
+		for (const p of pairData) {
+			updates.push({
+				idx: p.leftIdx,
+				x: p.leftStartX,
+				y: lerpNum(p.leftStartY, p.leftShiftedY, t),
+			});
+			updates.push({
+				idx: p.rightIdx,
+				x: p.rightStartX,
+				y: lerpNum(p.rightStartY, p.rightShiftedY, t),
+			});
+		}
+		curScene = moveCells(curScene, updates);
+		snapshots.push(curScene);
 	}
 
-	let pairIter = 0;
-	for (const { leftIdx, rightIdx, sortedPos } of pairs) {
-		const isFirstPair = pairIter === 0;
-		pairIter++;
-		void sortedPos;
-		const left = curScene.cells[leftIdx];
-		const right = curScene.cells[rightIdx];
-		const leftStartX = left.x;
-		const rightStartX = right.x;
-		const leftStartY = left.y;
-		const rightStartY = right.y;
-		const leftEndRect = endScene.cells[N - 1 - sortedByX.indexOf(leftIdx)];
-		const rightEndRect = endScene.cells[sortedByX.indexOf(leftIdx)];
-		const leftTargetX = leftEndRect.x;
-		const leftTargetY = leftEndRect.y;
-		const rightTargetX = rightEndRect.x;
-		const rightTargetY = rightEndRect.y;
-		const leftShiftedY = Math.min(leftStartY, leftTargetY) - delta;
-		const rightShiftedY = Math.max(rightStartY, rightTargetY) + delta;
-
-		// Phase A: left UP, right DOWN.
-		for (let k = 1; k <= PHASE_SNAPS; k++) {
-			const t = k / PHASE_SNAPS;
-			curScene = moveCells(curScene, [
-				{ idx: leftIdx, x: leftStartX, y: lerpNum(leftStartY, leftShiftedY, t) },
-				{ idx: rightIdx, x: rightStartX, y: lerpNum(rightStartY, rightShiftedY, t) },
-			]);
-			snapshots.push(curScene);
+	// Phase B: all pairs swap X in parallel. Self-mirror lerps X.
+	for (let s = 1; s <= PHASE_SNAPS; s++) {
+		const t = s / PHASE_SNAPS;
+		const updates: Array<{ idx: number; x: number; y: number }> = [];
+		for (const p of pairData) {
+			updates.push({
+				idx: p.leftIdx,
+				x: lerpNum(p.leftStartX, p.leftTargetX, t),
+				y: p.leftShiftedY,
+			});
+			updates.push({
+				idx: p.rightIdx,
+				x: lerpNum(p.rightStartX, p.rightTargetX, t),
+				y: p.rightShiftedY,
+			});
 		}
-
-		// Phase B: swap X. Self-mirror lerps X here if this is the first pair.
-		const includePassengers = isFirstPair;
-		for (let k = 1; k <= PHASE_SNAPS; k++) {
-			const t = k / PHASE_SNAPS;
-			const updates = [
-				{ idx: leftIdx, x: lerpNum(leftStartX, leftTargetX, t), y: leftShiftedY },
-				{ idx: rightIdx, x: lerpNum(rightStartX, rightTargetX, t), y: rightShiftedY },
-			];
-			if (includePassengers) {
-				for (const idx of passengerIndices) {
-					updates.push({
-						idx,
-						x: lerpNum(passengerStartX.get(idx)!, passengerTargetX.get(idx)!, t),
-						y: curScene.cells[idx].y,
-					});
-				}
-			}
-			curScene = moveCells(curScene, updates);
-			snapshots.push(curScene);
+		if (selfMirror) {
+			updates.push({
+				idx: selfMirror.idx,
+				x: lerpNum(selfMirror.startX, selfMirror.targetX, t),
+				y: curScene.cells[selfMirror.idx].y,
+			});
 		}
-
-		// Phase C: drop/climb back to natural Y.
-		for (let k = 1; k <= PHASE_SNAPS; k++) {
-			const t = k / PHASE_SNAPS;
-			curScene = moveCells(curScene, [
-				{ idx: leftIdx, x: leftTargetX, y: lerpNum(leftShiftedY, leftTargetY, t) },
-				{ idx: rightIdx, x: rightTargetX, y: lerpNum(rightShiftedY, rightTargetY, t) },
-			]);
-			snapshots.push(curScene);
-		}
+		curScene = moveCells(curScene, updates);
+		snapshots.push(curScene);
 	}
 
-	const endFrame = fittedFrame(curScene.cells, vb);
-	const beforeContract = curScene;
-	for (let k = 1; k <= FRAME_MORPH_SNAPS; k++) {
-		const t = k / FRAME_MORPH_SNAPS;
-		const f = {
-			x: lerpNum(beforeContract.frame.x, endFrame.x, t),
-			y: lerpNum(beforeContract.frame.y, endFrame.y, t),
-			w: lerpNum(beforeContract.frame.w, endFrame.w, t),
-			h: lerpNum(beforeContract.frame.h, endFrame.h, t),
-		};
-		snapshots.push({ ...beforeContract, frame: f });
+	// Phase C: all pairs back to the row baseline at natural Y.
+	for (let s = 1; s <= PHASE_SNAPS; s++) {
+		const t = s / PHASE_SNAPS;
+		const updates: Array<{ idx: number; x: number; y: number }> = [];
+		for (const p of pairData) {
+			updates.push({
+				idx: p.leftIdx,
+				x: p.leftTargetX,
+				y: lerpNum(p.leftShiftedY, p.leftTargetY, t),
+			});
+			updates.push({
+				idx: p.rightIdx,
+				x: p.rightTargetX,
+				y: lerpNum(p.rightShiftedY, p.rightTargetY, t),
+			});
+		}
+		curScene = moveCells(curScene, updates);
+		snapshots.push(curScene);
+	}
+
+	// Unsquish phase: grow each cell's h back to its natural value
+	// while keeping its id and x (= the L-detour landing column).
+	// Cells were assigned values from `prevScene` and never lose
+	// them; natural h is whatever the cell had in prevScene under
+	// the same id.
+	const unsquishedAny = unsquishToNatural(curScene, prevScene, vb);
+	if (unsquishedAny.kind !== 'array') return [prevScene];
+	const unsquishedEnd: ArrayScene = unsquishedAny;
+	const endFrame = fittedFrame(unsquishedEnd.cells, vb);
+	const finalEnd: ArrayScene = { ...unsquishedEnd, frame: endFrame };
+	if (squishFactor < 1) {
+		const intermediate: ArrayScene = { ...unsquishedEnd, frame: stagedFrame };
+		for (let k = 1; k <= FRAME_MORPH_SNAPS; k++) {
+			const t = k / FRAME_MORPH_SNAPS;
+			snapshots.push(lerpScene(curScene, intermediate, t) as ArrayScene);
+		}
+		for (let k = 1; k <= FRAME_MORPH_SNAPS; k++) {
+			const t = k / FRAME_MORPH_SNAPS;
+			snapshots.push(lerpFrameOnly(intermediate, finalEnd, t));
+		}
+	} else {
+		for (let k = 1; k <= FRAME_MORPH_SNAPS; k++) {
+			const t = k / FRAME_MORPH_SNAPS;
+			snapshots.push(lerpFrameOnly(curScene, finalEnd, t));
+		}
 	}
 
 	return snapshots;
+}
+
+// ── squish helpers (vec) ─────────────────────────────────────────────────────
+
+/** Pick the largest h_max <= naturalHMax such that the outermost
+ *  nested L-detour slot fits in the viewBox. Returns naturalHMax
+ *  if no squish needed; returns 0 if even a squish doesn't fit. */
+function pickHMaxForDetour(
+	vb: ViewBox,
+	naturalHMax: number,
+	numPairs: number,
+	hasSelfMirror: boolean,
+): number {
+	const usable = vb.h - 2 * PADDING;
+	const baseCoef = hasSelfMirror ? 1 : 0.5;
+	const k = numPairs - 1;
+	// Stack budget (worst case): hMax (row) + 2 * Δ_outer.
+	// Δ_outer = baseCoef * h + PAD + k * (h + PAD)
+	// Substitute and solve for hMax:
+	//   (1 + 2*(baseCoef+k)) * h + 2*(k+1)*PAD ≤ usable.
+	const slope = 1 + 2 * (baseCoef + k);
+	const cap = usable - 2 * (k + 1) * PADDING;
+	if (cap <= 0) return 0;
+	// Pull the result in by a few pixels so the L-detour doesn't
+	// land exactly on the viewBox edge, where floating-point can
+	// flip the feasibility check.
+	const allowed = cap / slope - 2;
+	return Math.max(0, Math.min(naturalHMax, allowed));
+}
+
+/** Re-anchor a vec scene's cells assuming bars shrink uniformly by
+ *  `factor`. New baseline computed so the squished row sits at the
+ *  viewBox's vertical centre. Atom-only vec (cell.inner null) is
+ *  the common case. */
+function squishVecScene(scene: Scene, vb: ViewBox, factor: number): Scene {
+	if (scene.kind !== 'array' || scene.shape.length !== 1) return scene;
+	const newHMax = factor * Math.max(...scene.cells.map((c) => c.h));
+	const newBaseline = vb.y + vb.h / 2 + newHMax / 2;
+	const newCells = scene.cells.map((c): Cell => {
+		const isNeg = c.value < 0;
+		const newH = c.h * factor;
+		const newY = isNeg ? newBaseline : newBaseline - newH;
+		return { ...c, y: newY, h: newH };
+	});
+	return { ...scene, cells: newCells, frame: autoFitFrame(newCells) };
+}
+
+/** Inverse of squish: grow each cell's h back to its natural value
+ *  (looked up by id from prevScene), keep its x, recompute y for
+ *  the new baseline. ids are stable so the unsquish lerp goes
+ *  cell-to-cell. */
+function unsquishToNatural(
+	curScene: Scene,
+	prevScene: Scene,
+	vb: ViewBox,
+): Scene {
+	if (curScene.kind !== 'array' || prevScene.kind !== 'array') return curScene;
+	const naturalHById = new Map<string, number>();
+	for (const c of prevScene.cells) naturalHById.set(c.id, c.h);
+	const naturalHMax = Math.max(...prevScene.cells.map((c) => c.h));
+	const naturalBaseline = vb.y + vb.h / 2 + naturalHMax / 2;
+	const newCells = curScene.cells.map((c): Cell => {
+		const naturalH = naturalHById.get(c.id) ?? c.h;
+		const isNeg = c.value < 0;
+		const newY = isNeg ? naturalBaseline : naturalBaseline - naturalH;
+		return { ...c, y: newY, h: naturalH };
+	});
+	return { ...curScene, cells: newCells, frame: autoFitFrame(newCells) };
 }
 
 // ── small helpers ────────────────────────────────────────────────────────────
