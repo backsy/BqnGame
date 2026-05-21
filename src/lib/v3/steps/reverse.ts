@@ -34,6 +34,7 @@
 // cells can't ride along.
 
 import {
+	BAR_FLOOR,
 	PADDING,
 	autoFitFrame,
 	bqnValueToScene,
@@ -644,8 +645,10 @@ function vecReverseAnimation(prevScene: Scene): Scene[] {
 // ── squish helpers (vec) ─────────────────────────────────────────────────────
 
 /** Pick the largest h_max <= naturalHMax such that the outermost
- *  nested L-detour slot fits in the viewBox. Returns naturalHMax
- *  if no squish needed; returns 0 if even a squish doesn't fit. */
+ *  nested L-detour slot fits in the viewBox. Floor is BAR_FLOOR —
+ *  squishing past that would make bars shorter than a scalar tile
+ *  (same px) and the row would read as a sub-element line of
+ *  dashes. Returns 0 ("refuse") when even floor bars don't fit. */
 function pickHMaxForDetour(
 	vb: ViewBox,
 	naturalHMax: number,
@@ -666,20 +669,27 @@ function pickHMaxForDetour(
 	// land exactly on the viewBox edge, where floating-point can
 	// flip the feasibility check.
 	const allowed = cap / slope - 2;
-	return Math.max(0, Math.min(naturalHMax, allowed));
+	if (allowed < BAR_FLOOR) return 0;
+	return Math.min(naturalHMax, allowed);
 }
 
-/** Re-anchor a vec scene's cells assuming bars shrink uniformly by
- *  `factor`. New baseline computed so the squished row sits at the
- *  viewBox's vertical centre. Atom-only vec (cell.inner null) is
- *  the common case. */
+/** Re-anchor a vec scene's cells with bars rescaled to a smaller
+ *  ceiling. BAR_FLOOR stays put — only the dynamic range
+ *  `(c.h − BAR_FLOOR)` shrinks. So short bars (val=0) keep
+ *  scalar-tile size; only the tall ones come down. New baseline
+ *  puts the squished row at the viewBox's vertical centre. */
 function squishVecScene(scene: Scene, vb: ViewBox, factor: number): Scene {
 	if (scene.kind !== 'array' || scene.shape.length !== 1) return scene;
-	const newHMax = factor * Math.max(...scene.cells.map((c) => c.h));
+	const naturalHMax = Math.max(...scene.cells.map((c) => c.h));
+	const newHMax = factor * naturalHMax;
+	const ratio =
+		naturalHMax > BAR_FLOOR
+			? (newHMax - BAR_FLOOR) / (naturalHMax - BAR_FLOOR)
+			: 1;
 	const newBaseline = vb.y + vb.h / 2 + newHMax / 2;
 	const newCells = scene.cells.map((c): Cell => {
 		const isNeg = c.value < 0;
-		const newH = c.h * factor;
+		const newH = Math.max(BAR_FLOOR, BAR_FLOOR + (c.h - BAR_FLOOR) * ratio);
 		const newY = isNeg ? newBaseline : newBaseline - newH;
 		return { ...c, y: newY, h: newH };
 	});
