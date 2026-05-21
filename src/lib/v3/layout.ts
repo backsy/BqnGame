@@ -259,11 +259,15 @@ function pickBarCeil(v: BqnStructuredValue, viewBox: ViewBox): number {
 		// GAP between rows.
 		const rowOverhead = R * 2 * PADDING + Math.max(0, R - 1) * GAP;
 		const barsBudget = fullBudget - rowOverhead;
-		// Cap to BAR_CEIL_CAP, floor to a tiny positive number — for
-		// mats we'd rather collapse bar variance than overflow the
-		// viewBox (and break the frame-containment invariant downstream
-		// renderers and property tests rely on).
-		return Math.max(1, Math.min(barsBudget / (R * slotsPerRow), BAR_CEIL_CAP));
+		// Floor at BAR_FLOOR (= BAR_WIDTH, the scalar tile size) so
+		// even the largest bar is at least as tall as a scalar. If
+		// the structural budget would push us under that, accept
+		// overflow — the row-ellipsis step downstream prunes rows
+		// until the result actually fits.
+		return Math.max(
+			BAR_FLOOR,
+			Math.min(barsBudget / (R * slotsPerRow), BAR_CEIL_CAP),
+		);
 	}
 	return clamp(60, BAR_CEIL_MIN, BAR_CEIL_CAP);
 }
