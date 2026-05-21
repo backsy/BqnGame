@@ -67,6 +67,11 @@ export type FnExpr =
 	| { kind: 'member' }
 	| { kind: 'left-id' } // ⊣
 	| { kind: 'right-id' } // ⊢
+	// Primitive animations — identity on data, exposed as glyphs so
+	// each primitive motion can be triggered independently.
+	| { kind: 'prim-shrink' }
+	| { kind: 'prim-rotate' }
+	| { kind: 'prim-stretch' }
 
 	// ── 1-modifier applications (operand is a FnExpr) ─────────────────────
 	| { kind: 'fold'; over: FnExpr } // F´

@@ -18,6 +18,7 @@ export const ALL_FN_KINDS = [
 	'range', 'sort-up', 'sort-down', 'grade-up', 'grade-down', 'group',
 	'index-of', 'progressive-index-of', 'unique', 'mark-firsts', 'find', 'member',
 	'left-id', 'right-id',
+	'prim-shrink', 'prim-rotate', 'prim-stretch',
 	'fold', 'fold-from', 'scan', 'each', 'cells', 'table', 'self', 'const',
 	'compose', 'over', 'bind-left', 'bind-right', 'before', 'after', 'under', 'choose',
 	'rank', 'depth', 'repeat', 'valences', 'catch',

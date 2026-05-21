@@ -11,6 +11,11 @@ import {
 	transposeMonadic,
 } from './motions/lateral.js';
 import {
+	shrinkMonadic,
+	stretchMonadic,
+	rotateMonadic,
+} from './motions/primitives.js';
+import {
 	takeDyadic,
 	dropDyadic,
 	filterDyadic,
@@ -126,6 +131,10 @@ export function animateMonadic(fn: FnExpr): AnimateStep {
 		case 'member':                 return blackBox;
 		case 'left-id':                return blackBox;
 		case 'right-id':               return blackBox;
+		// Primitive animations (identity on data, glyph-triggered)
+		case 'prim-shrink':            return shrinkMonadic;
+		case 'prim-rotate':            return rotateMonadic;
+		case 'prim-stretch':           return stretchMonadic;
 		// 1-modifier applications
 		case 'fold':                   return makeFoldMonadic(fn.over);
 		case 'fold-from':              return blackBox;
@@ -233,6 +242,10 @@ export function animateDyadic(fn: FnExpr): AnimateStep {
 		case 'member':                 return blackBox;
 		case 'left-id':                return blackBox;
 		case 'right-id':               return blackBox;
+		// Primitive animations — only meaningful as monadic glyphs
+		case 'prim-shrink':            return blackBox;
+		case 'prim-rotate':            return blackBox;
+		case 'prim-stretch':           return blackBox;
 		// 1-modifier applications
 		case 'fold':                   return blackBox;
 		case 'fold-from':              return blackBox;

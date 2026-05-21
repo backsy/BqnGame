@@ -184,6 +184,12 @@ export function fnExprLabel(fn: FnExpr): string {
 		case 'left-id':              return PRIM_GLYPH['left-id'];
 		case 'right-id':             return PRIM_GLYPH['right-id'];
 
+		// Primitive animations — Unicode markers for the harness's glyph
+		// buttons. ⤓ shrink ↻ rotate ⤒ stretch.
+		case 'prim-shrink':          return '⤓';
+		case 'prim-rotate':          return '↻';
+		case 'prim-stretch':         return '⤒';
+
 		// ── 1-modifier applications: F´ F` F¨ etc. ───────────────────────────
 		case 'fold':      return fnExprLabel(fn.over) + MOD1_GLYPH['fold'];
 		case 'fold-from': return fnExprLabel(fn.over) + MOD1_GLYPH['fold-from'];

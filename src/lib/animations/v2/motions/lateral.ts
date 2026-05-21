@@ -4,6 +4,8 @@ import type { BqnValue } from '../value.js';
 import type { Step } from '../step.js';
 import { blackBox } from './black-box.js';
 import { scaled, scaledMs } from '../speed.js';
+import { UNIT_SIZE, SHRINK_DURATION, STRETCH_DURATION, ROTATE_DURATION } from './units.js';
+import { shrink, stretch, rotate as rotateBox } from './primitives.js';
 
 const _delayMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -37,14 +39,27 @@ function numericData(v: BqnValue): ReadonlyArray<number> | null {
 // Rank ≥ 2: the old rotate-180-with-fall path is retained below until
 // a separate design lands.
 
-const REVERSE_SHRINK_DURATION = 0.3;
-const REVERSE_ROTATE_DURATION = 0.85;
-const REVERSE_UNSHRINK_DURATION = 0.3;
+// Commit the final state of every active animation on each given element
+// to its inline style, then cancel the animation. After commit, the visual
+// state is preserved (as inline CSS) but the animation library no longer
+// has any tracked state for these elements — the next animation starts
+// fresh from the committed DOM. This separates phases so each is a fully
+// independent animation with no carry-over from the previous one.
+export function commitAndClear(elements: HTMLElement[]): void {
+	for (const el of elements) {
+		for (const anim of el.getAnimations()) {
+			try {
+				anim.commitStyles();
+			} catch {
+				// commitStyles throws if the element is disconnected; ignore.
+			}
+			anim.cancel();
+		}
+	}
+}
 
-// Per CLAUDE.md: bar width is the unit. Cells become BAR_WIDTH × BAR_WIDTH
-// squares during the swap so all cells share the same dimensions and the
-// rotation-around-centre geometry behaves uniformly.
-const REVERSE_BAR_WIDTH = 24;
+// Primitive animations (shrink / stretch / rotate) live in
+// ./primitives.ts and are imported below.
 
 async function reverseMonadic1D(
 	beforeRoot: HTMLElement,
@@ -66,48 +81,134 @@ async function reverseMonadic1D(
 	await Promise.all(beforeBars.map((bar, i) =>
 		animate(
 			bar,
-			{ height: [`${originalHeights[i]}px`, `${REVERSE_BAR_WIDTH}px`] },
-			{ duration: scaled(REVERSE_SHRINK_DURATION), ease: [0.4, 0, 0.6, 1] },
+			{ height: [`${originalHeights[i]}px`, `${UNIT_SIZE}px`] },
+			{ duration: scaled(SHRINK_DURATION), ease: [0.4, 0, 0.6, 1] },
 		).finished,
 	));
 
-	// Phase 2 — row rotates 180°, each cell counter-rotates -180°. Run in
-	// parallel so the cell-level counter-rotation tracks the row-level
-	// rotation frame-by-frame and the cells never appear tilted.
+	// After Phase 1 the row's flex-end puts each bar's container-frame
+	// bottom at the row's screen-TOP once Phase 2 rotates 180°. To
+	// correct for that and land bars at screen-BOTTOM (so Phase 3 can
+	// grow upward within the box), Phase 2 includes a y-translation on
+	// each bar that moves it from screen-top to screen-bottom during the
+	// rotation. In the bar's own counter-rotated (-180°) frame, motion's
+	// `y` is flipped vs screen: y = -D produces a screen-DOWN shift of D.
+	// Measure after Phase 1 (bars are 24px tall, layout unchanged).
+	// The bar's natural screen-bottom relative to the box's screen-top
+	// gives the exact drop distance that lands bar's screen-bottom at the
+	// same place as an un-rotated flex-end bar — padding included.
+	const boxRect = beforeRoot.getBoundingClientRect();
+	const barBottomFromBoxTop = beforeBars[0].getBoundingClientRect().bottom - boxRect.top;
+	const dropDist = barBottomFromBoxTop - UNIT_SIZE;
+
+	// After Phase 1, the cells occupy a 24px-tall band at the box's
+	// flex-end. The container's default transform-origin is its own
+	// centre, which is higher up — so the box and the cells rotate
+	// around different points. Set transform-origin to the cells'
+	// visual centre so both rotate around the same axis.
+	// Container rotates around the cells' visual centre (the midpoint of
+	// the 24px band after Phase 1), not the full box centre. This keeps
+	// the box outline rotating around the same axis as the cells.
+	// Measure the geometric centre of the bars directly rather than relying
+	// on padding-symmetry and exact heights — sub-pixel discrepancies put
+	// the rotation axis fractionally off the middle bar, making it trace a
+	// small circle. The midpoint between the first bar's left edge and the
+	// last bar's right edge IS the row's centre; the first bar's measured
+	// vertical centre gives the cells' centre Y exactly.
+	const firstBarRect = beforeBars[0].getBoundingClientRect();
+	const lastBarRect = beforeBars[beforeBars.length - 1].getBoundingClientRect();
+	const cellsCentreX = (firstBarRect.left + lastBarRect.right) / 2 - boxRect.left;
+	const cellsCentreY = (firstBarRect.top + firstBarRect.bottom) / 2 - boxRect.top;
+	beforeRoot.style.transformOrigin = `${cellsCentreX}px ${cellsCentreY}px`;
+
+	// Phase 2 — row rotates 180° around the cells' centre, each bar
+	// counter-rotates -180° around its own centre to stay upright.
 	await Promise.all([
 		animate(
 			beforeRoot,
 			{ rotate: [0, 180] },
-			{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
+			{ duration: scaled(ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
 		).finished,
 		...beforeBars.map(bar =>
 			animate(
 				bar,
 				{ rotate: [0, -180] },
-				{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
+				{ duration: scaled(ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
 			).finished,
 		),
 	]);
 
-	// Phase 3 — bars regrow with the SCREEN-BOTTOM anchored, growing
-	// upward. Without compensation, the row's flex-end alignment puts the
-	// bar's container-frame bottom at the row's screen-TOP after Phase 2's
-	// 180° rotation, so growing `height` pushes the screen-bottom down
-	// (visually: the bar "falls"). Adding a translateY that increases
-	// with height pins the screen-bottom: at every frame, screen-top moves
-	// up while screen-bottom stays where Phase 2 left it. In the bar's
-	// own counter-rotated frame, motion's `y` is flipped relative to
-	// screen, so y growing positive translates to screen-up.
-	await Promise.all(beforeBars.map((bar, i) =>
+	// Reverse the DOM order of bars and cancel all rotation animations.
+	const reorderedBars = [...beforeBars].reverse();
+	for (const bar of reorderedBars) beforeRoot.appendChild(bar);
+	for (const anim of beforeRoot.getAnimations()) anim.cancel();
+	for (const bar of beforeBars) {
+		for (const anim of bar.getAnimations()) anim.cancel();
+	}
+	beforeRoot.style.transform = '';
+	beforeRoot.style.rotate = '';
+	beforeRoot.style.transformOrigin = '';
+	for (const bar of beforeBars) {
+		bar.style.transform = '';
+		bar.style.rotate = '';
+	}
+	// Labels need place-items: end + rotate: 180° to compensate for
+	// residual rotation that cancel() doesn't fully clear.
+	for (const bar of beforeBars) {
+		bar.style.placeItems = 'end center';
+		bar.style.paddingTop = '0';
+		bar.style.paddingBottom = '0.18rem';
+		const span = bar.querySelector(':scope > span');
+		if (span instanceof HTMLElement) span.style.rotate = '180deg';
+	}
+
+	// originalHeights was measured in DOM order; reverse to match new order.
+	const reorderedHeights = [...originalHeights].reverse();
+
+	// Phase 3 — exact inverse of Phase 1. Same height animation, reversed.
+	await Promise.all(reorderedBars.map((bar, i) =>
 		animate(
 			bar,
-			{
-				height: [`${REVERSE_BAR_WIDTH}px`, `${originalHeights[i]}px`],
-				y: [0, originalHeights[i] - REVERSE_BAR_WIDTH],
-			},
-			{ duration: scaled(REVERSE_UNSHRINK_DURATION), ease: [0.4, 0, 0.6, 1] },
+			{ height: [`${UNIT_SIZE}px`, `${reorderedHeights[i]}px`] },
+			{ duration: scaled(STRETCH_DURATION), ease: [0.4, 0, 0.6, 1] },
 		).finished,
 	));
+
+	delete afterRoot.dataset.preparing;
+	for (const cell of afterCells) cell.style.visibility = '';
+	beforeRoot.style.opacity = '0';
+	afterRoot.style.opacity = '';
+	afterRoot.style.pointerEvents = '';
+}
+
+// CLEAN parallel implementation. Each phase is a fully independent
+// animation with no carry-over: `commitAndClear` bakes the previous
+// animation's end state into inline CSS and cancels it so the next
+// `animate()` call starts on a fresh element with no tracked state.
+// No DOM reorder, no manual transform clears, no label hacks — every
+// visual continuity comes from commitStyles freezing the prior state
+// into the DOM.
+async function reverseMonadic1DClean(
+	beforeRoot: HTMLElement,
+	afterRoot: HTMLElement,
+): Promise<void> {
+	const beforeBars = Array.from(beforeRoot.querySelectorAll('.bar')) as HTMLElement[];
+	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
+
+	for (const cell of afterCells) cell.style.visibility = 'hidden';
+	afterRoot.style.opacity = '0';
+	afterRoot.style.pointerEvents = 'none';
+
+	const originalHeights = beforeBars.map(b => b.getBoundingClientRect().height);
+
+	// Phase 1 — shrink to unit squares (general helper).
+	await shrink(beforeBars, UNIT_SIZE, SHRINK_DURATION);
+	commitAndClear(beforeBars);
+
+	// Phase 3 — stretch (general helper, dual of shrink).
+	// Rotation phase removed for visual comparison.
+	await stretch(beforeBars, originalHeights, STRETCH_DURATION);
+	commitAndClear(beforeBars);
 
 	delete afterRoot.dataset.preparing;
 	for (const cell of afterCells) cell.style.visibility = '';
@@ -123,7 +224,7 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 	if (step.x.kind !== 'array') return blackBox(step, beforeRoot, afterRoot);
 
 	if (step.x.shape.length === 1) {
-		return reverseMonadic1D(beforeRoot, afterRoot);
+		return reverseMonadic1DClean(beforeRoot, afterRoot);
 	}
 
 	const afterCells = Array.from(afterRoot.children) as HTMLElement[];
@@ -138,7 +239,7 @@ export const reverseMonadic: AnimateStep = async (step, beforeRoot, afterRoot): 
 	await animate(
 		beforeRoot,
 		{ rotate: [0, 180] },
-		{ duration: scaled(REVERSE_ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
+		{ duration: scaled(ROTATE_DURATION), ease: [0.4, 0, 0.6, 1] },
 	).finished;
 
 	// Phase 2 setup — DIRECT MEASUREMENT, no math from CSS values.

@@ -399,7 +399,7 @@
 
 	// ── Op descriptors ───────────────────────────────────────────────────────
 
-	type Family = 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'comparison' | 'structural' | 'blackBox';
+	type Family = 'primitives' | 'lateral' | 'vertical' | 'sizing' | 'merging' | 'distributing' | 'comparison' | 'structural' | 'blackBox';
 
 	type OpDesc = {
 		label: string;
@@ -418,6 +418,7 @@
 	// Black-box gets a muted accent because it's the "no hand-tuned motion"
 	// catch-all, not a phase.
 	const FAMILIES: Array<{ key: Family; label: string; color: string; btnColor: string }> = [
+		{ key: 'primitives',   label: 'Primitives',   color: '#9af7c2', btnColor: '#e0ffe6' },
 		{ key: 'lateral',      label: 'Lateral',      color: '#7c6af7', btnColor: '#e0e0ff' },
 		{ key: 'vertical',     label: 'Vertical',     color: '#5fcc5f', btnColor: '#e0e0ff' },
 		{ key: 'merging',      label: 'Merging',      color: '#6af7d8', btnColor: '#e0e0ff' },
@@ -432,6 +433,7 @@
 	// a phone with all sections open. Distributing (newest family) starts
 	// open so a fresh visit has something to tap; user can toggle any.
 	let familyOpen: Record<Family, boolean> = {
+		primitives: true,
 		lateral: false,
 		vertical: false,
 		sizing: false,
@@ -504,6 +506,11 @@
 	// reimplementation of any operation in the harness.
 	const SCAN = '`'; // BQN scan modifier glyph (a literal backtick)
 	const OPS: OpDesc[] = [
+		// primitives group — identity on data, each glyph triggers one
+		// primitive animation in isolation. BQN source is just `x`.
+		{ label: fnExprLabel({ kind: 'prim-shrink' }),  fn: { kind: 'prim-shrink' },  arity: 'monadic', family: 'primitives', source: x => x },
+		{ label: fnExprLabel({ kind: 'prim-rotate' }),  fn: { kind: 'prim-rotate' },  arity: 'monadic', family: 'primitives', source: x => x },
+		{ label: fnExprLabel({ kind: 'prim-stretch' }), fn: { kind: 'prim-stretch' }, arity: 'monadic', family: 'primitives', source: x => x },
 		// lateral group
 		{ label: fnExprLabel({ kind: 'reverse' }),   fn: { kind: 'reverse' },   arity: 'monadic', family: 'lateral',     source: x => `⌽${x}` },
 		{ label: fnExprLabel({ kind: 'sort-up' }),   fn: { kind: 'sort-up' },   arity: 'monadic', family: 'lateral',     source: x => `∧${x}` },
