@@ -190,32 +190,32 @@ function clamp(x: number, lo: number, hi: number): number {
 	return Math.max(lo, Math.min(hi, x));
 }
 
-function maxAbsAtom(v: BqnStructuredValue): number {
-	if (v.kind === 'number') return Math.abs(v.value);
-	if (v.kind === 'array') {
-		let m = 0;
-		for (const d of v.data) {
-			const c = maxAbsAtom(d);
-			if (c > m) m = c;
-		}
-		return m;
-	}
-	return 0;
-}
-
-function hasMixedSigns(v: BqnStructuredValue): boolean {
+/**
+ * One-pass scan: finds the largest |atom value| and whether the value
+ * carries both positive and negative atoms. Combined because the
+ * top-level scan would otherwise walk the whole value twice — once
+ * for the bar scale, once for the bar-ceil mixed-signs check. At
+ * R*C = 1M that doubles the entry-point cost for no reason.
+ */
+function valueSummary(v: BqnStructuredValue): {
+	maxAbs: number;
+	mixed: boolean;
+} {
+	let maxAbs = 0;
 	let pos = false;
 	let neg = false;
 	function visit(x: BqnStructuredValue): void {
 		if (x.kind === 'number') {
+			const av = Math.abs(x.value);
+			if (av > maxAbs) maxAbs = av;
 			if (x.value > 0) pos = true;
-			if (x.value < 0) neg = true;
+			else if (x.value < 0) neg = true;
 		} else if (x.kind === 'array') {
 			for (const d of x.data) visit(d);
 		}
 	}
 	visit(v);
-	return pos && neg;
+	return { maxAbs, mixed: pos && neg };
 }
 
 /**
@@ -229,9 +229,12 @@ function hasMixedSigns(v: BqnStructuredValue): boolean {
  *
  * Single atoms hit the cap; busy mats compress toward the floor.
  */
-function pickBarCeil(v: BqnStructuredValue, viewBox: ViewBox): number {
+function pickBarCeil(
+	v: BqnStructuredValue,
+	viewBox: ViewBox,
+	mixed: boolean,
+): number {
 	const fullBudget = viewBox.h - 2 * PADDING;
-	const mixed = hasMixedSigns(v);
 	const slotsPerRow = mixed ? 2 : 1;
 
 	if (v.kind === 'number') {
@@ -243,11 +246,14 @@ function pickBarCeil(v: BqnStructuredValue, viewBox: ViewBox): number {
 	if (v.shape.length === 0) {
 		// One bar's worth of vertical room, minus an extra inset for the
 		// box frame. Recurse so doubly-boxed values keep eating padding.
+		// The inner value gets its own mixed-signs scan — boxed payloads
+		// are small, no need to thread the flag through.
 		const innerViewBox: ViewBox = {
 			...viewBox,
 			h: viewBox.h - 2 * PADDING,
 		};
-		return pickBarCeil(v.data[0], innerViewBox);
+		const innerMixed = valueSummary(v.data[0]).mixed;
+		return pickBarCeil(v.data[0], innerViewBox, innerMixed);
 	}
 	if (v.shape.length === 1) {
 		// One row of bars; mixed signs eat two slots vertically.
@@ -429,11 +435,40 @@ function makeMatPlan(
 	scale: BarScale,
 	budget: Budget,
 ): MatPlan {
-	// Step 1: natural cell plans (no budget pressure on individual cells
-	// — they're atoms or shallow at the cell level in current usage).
-	const cellNatural = new Map<number, Plan>();
-	for (let i = 0; i < R * C; i++) {
-		cellNatural.set(i, makePlan(data[i], scale, INFINITE_BUDGET));
+	// Lazy cell-plan cache. The previous version built makePlan() for
+	// every R*C cell up front so step 2 could read .dims; for a 1000×
+	// 1000 numeric mat that's 1M Plan allocations the ellipsis pass
+	// immediately discards. Atoms have constant-shape dims by
+	// definition (width = BAR_WIDTH, above/below set by value sign and
+	// barHeight), so widthAt / aboveAt / belowAt return them inline
+	// without allocating a Plan. Nested cells still materialise a
+	// Plan, but the cache means we pay at most once per non-atom cell.
+	const planCache = new Map<number, Plan>();
+	function planAt(idx: number): Plan {
+		let p = planCache.get(idx);
+		if (p !== undefined) return p;
+		p = makePlan(data[idx], scale, INFINITE_BUDGET);
+		planCache.set(idx, p);
+		return p;
+	}
+	function widthAt(idx: number): number {
+		return data[idx].kind === 'number'
+			? BAR_WIDTH
+			: planAt(idx).dims.width;
+	}
+	function aboveAt(idx: number): number {
+		const v = data[idx];
+		if (v.kind === 'number') {
+			return v.value < 0 ? 0 : barHeight(v.value, scale);
+		}
+		return planAt(idx).dims.above;
+	}
+	function belowAt(idx: number): number {
+		const v = data[idx];
+		if (v.kind === 'number') {
+			return v.value >= 0 ? 0 : barHeight(v.value, scale);
+		}
+		return planAt(idx).dims.below;
 	}
 
 	// Step 2: per-column natural widths (max over rows).
@@ -441,8 +476,8 @@ function makeMatPlan(
 	for (let c = 0; c < C; c++) {
 		let m = 0;
 		for (let r = 0; r < R; r++) {
-			const p = cellNatural.get(r * C + c)!;
-			if (p.dims.width > m) m = p.dims.width;
+			const w = widthAt(r * C + c);
+			if (w > m) m = w;
 		}
 		colNatural.push(m);
 	}
@@ -470,10 +505,12 @@ function makeMatPlan(
 				w += BAR_WIDTH;
 				if (BAR_FLOOR > above) above = BAR_FLOOR;
 			} else {
-				const p = cellNatural.get(r * C + cslot.idx)!;
-				w += p.dims.width;
-				if (p.dims.above > above) above = p.dims.above;
-				if (p.dims.below > below) below = p.dims.below;
+				const idx = r * C + cslot.idx;
+				w += widthAt(idx);
+				const a = aboveAt(idx);
+				const b = belowAt(idx);
+				if (a > above) above = a;
+				if (b > below) below = b;
 			}
 			if (i < colSlots.length - 1) w += GAP;
 		}
@@ -495,14 +532,16 @@ function makeMatPlan(
 		matContentBudgetH,
 	);
 
-	// Step 6: collect plans for surviving (row, col) pairs.
+	// Step 6: collect plans for surviving (row, col) pairs. planAt
+	// materialises an atom plan only here; non-atom plans are taken
+	// from the cache populated lazily during step 2 / step 4.
 	const cellPlans = new Map<number, Plan>();
 	for (const rslot of rowSlots) {
 		if (rslot.kind === 'ellipsis') continue;
 		for (const cslot of colSlots) {
 			if (cslot.kind === 'ellipsis') continue;
 			const idx = rslot.idx * C + cslot.idx;
-			cellPlans.set(idx, cellNatural.get(idx)!);
+			cellPlans.set(idx, planAt(idx));
 		}
 	}
 
@@ -854,10 +893,13 @@ export function bqnValueToScene(
 	}
 	// Scale once at the top; budget is the viewBox itself. The plan
 	// decides ellipsis recursively given the budget; applyPlan turns
-	// that plan into positioned cells.
+	// that plan into positioned cells. valueSummary is one O(N) walk
+	// that hands both maxAbs and the mixed-signs flag to pickBarCeil
+	// — the original split was two separate O(N) walks.
+	const summary = valueSummary(value);
 	const scale: BarScale = {
-		maxAbs: maxAbsAtom(value),
-		ceil: pickBarCeil(value, viewBox),
+		maxAbs: summary.maxAbs,
+		ceil: pickBarCeil(value, viewBox, summary.mixed),
 	};
 	const budget: Budget = { w: viewBox.w, h: viewBox.h };
 	const plan = makePlan(value, scale, budget);
