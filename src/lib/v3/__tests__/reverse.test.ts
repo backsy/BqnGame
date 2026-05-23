@@ -1,6 +1,6 @@
 // Property tests for reverseAnimation.
 //
-// Three properties, each over arbitrary BQN array values:
+// Five properties, each over arbitrary BQN array values:
 //
 //   1. reverse ∘ reverse = identity on leaf positions. Apply the
 //      animation twice, take the last snapshot, every leaf atom centre
@@ -16,7 +16,17 @@
 //      lies inside `scene.viewBox`. Combined with (2)'s recursive
 //      containment, every drawn rect is inside the viewBox transitively.
 //
-// Tests 2 and 3 are expected to fail for some inputs on the current
+//   4. Produces a real animation. For any animatable input (rank-1 or
+//      rank-2 array with ≥2 cells and no ellipsis), `reverseAnimation`
+//      must return more than one snapshot. Catches the "silent refuse"
+//      cheat where the impl returns `[prevScene]` so properties 2/3
+//      pass trivially on a one-element list.
+//
+//   5. At least one leaf actually moves. Multi-snapshot return is not
+//      enough — N empty pad-snapshots is still a refusal in disguise.
+//      Final snapshot must differ from start at ≥1 leaf centre.
+//
+// Tests 2–5 are expected to fail for some inputs on the current
 // implementation; that's the point.
 
 import { describe, test } from 'vitest';
@@ -39,17 +49,37 @@ const TEST_TIMEOUT_MS = 120_000;
 const LERP_SAMPLES = 8;
 
 // ── arbitraries ───────────────────────────────────────────────────────────
+//
+// Value range is intentionally wide: bar scaling, label rendering, and
+// fraction reduction all key off magnitude, so a -10..10 corpus barely
+// exercises the layout. Length range is wide too — anything that
+// overflows naturally triggers the ellipsis path, which is excluded
+// from the must-animate property by predicate.
 
-const arbNum: fc.Arbitrary<BqnStructuredValue> = fc
-	.integer({ min: -10, max: 10 })
+const arbInt: fc.Arbitrary<BqnStructuredValue> = fc
+	.integer({ min: -1000, max: 1000 })
 	.map((value) => ({ kind: 'number', value }));
 
+// Fractions are part of the displayable corpus (see commit 3eb3f95);
+// keep a denominator range that exercises the reducer.
+const arbFrac: fc.Arbitrary<BqnStructuredValue> = fc
+	.tuple(
+		fc.integer({ min: -1000, max: 1000 }),
+		fc.integer({ min: 2, max: 50 }),
+	)
+	.map(([n, d]) => ({ kind: 'number', value: n / d }));
+
+const arbNum: fc.Arbitrary<BqnStructuredValue> = fc.oneof(
+	{ weight: 4, arbitrary: arbInt },
+	{ weight: 1, arbitrary: arbFrac },
+);
+
 const arbVec: fc.Arbitrary<BqnStructuredValue> = fc
-	.array(arbNum, { minLength: 1, maxLength: 100 })
+	.array(arbNum, { minLength: 1, maxLength: 200 })
 	.map((data) => ({ kind: 'array', shape: [data.length], data }));
 
 const arbMatrix: fc.Arbitrary<BqnStructuredValue> = fc
-	.tuple(fc.integer({ min: 1, max: 100 }), fc.integer({ min: 1, max: 100 }))
+	.tuple(fc.integer({ min: 1, max: 200 }), fc.integer({ min: 1, max: 200 }))
 	.chain(([r, c]) =>
 		fc
 			.array(arbNum, { minLength: r * c, maxLength: r * c })
@@ -59,7 +89,7 @@ const arbMatrix: fc.Arbitrary<BqnStructuredValue> = fc
 const arbListOfLists: fc.Arbitrary<BqnStructuredValue> = fc
 	.array(
 		fc
-			.array(arbNum, { minLength: 1, maxLength: 100 })
+			.array(arbNum, { minLength: 1, maxLength: 200 })
 			.map(
 				(sub) =>
 					({
@@ -68,7 +98,7 @@ const arbListOfLists: fc.Arbitrary<BqnStructuredValue> = fc
 						data: sub,
 					}) satisfies BqnStructuredValue,
 			),
-		{ minLength: 1, maxLength: 100 },
+		{ minLength: 1, maxLength: 200 },
 	)
 	.map((data) => ({ kind: 'array', shape: [data.length], data }));
 
@@ -179,6 +209,44 @@ function escapesViewBox(scene: Scene, vb: ViewBox): boolean {
 	return !rectInside(rootRect(scene), vb);
 }
 
+// Mirrors `sceneHasEllipsis` in steps/reverse.ts. Not exported there,
+// so duplicated here — the impl's refuse-on-ellipsis is a legit "no",
+// and the must-animate property has to exclude exactly those inputs.
+function hasEllipsis(scene: Scene): boolean {
+	if (scene.kind === 'atom') return false;
+	for (const c of scene.cells) {
+		if (c.kind === 'ellipsis') return true;
+		if (c.inner !== null && hasEllipsis(c.inner)) return true;
+	}
+	return false;
+}
+
+// Inputs the impl is contractually supposed to animate: rank-1 or
+// rank-2 array, at least two cells (so reverse actually permutes
+// something), no ellipsis. Anything else is a legit refuse — scalar,
+// single-cell, overflowed-and-ellipsized, higher-rank.
+function shouldAnimate(scene: Scene): boolean {
+	if (scene.kind !== 'array') return false;
+	if (scene.cells.length < 2) return false;
+	if (scene.shape.length !== 1 && scene.shape.length !== 2) return false;
+	if (hasEllipsis(scene)) return false;
+	return true;
+}
+
+// Did any leaf centre actually move between two scenes? Compares by
+// leaf id so re-orderings count as motion even when the multiset of
+// centres is the same.
+function someLeafMoved(a: Scene, b: Scene): boolean {
+	const before = leafPositions(a);
+	const after = leafPositions(b);
+	for (const [id, bp] of before) {
+		const ap = after.get(id);
+		if (ap === undefined) return true;
+		if (Math.abs(ap.x - bp.x) > EPS || Math.abs(ap.y - bp.y) > EPS) return true;
+	}
+	return false;
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────
 
 describe('reverseAnimation', () => {
@@ -276,6 +344,58 @@ describe('reverseAnimation', () => {
 									+ `escapes viewBox (${VIEW_BOX.x},${VIEW_BOX.y}) ${VIEW_BOX.w}x${VIEW_BOX.h}`,
 							);
 						}
+					}
+				}),
+				{ numRuns: NUM_RUNS },
+			);
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	// Anti-cheat: properties 2 and 3 above pass trivially when the impl
+	// returns `[prevScene]` (one snapshot, no motion). Without this
+	// test, "fix" can mean "add `return [prevScene]` to the broken
+	// branch". This pins that as a regression.
+	test(
+		'produces a multi-snapshot animation for animatable inputs',
+		() => {
+			fc.assert(
+				fc.property(arbBqnValue, (v) => {
+					const start = bqnValueToScene(v, VIEW_BOX);
+					if (!shouldAnimate(start)) return;
+					const snaps = reverseAnimation(start);
+					if (snaps.length <= 1) {
+						throw new Error(
+							`silent refuse: shape=[${start.kind === 'array' ? start.shape.join(',') : '?'}] `
+								+ `cells=${start.kind === 'array' ? start.cells.length : 0} `
+								+ `→ snaps.length=${snaps.length}`,
+						);
+					}
+				}),
+				{ numRuns: NUM_RUNS },
+			);
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	// Stronger version: a multi-snapshot list whose last frame matches
+	// the first is also a refusal in disguise. At least one leaf has
+	// to land somewhere new.
+	test(
+		'at least one leaf moves between start and final snapshot',
+		() => {
+			fc.assert(
+				fc.property(arbBqnValue, (v) => {
+					const start = bqnValueToScene(v, VIEW_BOX);
+					if (!shouldAnimate(start)) return;
+					const snaps = reverseAnimation(start);
+					const end = snaps[snaps.length - 1];
+					if (!someLeafMoved(start, end)) {
+						throw new Error(
+							`no leaf moved: shape=[${start.kind === 'array' ? start.shape.join(',') : '?'}] `
+								+ `cells=${start.kind === 'array' ? start.cells.length : 0} `
+								+ `snaps=${snaps.length}`,
+						);
 					}
 				}),
 				{ numRuns: NUM_RUNS },
