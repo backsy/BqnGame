@@ -98,13 +98,13 @@ export const GAP = 4;
 // shrink to: head[1] + ellipsis + tail[1]. Below this you'd just be
 // showing the marker with one neighbour, which doesn't read as "list".
 //
-// MAX_ELLIPSIZED_VISIBLE caps head/tail at 3 each (3 + ellipsis + 3 = 7).
-// Beyond that the visual is too dense to read and animations on the
-// surviving cells get unreadable. A list with > 7 items ellipsizes even
-// when the budget would technically fit more.
+// There is no upper cap on visible slots — the budget itself is the only
+// limit. A 14-element vec at 400px will show all 14 (no ellipsis) if
+// they fit; ellipsis kicks in only when they don't. Previously a fixed
+// MAX_ELLIPSIZED_VISIBLE = 7 forced ellipsis on N > 7 even when the
+// row was half-empty.
 
 const MIN_VISIBLE = 3;
-const MAX_ELLIPSIZED_VISIBLE = 7;
 
 type VecSlot =
 	| { kind: 'data'; idx: number }
@@ -152,14 +152,24 @@ function chooseSlotsForFit(
 		}
 		return total;
 	};
-	// "No ellipsis" is only an option when the data is short enough to
-	// stay readable in full AND it fits the budget. Otherwise the cap
-	// at MAX_ELLIPSIZED_VISIBLE wins, even if a larger K would fit.
-	if (N <= MAX_ELLIPSIZED_VISIBLE && totalForK(N) <= budget) {
+	// Budget-driven: show everything if it fits, otherwise the largest
+	// K that does. No fixed-count cap — visual density is the row's
+	// job to bound, not this function's. The loop starts from an
+	// analytical upper bound on K (every data slot would have to be
+	// at least minSize wide, so a budget that's too tight for K
+	// minimum-size slots can't fit K of anything) so huge-N inputs
+	// don't churn through N - 1 iterations of an O(K) totalForK.
+	if (totalForK(N) <= budget) {
 		return buildSlots(N, N);
 	}
-	const Kmax = Math.min(MAX_ELLIPSIZED_VISIBLE, N - 1);
-	for (let K = Kmax; K >= MIN_VISIBLE; K--) {
+	let minSize = ellipsisSize;
+	for (const s of sizes) if (s < minSize) minSize = s;
+	const denom = Math.max(1, minSize + gap);
+	const Kupper = Math.min(
+		N - 1,
+		Math.max(MIN_VISIBLE, 1 + Math.floor((budget - ellipsisSize) / denom)),
+	);
+	for (let K = Kupper; K >= MIN_VISIBLE; K--) {
 		if (totalForK(K) <= budget) return buildSlots(K, N);
 	}
 	return buildSlots(Math.min(MIN_VISIBLE, N), N);
@@ -411,21 +421,28 @@ function makeVecPlan(
 		};
 	};
 
-	// Try the un-ellipsized layout only when the data is short enough
-	// to stay readable. Long vecs always show ellipsis even if they'd
-	// fit the budget — see MAX_ELLIPSIZED_VISIBLE.
-	if (N <= MAX_ELLIPSIZED_VISIBLE) {
+	// Budget-driven, no fixed-count cap. Kupper is an analytical
+	// upper bound on K: every visible slot occupies at least BAR_WIDTH,
+	// so a row of width budget.w can never hold more than this many.
+	// attempt(K) builds K child plans, so we only ever call it with
+	// K ≤ Kupper — a 1M-element vec would otherwise allocate 1M
+	// AtomPlans inside attempt(N) just to discard them.
+	const Kupper = Math.max(
+		MIN_VISIBLE,
+		1 + Math.floor((budget.w - 2 * PADDING - BAR_WIDTH) / (BAR_WIDTH + GAP)),
+	);
+	if (N <= Kupper) {
 		const full = attempt(N);
 		if (full.fits) return full.plan;
 	}
-	const Kmax = Math.min(MAX_ELLIPSIZED_VISIBLE, N - 1);
 	let best: VecPlan | null = null;
-	for (let K = Kmax; K >= MIN_VISIBLE; K--) {
+	const startK = Math.min(Kupper, N - 1);
+	for (let K = startK; K >= MIN_VISIBLE; K--) {
 		const a = attempt(K);
 		if (a.fits) return a.plan;
 		if (best === null || a.plan.dims.width < best.dims.width) best = a.plan;
 	}
-	return best ?? attempt(N).plan;
+	return best ?? attempt(MIN_VISIBLE).plan;
 }
 
 function makeMatPlan(
