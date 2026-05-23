@@ -403,4 +403,44 @@ describe('reverseAnimation', () => {
 		},
 		TEST_TIMEOUT_MS,
 	);
+
+	// "Don't teleport": the animation runner lerps between consecutive
+	// snapshots. lerp is genuinely linear (lerp.test.ts pins that), so
+	// the visible motion between snaps[s] and snaps[s+1] traces a
+	// straight line at constant speed. If a step in that list places
+	// the same leaf at positions farther apart than the viewBox width,
+	// the user sees a jump — technically linear, visually a teleport.
+	// Bound the per-step displacement well below "across the whole
+	// canvas" to catch any phase that skips its sub-snapshots.
+	test(
+		'no leaf jumps the full viewBox between consecutive snapshots',
+		() => {
+			const MAX_JUMP = VIEW_BOX.w;
+			fc.assert(
+				fc.property(arbBqnValue, (v) => {
+					const start = bqnValueToScene(v, VIEW_BOX);
+					if (!shouldAnimate(start)) return;
+					const snaps = reverseAnimation(start);
+					for (let s = 0; s < snaps.length - 1; s++) {
+						const before = leafPositions(snaps[s]);
+						const after = leafPositions(snaps[s + 1]);
+						for (const [id, bp] of before) {
+							const ap = after.get(id);
+							if (ap === undefined) continue;
+							const d = Math.hypot(ap.x - bp.x, ap.y - bp.y);
+							if (d > MAX_JUMP) {
+								throw new Error(
+									`leaf ${id} teleports ${d.toFixed(1)}px `
+										+ `between snaps ${s} → ${s + 1}/${snaps.length - 1} `
+										+ `(max=${MAX_JUMP}, shape=[${start.kind === 'array' ? start.shape.join(',') : '?'}])`,
+								);
+							}
+						}
+					}
+				}),
+				{ numRuns: NUM_RUNS },
+			);
+		},
+		TEST_TIMEOUT_MS,
+	);
 });
